@@ -525,7 +525,8 @@ def test_job_submission_stores_profile_config_for_user_profile(tmp_path):
     assert "target_preflight" in listed_job["request"]
 
 
-def test_worker_marks_stale_invalid_saved_profile_locus_job_failed(tmp_path):
+def test_worker_marks_stale_invalid_saved_profile_locus_job_failed(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOANNOTATOR_EMBEDDED_WORKER", "true")
     profile_store = BuiltinAndUserProfileStore(user_store=InMemoryUserProfileStore())
     profile_store.create_user_profile({
         "profile_id": "ecoli-k12-mg1655",
@@ -596,7 +597,8 @@ def test_result_endpoint_rejects_unfinished_jobs(tmp_path):
     assert result_response.json()["detail"] == "Job is not completed"
 
 
-def test_startup_worker_drains_existing_queued_jobs(tmp_path):
+def test_startup_worker_drains_existing_queued_jobs(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOANNOTATOR_EMBEDDED_WORKER", "true")
     store = JobStore(tmp_path / "jobs.sqlite3")
     queued = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0001"})
     app = create_app(

@@ -186,9 +186,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app):
-        # The embedded in-process worker is opt-out so a machine can run the
-        # coordinator without also executing jobs (AUTOANNOTATOR_EMBEDDED_WORKER=false).
-        embedded = start_worker and os.getenv("AUTOANNOTATOR_EMBEDDED_WORKER", "true").lower() == "true"
+        # The embedded in-process worker is opt-in so external workers can claim
+        # jobs without the coordinator also draining the queue in-process.
+        embedded = start_worker and os.getenv("AUTOANNOTATOR_EMBEDDED_WORKER", "false").lower() == "true"
         if embedded:
             # Running jobs cannot be resumed safely after an API restart because
             # the annotator is invoked in-process and has no checkpoint protocol.

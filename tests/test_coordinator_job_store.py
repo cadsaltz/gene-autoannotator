@@ -89,21 +89,14 @@ def test_lists_jobs_with_queue_positions(tmp_path):
     assert jobs_by_id[queued_second["id"]]["queue_position"] == 2
 
 
-def test_claim_next_queued_job_respects_single_running_job(tmp_path):
+def test_claim_next_queued_job_allows_second_when_first_running(tmp_path):
     store = JobStore(tmp_path / "jobs.sqlite3")
-    first = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0001"})
-    second = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0002"})
-
+    j1 = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0001"})
+    j2 = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0002"})
+    store.mark_running(j1["id"])
     claimed = store.claim_next_queued_job()
-    blocked = store.claim_next_queued_job()
-    store.mark_completed(claimed["id"], {"annotation": {"gene_id": "Rv0001"}})
-    next_claimed = store.claim_next_queued_job()
-
-    assert claimed["id"] == first["id"]
-    assert claimed["status"] == "running"
-    assert blocked is None
-    assert next_claimed["id"] == second["id"]
-    assert next_claimed["status"] == "running"
+    assert claimed is not None
+    assert claimed["id"] == j2["id"]
 
 
 def test_marks_interrupted_running_jobs_failed_on_restart(tmp_path):
