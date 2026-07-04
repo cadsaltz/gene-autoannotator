@@ -69,6 +69,18 @@ if load_dotenv is not None:
 
 log = logging.getLogger(__name__)
 
+
+def _detect_lan_ip():
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
 DEFAULT_DB_PATH = Path("coordinator/jobs.sqlite3")
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "2000"))
 DEFAULT_CORS_ORIGINS = (
@@ -183,6 +195,25 @@ def create_app(
             store.mark_interrupted_running_jobs("Job interrupted by API restart")
             worker = threading.Thread(target=drain_queue, daemon=True)
             worker.start()
+
+        public_url = os.getenv("COORDINATOR_PUBLIC_URL")
+        lan_ip = _detect_lan_ip()
+        worker_url = public_url or (f"http://{lan_ip}:8000" if lan_ip else None)
+        token_status = "set" if worker_token else "not set"
+        log.info("Coordinator listening on 0.0.0.0:8000")
+        if worker_url:
+            log.info(
+                "Workers: set COORDINATOR_URL=%s  WORKER_API_TOKEN=%s",
+                worker_url,
+                token_status,
+            )
+        else:
+            log.info("Workers: set COORDINATOR_URL=<your-lan-ip>:8000  WORKER_API_TOKEN=%s", token_status)
+        log.info(
+            "Public URL (COORDINATOR_PUBLIC_URL): %s",
+            public_url or "not set",
+        )
+        log.info("Embedded worker: %s", str(embedded).lower())
 
         stop_reaper = threading.Event()
 

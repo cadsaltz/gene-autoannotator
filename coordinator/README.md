@@ -27,11 +27,25 @@ python -m pip install -r requirements.txt
 python -m pip install -r requirements-web.txt
 ```
 
+Copy the coordinator environment template to the project root `.env` (loaded
+automatically on startup):
+
+```bash
+cp coordinator.env.example .env
+```
+
+Edit `.env` as needed — for example set `COORDINATOR_PUBLIC_URL` to your LAN IP
+and configure `WORKER_API_TOKEN` before connecting external workers.
+
 Run the API server:
 
 ```bash
 uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
 ```
+
+On startup the coordinator logs its listen address, suggested worker
+`COORDINATOR_URL`, token status, and whether the embedded in-process worker is
+enabled.
 
 Check that it is reachable:
 

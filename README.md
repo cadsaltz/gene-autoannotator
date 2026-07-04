@@ -147,9 +147,11 @@ python -m autoannotation --profile mtb-h37rv --locus Rv0001
 python -m autoannotation --profile tcruzi-clbrener --locus TcCLB.503799.4 --name TcUBP1
 ```
 
-Run the backend:
+Run the backend (copy `coordinator.env.example` to `.env` first if you need
+worker tokens, MongoDB, or other coordinator settings):
 
 ```bash
+cp coordinator.env.example .env   # optional; edit as needed
 uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
 ```
 
