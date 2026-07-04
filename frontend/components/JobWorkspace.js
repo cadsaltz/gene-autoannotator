@@ -9,7 +9,6 @@ import BatchJobForm from "./BatchJobForm";
 import {
   clearFinishedJobHistory,
   createJob,
-  getAnnotationHealth,
   getBatch,
   getHealth,
   getProfiles,
@@ -26,7 +25,7 @@ import {
   getVisibleJobs,
   shouldShowRunningSpinner,
 } from "../lib/jobQueue";
-import { formatResourceDetail } from "../lib/healthFormat";
+import { formatFleetStatusStrip } from "../lib/healthFormat";
 
 const stepLabels = {
   queued: "Waiting in queue",
@@ -132,23 +131,6 @@ function BatchSummaryCard({ batchId, batchDetail, queueCounts, batchFilterActive
   );
 }
 
-function HealthBadge({ label, status, detail }) {
-  const ok = status === "ok";
-  return (
-    <div
-      className={`workbench-surface-bg min-h-32 rounded-2xl border workbench-border p-4 ${
-        ok ? "health-status-ok" : "health-status-warn"
-      }`}
-    >
-      <p className="workbench-muted text-sm font-semibold">{label}</p>
-      <p className="workbench-foreground mt-2 text-base font-bold">
-        {ok ? "Connected" : status || "Unavailable"}
-      </p>
-      {detail ? <p className="workbench-muted mt-2 text-xs leading-5">{detail}</p> : null}
-    </div>
-  );
-}
-
 function JobTile({ job }) {
   const elapsed = formatJobElapsed(job);
   const request = job.request || {};
@@ -235,7 +217,6 @@ function JobTile({ job }) {
 export default function JobWorkspace() {
   const searchParams = useSearchParams();
   const [health, setHealth] = useState(null);
-  const [annotationHealth, setAnnotationHealth] = useState(null);
   const [profiles, setProfiles] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [showAllJobs, setShowAllJobs] = useState(false);
@@ -290,16 +271,6 @@ export default function JobWorkspace() {
         status: "offline",
         stores: {},
         resources: { status: "unavailable", message: error.message },
-      });
-    }
-
-    try {
-      setAnnotationHealth(await getAnnotationHealth());
-    } catch (error) {
-      setAnnotationHealth({
-        status: "unavailable",
-        message: error.message,
-        source: "next",
       });
     }
   }
@@ -411,7 +382,7 @@ export default function JobWorkspace() {
 
   return (
     <div className="grid gap-5">
-      <section className="grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+      <section>
         <div className="workbench-card flex min-h-64 flex-col justify-between p-6">
           <div>
             <p className="workbench-kicker">
@@ -439,34 +410,14 @@ export default function JobWorkspace() {
             </button>
           </div>
         </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <HealthBadge
-            label="API"
-            status={health?.status}
-            detail={apiAvailable ? "FastAPI reachable" : health?.resources?.message}
-          />
-          <HealthBadge
-            label="Job store"
-            status={health?.stores?.jobs?.status}
-            detail={health?.stores?.jobs?.path}
-          />
-          <HealthBadge
-            label="Annotations"
-            status={annotationHealth?.status}
-            detail={
-              annotationHealth?.status === "ok"
-                ? "Next server can reach MongoDB"
-                : annotationHealth?.message
-            }
-          />
-          <HealthBadge
-            label="Resources"
-            status={health?.resources?.status}
-            detail={formatResourceDetail(health?.resources)}
-          />
-        </div>
       </section>
+
+      <div className="workbench-surface-bg rounded-2xl border workbench-border px-4 py-3 text-sm">
+        <span>{formatFleetStatusStrip(health, queue)}</span>
+        <Link href="/fleet" className="workbench-green ml-3 font-bold">
+          Fleet details →
+        </Link>
+      </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[0.95fr_1.05fr]">
         <section className="workbench-card p-6">

@@ -55,8 +55,10 @@ test("job workspace imports shared health formatters", async () => {
 
   assert.match(
     workspace,
-    /import \{ formatResourceDetail \} from "\.\.\/lib\/healthFormat";/,
+    /import \{ formatFleetStatusStrip \} from "\.\.\/lib\/healthFormat";/,
   );
+  assert.match(workspace, /formatFleetStatusStrip\(health, queue\)/);
+  assert.match(workspace, /href="\/fleet"/);
   assert.doesNotMatch(workspace, /function formatBytes\(/);
   assert.doesNotMatch(workspace, /function formatResourceDetail\(/);
 });

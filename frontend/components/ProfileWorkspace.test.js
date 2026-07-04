@@ -14,7 +14,7 @@ test("profiles page is reachable from the workbench navigation", async () => {
 
   assert.match(
     appShell,
-    /const navItems = \[\s*\{ href: "\/", label: "Guide" \},\s*\{ href: "\/jobs", label: "Jobs" \},\s*\{ href: "\/profiles", label: "Profiles" \},\s*\{ href: "\/annotations", label: "Annotations" \},\s*\];/s,
+    /const navItems = \[\s*\{ href: "\/", label: "Guide" \},\s*\{ href: "\/jobs", label: "Jobs" \},\s*\{ href: "\/fleet", label: "Fleet & Health" \},\s*\{ href: "\/profiles", label: "Profiles" \},\s*\{ href: "\/annotations", label: "Annotations" \},\s*\];/s,
   );
 });
 

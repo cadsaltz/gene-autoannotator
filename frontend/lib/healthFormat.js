@@ -76,6 +76,17 @@ export function formatFleetCapacityLabel(workers) {
   return `${used}/${total} slots`;
 }
 
+export function formatFleetStatusStrip(health, queue) {
+  const coordinatorStatus = health?.status === "ok" ? "up" : "down";
+  const workers = health?.workers?.connected ?? 0;
+  const usedSlots = health?.workers?.used_slots ?? 0;
+  const totalSlots = health?.workers?.total_slots ?? 0;
+  const queued = queue?.queued ?? 0;
+  const running = queue?.running ?? 0;
+
+  return `Coordinator: ${coordinatorStatus} · ${workers} workers · ${usedSlots}/${totalSlots} slots · ${queued} queued, ${running} running`;
+}
+
 export function formatQueueDetail(queue) {
   if (!queue) {
     return undefined;
