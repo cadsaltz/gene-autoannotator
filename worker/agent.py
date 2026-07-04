@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 from shared.job_contract import AnnotationJobRequest
@@ -73,7 +74,17 @@ def run(poll_seconds=5):
     client = CoordinatorClient(config)
     client.register()
     log.info("Registered worker %s (%s slots)", config.worker_name, config.max_slots)
+    if config.max_slots <= 0:
+        log.warning(
+            "Worker registered with 0 slots (ANNOTATION_MEMORY_BUDGET_GB=%s); it will "
+            "never claim jobs. Increase the memory budget above one job's requirement.",
+            os.getenv("ANNOTATION_MEMORY_BUDGET_GB"),
+        )
     while True:
-        did_work = run_once(client, config, active_jobs=0, execute=_default_execute)
+        try:
+            did_work = run_once(client, config, active_jobs=0, execute=_default_execute)
+        except Exception:  # noqa: BLE001 - survive transient coordinator/network errors.
+            log.exception("Worker loop iteration failed; backing off")
+            did_work = False
         if not did_work:
             time.sleep(poll_seconds)
