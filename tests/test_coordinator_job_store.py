@@ -148,3 +148,70 @@ def test_new_job_has_worker_and_lease_defaults(tmp_path):
     assert job["worker_id"] is None
     assert job["lease_expires_at"] is None
     assert job["attempts"] == 0
+
+
+def _queued(store, locus):
+    return store.create_job(
+        {"profile": "mtb-h37rv", "locus": locus, "cache_dir": "./.cache", "output_dir": "gen_json"}
+    )
+
+
+def test_two_workers_get_different_jobs(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    _queued(store, "Rv0001")
+    _queued(store, "Rv0002")
+    first = store.assign_job_to_worker("worker-a", lease_seconds=3600)
+    second = store.assign_job_to_worker("worker-b", lease_seconds=3600)
+    assert first["id"] != second["id"]
+    assert first["worker_id"] == "worker-a"
+    assert second["worker_id"] == "worker-b"
+    assert store.assign_job_to_worker("worker-c", lease_seconds=3600) is None
+
+
+def test_no_global_running_cap(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    _queued(store, "Rv0001")
+    _queued(store, "Rv0002")
+    store.assign_job_to_worker("worker-a", lease_seconds=3600)
+    # A second assignment succeeds even though one job is already running.
+    assert store.assign_job_to_worker("worker-b", lease_seconds=3600) is not None
+
+
+def test_expired_lease_requeues_then_fails(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    job = _queued(store, "Rv0001")
+    store.assign_job_to_worker("worker-a", lease_seconds=-1)  # already expired
+    result = store.requeue_expired_leases(max_attempts=3)
+    assert job["id"] in result["requeued"]
+    assert store.get_job(job["id"])["status"] == "queued"
+
+
+def test_lease_fails_after_max_attempts(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    job = _queued(store, "Rv0001")
+    result = {"requeued": [], "failed": []}
+    for _ in range(3):
+        store.assign_job_to_worker("worker-a", lease_seconds=-1)
+        result = store.requeue_expired_leases(max_attempts=3)
+    assert job["id"] in result["failed"]
+    assert store.get_job(job["id"])["status"] == "failed"
+
+
+def test_complete_if_running_is_idempotent(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    job = _queued(store, "Rv0001")
+    store.assign_job_to_worker("worker-a", lease_seconds=3600)
+    assert store.complete_if_running(job["id"], {"annotation": {"gene_id": "Rv0001"}}) is True
+    assert store.complete_if_running(job["id"], {"annotation": {"gene_id": "X"}}) is False
+    assert store.get_job(job["id"])["result"]["annotation"]["gene_id"] == "Rv0001"
+
+
+def test_fail_job_requeues_when_retryable(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    job = _queued(store, "Rv0001")
+    store.assign_job_to_worker("worker-a", lease_seconds=3600)
+    store.fail_job(job["id"], "ollama down", retryable=True, max_attempts=3)
+    assert store.get_job(job["id"])["status"] == "queued"
+    store.assign_job_to_worker("worker-a", lease_seconds=3600)
+    store.fail_job(job["id"], "bad locus", retryable=False, max_attempts=3)
+    assert store.get_job(job["id"])["status"] == "failed"

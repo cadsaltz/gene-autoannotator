@@ -1,7 +1,7 @@
 import json
 import sqlite3
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +11,10 @@ from typing import Any
 # from sqlite3 row objects.
 def _now_iso():
     return datetime.now(UTC).isoformat()
+
+
+def _iso_in(seconds):
+    return (datetime.now(UTC) + timedelta(seconds=seconds)).isoformat()
 
 
 class JobStore:
@@ -228,6 +232,135 @@ class JobStore:
             )
             connection.commit()
         return self.get_job(queued["id"])
+
+    def assign_job_to_worker(self, worker_id, *, lease_seconds=14400):
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("BEGIN IMMEDIATE")
+            queued = connection.execute(
+                """
+                SELECT id FROM annotation_jobs
+                WHERE status = 'queued'
+                ORDER BY created_at ASC
+                LIMIT 1
+                """
+            ).fetchone()
+            if queued is None:
+                connection.commit()
+                return None
+            connection.execute(
+                """
+                UPDATE annotation_jobs
+                SET status = 'running', current_step = 'running', worker_id = ?,
+                    lease_expires_at = ?, attempts = attempts + 1,
+                    started_at = COALESCE(started_at, ?)
+                WHERE id = ?
+                """,
+                (worker_id, _iso_in(lease_seconds), _now_iso(), queued["id"]),
+            )
+            connection.commit()
+        return self.get_job(queued["id"])
+
+    def renew_lease(self, job_id, *, lease_seconds=14400):
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE annotation_jobs SET lease_expires_at = ? WHERE id = ? AND status = 'running'",
+                (_iso_in(lease_seconds), job_id),
+            )
+
+    def requeue_expired_leases(self, *, max_attempts=3):
+        now = _now_iso()
+        requeued, failed = [], []
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            expired = connection.execute(
+                """
+                SELECT id, attempts FROM annotation_jobs
+                WHERE status = 'running'
+                  AND lease_expires_at IS NOT NULL
+                  AND lease_expires_at < ?
+                """,
+                (now,),
+            ).fetchall()
+            for row in expired:
+                if row["attempts"] >= max_attempts:
+                    connection.execute(
+                        """
+                        UPDATE annotation_jobs
+                        SET status = 'failed', current_step = 'failed',
+                            error = 'Lease expired after max attempts', finished_at = ?,
+                            worker_id = NULL, lease_expires_at = NULL
+                        WHERE id = ?
+                        """,
+                        (now, row["id"]),
+                    )
+                    failed.append(row["id"])
+                else:
+                    connection.execute(
+                        """
+                        UPDATE annotation_jobs
+                        SET status = 'queued', current_step = 'queued',
+                            worker_id = NULL, lease_expires_at = NULL, started_at = NULL
+                        WHERE id = ?
+                        """,
+                        (row["id"],),
+                    )
+                    requeued.append(row["id"])
+        return {"requeued": requeued, "failed": failed}
+
+    def complete_if_running(self, job_id, result, output_path=None):
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT status FROM annotation_jobs WHERE id = ?", (job_id,)
+            ).fetchone()
+            if row is None or row["status"] == "completed":
+                connection.commit()
+                return False
+            connection.execute(
+                """
+                UPDATE annotation_jobs
+                SET status = 'completed', current_step = 'completed', result_json = ?,
+                    output_path = ?, finished_at = ?, lease_expires_at = NULL
+                WHERE id = ?
+                """,
+                (json.dumps(result), output_path, _now_iso(), job_id),
+            )
+            connection.commit()
+        return True
+
+    def fail_job(self, job_id, error, *, retryable=False, max_attempts=3):
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT status, attempts FROM annotation_jobs WHERE id = ?", (job_id,)
+            ).fetchone()
+            if row is None or row["status"] in ("completed", "failed"):
+                connection.commit()
+                return
+            if retryable and row["attempts"] < max_attempts:
+                connection.execute(
+                    """
+                    UPDATE annotation_jobs
+                    SET status = 'queued', current_step = 'queued',
+                        worker_id = NULL, lease_expires_at = NULL, started_at = NULL
+                    WHERE id = ?
+                    """,
+                    (job_id,),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE annotation_jobs
+                    SET status = 'failed', current_step = 'failed', error = ?,
+                        finished_at = ?, worker_id = NULL, lease_expires_at = NULL
+                    WHERE id = ?
+                    """,
+                    (str(error), _now_iso(), job_id),
+                )
+            connection.commit()
 
     def list_jobs(self, order="newest", limit=100, batch_id=None):
         if order == "queue":
