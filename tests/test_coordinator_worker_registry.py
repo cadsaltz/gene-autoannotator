@@ -45,6 +45,27 @@ def test_heartbeat_updates_counts(tmp_path):
     assert worker["free_slots"] == 1
 
 
+def test_summary_reports_available_slots_from_heartbeats(tmp_path):
+    registry = WorkerRegistry(tmp_path / "jobs.sqlite3")
+    worker_id = registry.register(_register_payload(max_slots=2))
+    registry.heartbeat(
+        worker_id,
+        {
+            "active_jobs": 0,
+            "free_slots": 2,
+            "memory_available_bytes": 10_000_000_000,
+            "cpu_percent": 5.0,
+            "state": "ready",
+        },
+    )
+
+    summary = registry.summary()
+
+    assert summary["total_slots"] == 2
+    assert summary["used_slots"] == 0
+    assert summary["available_slots"] == 2
+
+
 def test_offline_derived_from_stale_heartbeat(tmp_path):
     registry = WorkerRegistry(tmp_path / "jobs.sqlite3")
     worker_id = registry.register(_register_payload())

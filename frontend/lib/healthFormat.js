@@ -70,21 +70,128 @@ export function formatWorkersConnectedDetail(workers) {
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
-export function formatFleetCapacityLabel(workers) {
-  const used = workers?.used_slots ?? 0;
-  const total = workers?.total_slots ?? 0;
-  return `${used}/${total} slots`;
+export function getAvailableSlots(workers) {
+  if (!workers) {
+    return 0;
+  }
+
+  if (workers.available_slots != null) {
+    return workers.available_slots;
+  }
+
+  const total = workers.total_slots ?? 0;
+  const used = workers.used_slots ?? 0;
+  return Math.max(0, total - used);
 }
 
-export function formatFleetStatusStrip(health, queue) {
-  const coordinatorStatus = health?.status === "ok" ? "up" : "down";
-  const workers = health?.workers?.connected ?? 0;
-  const usedSlots = health?.workers?.used_slots ?? 0;
-  const totalSlots = health?.workers?.total_slots ?? 0;
-  const queued = queue?.queued ?? 0;
-  const running = queue?.running ?? 0;
+export function formatFleetCapacityLabel(workers) {
+  const available = getAvailableSlots(workers);
+  const total = workers?.total_slots ?? 0;
+  const slotWord = total === 1 ? "slot" : "slots";
+  return `${available} of ${total} ${slotWord} available`;
+}
 
-  return `Coordinator: ${coordinatorStatus} · ${workers} workers · ${usedSlots}/${totalSlots} slots · ${queued} queued, ${running} running`;
+export function formatFleetCapacityDetail(workers) {
+  const used = workers?.used_slots ?? 0;
+  const total = workers?.total_slots ?? 0;
+  if (total === 0) {
+    return "No worker capacity registered";
+  }
+  return `${used} in use · ${getAvailableSlots(workers)} open for new jobs`;
+}
+
+export function formatWorkerSlotsLabel(worker) {
+  const available = worker?.free_slots ?? Math.max(0, (worker?.max_slots ?? 0) - (worker?.active_jobs ?? 0));
+  const total = worker?.max_slots ?? 0;
+  const slotWord = total === 1 ? "slot" : "slots";
+  return `${available} of ${total} ${slotWord} available`;
+}
+
+export function collectFleetHealthIssues(health, annotationHealth) {
+  const issues = [];
+
+  if (!health || health.status !== "ok") {
+    issues.push({
+      label: "Coordinator",
+      message: health?.resources?.message || "Coordinator API unreachable",
+    });
+    return issues;
+  }
+
+  if (!annotationHealth || annotationHealth.status !== "ok") {
+    issues.push({
+      label: "MongoDB reads",
+      message: annotationHealth?.message || "Frontend cannot reach MongoDB",
+    });
+  }
+
+  const annotationStore = health.stores?.annotations;
+  if (annotationStore?.status !== "ok") {
+    issues.push({
+      label: "MongoDB writes",
+      message: annotationStore?.message || "Coordinator cannot write annotations to MongoDB",
+    });
+  }
+
+  const jobStore = health.stores?.jobs;
+  if (jobStore?.status !== "ok") {
+    issues.push({
+      label: "Job store",
+      message: jobStore?.message || "SQLite job store unavailable",
+    });
+  }
+
+  const workers = health.workers;
+  const connected = workers?.connected ?? 0;
+  if (connected === 0) {
+    issues.push({
+      label: "Workers",
+      message: "No workers connected — jobs cannot run",
+    });
+    return issues;
+  }
+
+  const totalSlots = workers?.total_slots ?? 0;
+  const availableSlots = getAvailableSlots(workers);
+  if (totalSlots === 0) {
+    issues.push({
+      label: "Capacity",
+      message: "Workers are connected but have zero job slots",
+    });
+  } else if (availableSlots === 0) {
+    issues.push({
+      label: "Capacity",
+      message: "All worker slots are busy",
+    });
+  }
+
+  return issues;
+}
+
+export function buildJobsHealthDisplay(health, annotationHealth) {
+  const issues = collectFleetHealthIssues(health, annotationHealth);
+  if (issues.length > 0) {
+    const [primary, ...rest] = issues;
+    return {
+      tone: "warn",
+      title: primary.label,
+      message: primary.message,
+      extraCount: rest.length,
+      issues,
+    };
+  }
+
+  const available = getAvailableSlots(health?.workers);
+  const slotLabel =
+    available === 1 ? "1 annotation slot available" : `${available} annotation slots available`;
+
+  return {
+    tone: "ok",
+    title: "All systems operational",
+    message: slotLabel,
+    extraCount: 0,
+    issues: [],
+  };
 }
 
 export function formatQueueDetail(queue) {

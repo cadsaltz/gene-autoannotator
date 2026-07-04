@@ -4,14 +4,17 @@ import { useEffect, useState } from "react";
 
 import { getAnnotationHealth, getHealth, getWorkers } from "../lib/api";
 import {
+  formatFleetCapacityDetail,
   formatFleetCapacityLabel,
   formatHeartbeatAge,
   formatQueueDetail,
   formatShortWorkerId,
   formatWorkerDedicatedMemory,
   formatWorkerResourceDetail,
+  formatWorkerSlotsLabel,
   formatWorkersConnectedDetail,
   formatWorkersConnectedLabel,
+  getAvailableSlots,
 } from "../lib/healthFormat";
 
 function HealthBadge({ label, status, detail }) {
@@ -78,9 +81,7 @@ function WorkerCard({ worker }) {
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
         <div className="border-t workbench-border pt-2">
           <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Slots</dt>
-          <dd className="mt-1 text-[#3d463f]">
-            {worker.active_jobs ?? 0} / {worker.max_slots ?? 0} active
-          </dd>
+          <dd className="mt-1 text-[#3d463f]">{formatWorkerSlotsLabel(worker)}</dd>
         </div>
         <div className="border-t workbench-border pt-2">
           <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Agent</dt>
@@ -206,7 +207,8 @@ export default function FleetDashboard() {
         <MetricBadge
           label="Fleet capacity"
           value={formatFleetCapacityLabel(workerSummary)}
-          detail="Used slots / total slots across connected workers"
+          detail={formatFleetCapacityDetail(workerSummary)}
+          ok={getAvailableSlots(workerSummary) > 0}
         />
       </section>
 

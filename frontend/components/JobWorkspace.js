@@ -9,6 +9,7 @@ import BatchJobForm from "./BatchJobForm";
 import {
   clearFinishedJobHistory,
   createJob,
+  getAnnotationHealth,
   getBatch,
   getHealth,
   getProfiles,
@@ -25,7 +26,42 @@ import {
   getVisibleJobs,
   shouldShowRunningSpinner,
 } from "../lib/jobQueue";
-import { formatFleetStatusStrip } from "../lib/healthFormat";
+import { buildJobsHealthDisplay } from "../lib/healthFormat";
+
+function JobsHealthBanner({ health, annotationHealth }) {
+  const display = buildJobsHealthDisplay(health, annotationHealth);
+  const isOk = display.tone === "ok";
+
+  return (
+    <div
+      className={`workbench-surface-bg rounded-2xl border px-5 py-4 ${
+        isOk ? "health-status-ok workbench-border" : "health-status-warn workbench-border-amber"
+      }`}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p
+            className={`text-base font-bold tracking-[-0.02em] ${
+              isOk ? "workbench-green" : "workbench-amber"
+            }`}
+          >
+            {display.title}
+          </p>
+          <p className="workbench-muted mt-1 text-sm leading-6">{display.message}</p>
+          {display.extraCount > 0 ? (
+            <p className="workbench-muted mt-1 text-xs leading-5">
+              + {display.extraCount} more issue{display.extraCount === 1 ? "" : "s"} on the fleet
+              page
+            </p>
+          ) : null}
+        </div>
+        <Link href="/fleet" className="workbench-green shrink-0 text-sm font-bold hover:text-[#111a16]">
+          Fleet &amp; health →
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 const stepLabels = {
   queued: "Waiting in queue",
@@ -217,6 +253,7 @@ function JobTile({ job }) {
 export default function JobWorkspace() {
   const searchParams = useSearchParams();
   const [health, setHealth] = useState(null);
+  const [annotationHealth, setAnnotationHealth] = useState(null);
   const [profiles, setProfiles] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [showAllJobs, setShowAllJobs] = useState(false);
@@ -271,6 +308,16 @@ export default function JobWorkspace() {
         status: "offline",
         stores: {},
         resources: { status: "unavailable", message: error.message },
+      });
+    }
+
+    try {
+      setAnnotationHealth(await getAnnotationHealth());
+    } catch (error) {
+      setAnnotationHealth({
+        status: "unavailable",
+        message: error.message,
+        source: "next",
       });
     }
   }
@@ -412,12 +459,7 @@ export default function JobWorkspace() {
         </div>
       </section>
 
-      <div className="workbench-surface-bg rounded-2xl border workbench-border px-4 py-3 text-sm">
-        <span>{formatFleetStatusStrip(health, queue)}</span>
-        <Link href="/fleet" className="workbench-green ml-3 font-bold">
-          Fleet details →
-        </Link>
-      </div>
+      <JobsHealthBanner health={health} annotationHealth={annotationHealth} />
 
       <div className="grid items-start gap-5 lg:grid-cols-[0.95fr_1.05fr]">
         <section className="workbench-card p-6">

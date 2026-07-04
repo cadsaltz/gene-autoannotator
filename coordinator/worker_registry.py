@@ -131,6 +131,9 @@ class WorkerRegistry:
             "connected": len(online),
             "total": len(workers),
             "used_slots": sum(w["active_jobs"] for w in online),
+            "available_slots": sum(
+                w["free_slots"] for w in online if w["state"] in ("ready", "provisioning")
+            ),
             "total_slots": sum(w["max_slots"] for w in online),
             "states": {
                 state: sum(1 for w in workers if w["state"] == state)
