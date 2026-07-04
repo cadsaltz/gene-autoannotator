@@ -3,7 +3,7 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, status
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from autoannotation import batch_parse, batch_resolution, organisms, targets
@@ -21,6 +21,17 @@ from .profile_store import (
 )
 from .runner import run_annotation_job
 from . import regex_gen
+from .worker_registry import WorkerRegistry
+from shared.worker_contract import (
+    ClaimRequest,
+    HeartbeatResponse,
+    JobComplete,
+    JobFail,
+    JobProgress,
+    WorkerHeartbeat,
+    WorkerRegister,
+    WorkerRegisterResponse,
+)
 from .schemas import (
     AnnotationDetailResponse,
     AnnotationJobRequest,
@@ -92,12 +103,19 @@ def create_app(
     batch_store=None,
     annotation_store=None,
     profile_store=None,
+    worker_registry=None,
     run_job=run_annotation_job,
     run_jobs_inline=False,
     start_worker=True,
+    worker_api_token=None,
 ):
     store = job_store or JobStore(DEFAULT_DB_PATH)
     batches = batch_store or BatchStore(store.db_path)
+    workers = worker_registry or WorkerRegistry(store.db_path)
+    worker_token = worker_api_token if worker_api_token is not None else os.getenv("WORKER_API_TOKEN")
+    lease_seconds = int(os.getenv("LEASE_SECONDS", "14400"))
+    max_attempts = int(os.getenv("MAX_ATTEMPTS", "3"))
+    offline_after_seconds = int(os.getenv("WORKER_OFFLINE_SECONDS", "60"))
     annotations = (
         annotation_store
         if annotation_store is not None
@@ -107,6 +125,13 @@ def create_app(
         user_store=user_profile_store_from_env()
     )
     worker_lock = threading.Lock()
+
+    def _require_worker_token(authorization):
+        if not worker_token:
+            return
+        expected = f"Bearer {worker_token}"
+        if authorization != expected:
+            raise HTTPException(status_code=401, detail="Invalid or missing worker token")
 
     def persist_completed_annotation(job):
         # Annotation history/search is a secondary persistence path. A Mongo
@@ -146,13 +171,28 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app):
-        if start_worker:
+        # The embedded in-process worker is opt-out so a machine can run the
+        # coordinator without also executing jobs (AUTOANNOTATOR_EMBEDDED_WORKER=false).
+        embedded = start_worker and os.getenv("AUTOANNOTATOR_EMBEDDED_WORKER", "true").lower() == "true"
+        if embedded:
             # Running jobs cannot be resumed safely after an API restart because
             # the annotator is invoked in-process and has no checkpoint protocol.
             store.mark_interrupted_running_jobs("Job interrupted by API restart")
             worker = threading.Thread(target=drain_queue, daemon=True)
             worker.start()
-        yield
+
+        stop_reaper = threading.Event()
+
+        def reaper_loop():
+            while not stop_reaper.wait(30):
+                store.requeue_expired_leases(max_attempts=max_attempts)
+
+        reaper = threading.Thread(target=reaper_loop, daemon=True)
+        reaper.start()
+        try:
+            yield
+        finally:
+            stop_reaper.set()
 
     app = FastAPI(title="Gene Autoannotator API", lifespan=lifespan)
     cors_origins = [
@@ -395,6 +435,7 @@ def create_app(
                 "profiles": profile_health,
             },
             "queue": store.queue_summary(),
+            "workers": workers.summary(offline_after_seconds=offline_after_seconds),
             "resources": resource_snapshot(),
         }
 
@@ -631,6 +672,89 @@ def create_app(
         if versions is None:
             raise HTTPException(status_code=404, detail="Annotation not found")
         return {"annotation_id": annotation_id, "versions": versions}
+
+    @app.post("/workers/register", response_model=WorkerRegisterResponse)
+    def register_worker(request: WorkerRegister, authorization: str | None = Header(default=None)):
+        _require_worker_token(authorization)
+        worker_id = workers.register(request.model_dump())
+        return {"worker_id": worker_id}
+
+    @app.post("/workers/{worker_id}/heartbeat", response_model=HeartbeatResponse)
+    def worker_heartbeat(
+        worker_id: str, request: WorkerHeartbeat, authorization: str | None = Header(default=None)
+    ):
+        _require_worker_token(authorization)
+        if not workers.heartbeat(worker_id, request.model_dump()):
+            raise HTTPException(status_code=404, detail="Worker not registered")
+        required_version = os.getenv("REQUIRED_WORKER_VERSION")
+        worker = workers.get(worker_id, offline_after_seconds=offline_after_seconds)
+        drain = worker is not None and worker["state"] == "draining"
+        return {"required_version": required_version, "drain": drain}
+
+    @app.post("/workers/{worker_id}/claim")
+    def claim_job(
+        worker_id: str, request: ClaimRequest, authorization: str | None = Header(default=None)
+    ):
+        _require_worker_token(authorization)
+        if request.free_slots <= 0:
+            return Response(status_code=204)
+        job = store.assign_job_to_worker(worker_id, lease_seconds=lease_seconds)
+        if job is None:
+            return Response(status_code=204)
+        # Send the full stored request, including profile_config for user/ad-hoc
+        # profiles. AnnotationJobRequest ignores extra stored keys such as
+        # target_preflight, so the worker rebuilds the model directly. (Serializing
+        # via ClaimResponse would drop profile_config, which has exclude=True.)
+        return {
+            "job_id": job["id"],
+            "request": job["request"],
+            "lease_expires_at": job["lease_expires_at"],
+        }
+
+    @app.patch("/jobs/{job_id}/progress", status_code=204)
+    def report_progress(
+        job_id: str, request: JobProgress, authorization: str | None = Header(default=None)
+    ):
+        _require_worker_token(authorization)
+        store.mark_step(job_id, request.current_step)
+        store.renew_lease(job_id, lease_seconds=lease_seconds)
+        return Response(status_code=204)
+
+    @app.post("/jobs/{job_id}/complete", status_code=204)
+    def complete_job(
+        job_id: str, request: JobComplete, authorization: str | None = Header(default=None)
+    ):
+        _require_worker_token(authorization)
+        output_path = request.result.get("output_path")
+        if store.complete_if_running(job_id, request.result, output_path=output_path):
+            persist_completed_annotation(store.get_job(job_id))
+        return Response(status_code=204)
+
+    @app.post("/jobs/{job_id}/fail", status_code=204)
+    def fail_job_route(
+        job_id: str, request: JobFail, authorization: str | None = Header(default=None)
+    ):
+        _require_worker_token(authorization)
+        store.fail_job(job_id, request.error, retryable=request.retryable, max_attempts=max_attempts)
+        return Response(status_code=204)
+
+    @app.post("/workers/{worker_id}/drain", status_code=204)
+    def drain_worker(worker_id: str, authorization: str | None = Header(default=None)):
+        _require_worker_token(authorization)
+        if not workers.set_state(worker_id, "draining"):
+            raise HTTPException(status_code=404, detail="Worker not registered")
+        return Response(status_code=204)
+
+    @app.get("/workers")
+    def list_workers():
+        return {"workers": workers.list_workers(offline_after_seconds=offline_after_seconds)}
+
+    @app.get("/coordinator-info")
+    def coordinator_info():
+        return {
+            "worker_url": os.getenv("COORDINATOR_PUBLIC_URL"),
+            "version": os.getenv("APP_VERSION", "dev"),
+        }
 
     return app
 

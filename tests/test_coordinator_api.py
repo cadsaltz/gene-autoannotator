@@ -1239,3 +1239,86 @@ def test_job_request_flag_defaults_false():
     request = AnnotationJobRequest(profile="mtb-h37rv", locus="Rv0001")
     assert request.allow_ortholog_fallback is False
     assert request.ortholog_override is None
+
+
+def _make_worker_client():
+    from fastapi.testclient import TestClient
+
+    from coordinator.annotation_store import InMemoryAnnotationStore
+    from coordinator.api import create_app
+    from coordinator.job_store import JobStore
+    from coordinator.worker_registry import WorkerRegistry
+
+    import tempfile, os
+    db_path = os.path.join(tempfile.mkdtemp(), "jobs.sqlite3")
+    store = JobStore(db_path)
+    registry = WorkerRegistry(db_path)
+    app = create_app(
+        job_store=store,
+        annotation_store=InMemoryAnnotationStore(),
+        worker_registry=registry,
+        start_worker=False,
+        worker_api_token="test-token",
+    )
+    return TestClient(app), store
+
+
+def _register_body():
+    return {
+        "worker_name": "w1",
+        "hostname": "w1",
+        "agent_version": "0.1.0",
+        "total_memory_bytes": 64_000_000_000,
+        "dedicated_memory_bytes": 42_000_000_000,
+        "max_slots": 2,
+        "ollama_models": ["llama3:8b"],
+    }
+
+
+def test_worker_endpoints_require_token():
+    client, _ = _make_worker_client()
+    response = client.post("/workers/register", json=_register_body())
+    assert response.status_code == 401
+
+
+def test_register_claim_complete_flow():
+    client, store = _make_worker_client()
+    headers = {"Authorization": "Bearer test-token"}
+
+    reg = client.post("/workers/register", json=_register_body(), headers=headers)
+    assert reg.status_code == 200
+    worker_id = reg.json()["worker_id"]
+
+    store.create_job(
+        {"profile": "mtb-h37rv", "locus": "Rv0001", "cache_dir": "./.cache", "output_dir": "gen_json"}
+    )
+
+    claim = client.post(f"/workers/{worker_id}/claim", json={"free_slots": 2}, headers=headers)
+    assert claim.status_code == 200
+    job_id = claim.json()["job_id"]
+    assert claim.json()["request"]["locus"] == "Rv0001"
+
+    complete = client.post(
+        f"/jobs/{job_id}/complete",
+        json={"result": {"annotation": {"gene_id": "Rv0001"}}},
+        headers=headers,
+    )
+    assert complete.status_code == 204
+    assert store.get_job(job_id)["status"] == "completed"
+
+
+def test_claim_returns_204_when_queue_empty():
+    client, _ = _make_worker_client()
+    headers = {"Authorization": "Bearer test-token"}
+    worker_id = client.post("/workers/register", json=_register_body(), headers=headers).json()["worker_id"]
+    claim = client.post(f"/workers/{worker_id}/claim", json={"free_slots": 2}, headers=headers)
+    assert claim.status_code == 204
+
+
+def test_health_includes_worker_summary():
+    client, _ = _make_worker_client()
+    headers = {"Authorization": "Bearer test-token"}
+    client.post("/workers/register", json=_register_body(), headers=headers)
+    health = client.get("/health").json()
+    assert "workers" in health
+    assert health["workers"]["total"] == 1
