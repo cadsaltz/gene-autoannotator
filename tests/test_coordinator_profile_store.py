@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from backend.profile_store import (
+from coordinator.profile_store import (
     BuiltinAndUserProfileStore,
     DisabledUserProfileStore,
     DuplicateProfileError,
@@ -11,7 +11,7 @@ from backend.profile_store import (
     MongoUserProfileStore,
     user_profile_store_from_env,
 )
-from backend.schemas import ProfilesResponse
+from coordinator.schemas import ProfilesResponse
 
 
 class FakeMongoCollection:

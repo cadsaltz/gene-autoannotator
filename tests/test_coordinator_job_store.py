@@ -1,4 +1,4 @@
-from backend.job_store import JobStore
+from coordinator.job_store import JobStore
 
 
 def test_creates_and_fetches_queued_job(tmp_path):

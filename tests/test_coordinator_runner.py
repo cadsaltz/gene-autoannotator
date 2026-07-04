@@ -1,5 +1,5 @@
-from backend.runner import run_annotation_job
-from backend.schemas import AnnotationJobRequest
+from coordinator.runner import run_annotation_job
+from coordinator.schemas import AnnotationJobRequest
 
 
 def test_runner_calls_existing_cli_main():
@@ -98,8 +98,8 @@ def test_runner_passes_profile_config_to_cli_main():
 
 
 def test_runner_forwards_ortholog_fields():
-    from backend.runner import run_annotation_job
-    from backend.schemas import AnnotationJobRequest
+    from coordinator.runner import run_annotation_job
+    from coordinator.schemas import AnnotationJobRequest
 
     captured = {}
 

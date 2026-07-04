@@ -30,7 +30,7 @@ python -m pip install -r requirements-web.txt
 Run the API server:
 
 ```bash
-uvicorn backend.api:app --host 0.0.0.0 --port 8000
+uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
 ```
 
 Check that it is reachable:

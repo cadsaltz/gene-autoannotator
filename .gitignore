@@ -5,7 +5,7 @@ __pycache__/**
 .env.local
 .worktrees/
 **/*.pyc
-backend/*.sqlite3
+coordinator/*.sqlite3
 
 creds/
 data/go-basic.obo

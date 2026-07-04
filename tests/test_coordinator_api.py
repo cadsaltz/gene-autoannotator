@@ -3,11 +3,11 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.annotation_store import InMemoryAnnotationStore
-from backend.api import create_app
-from backend.job_store import JobStore
-from backend.profile_store import BuiltinAndUserProfileStore, InMemoryUserProfileStore
-from backend import regex_gen
+from coordinator.annotation_store import InMemoryAnnotationStore
+from coordinator.api import create_app
+from coordinator.job_store import JobStore
+from coordinator.profile_store import BuiltinAndUserProfileStore, InMemoryUserProfileStore
+from coordinator import regex_gen
 
 
 class FailingProfileStore:
@@ -1015,7 +1015,7 @@ def test_regex_from_description_endpoint_requires_description(tmp_path):
 
 
 def test_batch_schemas_import():
-    from backend.schemas import (
+    from coordinator.schemas import (
         BatchCreateRequest,
         BatchCreateResponse,
         BatchDetailResponse,
@@ -1125,7 +1125,7 @@ def test_batches_create_queues_ready_jobs_only(tmp_path, monkeypatch):
 
 
 def test_batch_entry_request_inherits_fallback_flag():
-    from backend.schemas import BatchCreateRequest
+    from coordinator.schemas import BatchCreateRequest
 
     request = BatchCreateRequest(
         profile="mtb-h37rv",
@@ -1189,7 +1189,7 @@ def test_batches_rejects_empty(tmp_path):
 
 
 def test_batches_rejects_over_max_size(tmp_path, monkeypatch):
-    monkeypatch.setattr("backend.api.MAX_BATCH_SIZE", 2)
+    monkeypatch.setattr("coordinator.api.MAX_BATCH_SIZE", 2)
     client = TestClient(_batch_app(tmp_path), raise_server_exceptions=False)
 
     response = client.post(
@@ -1211,7 +1211,7 @@ def test_batches_rejects_over_max_size(tmp_path, monkeypatch):
 def test_job_request_rejects_override_without_flag():
     import pytest
     from pydantic import ValidationError
-    from backend.schemas import AnnotationJobRequest
+    from coordinator.schemas import AnnotationJobRequest
 
     with pytest.raises(ValidationError):
         AnnotationJobRequest(
@@ -1222,7 +1222,7 @@ def test_job_request_rejects_override_without_flag():
 
 
 def test_job_request_accepts_flag_and_override():
-    from backend.schemas import AnnotationJobRequest
+    from coordinator.schemas import AnnotationJobRequest
 
     request = AnnotationJobRequest(
         profile="mtb-h37rv", locus="Rv0001",
@@ -1234,7 +1234,7 @@ def test_job_request_accepts_flag_and_override():
 
 
 def test_job_request_flag_defaults_false():
-    from backend.schemas import AnnotationJobRequest
+    from coordinator.schemas import AnnotationJobRequest
 
     request = AnnotationJobRequest(profile="mtb-h37rv", locus="Rv0001")
     assert request.allow_ortholog_fallback is False

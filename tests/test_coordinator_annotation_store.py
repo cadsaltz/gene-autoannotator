@@ -1,7 +1,7 @@
 import hashlib
 import re
 
-from backend.annotation_store import InMemoryAnnotationStore
+from coordinator.annotation_store import InMemoryAnnotationStore
 
 
 def name_only_job(job_id, gene_name, generated_at="2026-01-01T00:00:00Z"):

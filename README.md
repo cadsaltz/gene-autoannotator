@@ -23,7 +23,7 @@ Main generated fields are `gene_id`, `name`, `function`, `functional_category`, 
 ## Repo Map
 
 - `autoannotation/`: core Python pipeline, organism profiles, PMC retrieval, LLM prompts, metadata, and CLI.
-- `backend/`: FastAPI API, SQLite job queue, optional MongoDB annotation history/search and saved profiles, and in-process runner.
+- `coordinator/`: FastAPI API, SQLite job queue, optional MongoDB annotation history/search and saved profiles, and in-process runner.
 - `frontend/`: Next.js UI for job submission, profile management, queue monitoring, and direct MongoDB annotation search/review.
 - `compareannotations/`: trusted-vs-generated scoring tools using exact matching, GO/category graph logic, embeddings/NLI, and an Ollama judge.
 - `tests/`: mostly deterministic unit/API tests; some model-style tests require local model dependencies.
@@ -106,7 +106,7 @@ Local/generated assets:
 
 - `.cache/` stores PMC text, parsed sections, LLM responses, and gene-name cache records.
 - `gen_json/` stores generated annotation JSON.
-- `backend/jobs.sqlite3` stores queued/completed web jobs and is ignored by git.
+- `coordinator/jobs.sqlite3` stores queued/completed web jobs and is ignored by git.
 - `frontend/.env.local` stores Next.js server configuration such as `MONGO_URI` for annotation reads and is ignored by git.
 - `Mycobacterium_tuberculosis_H37Rv_txt_v5.txt` is referenced for MTB annotation-table gene names but is not committed.
 - `creds/` is ignored and is only needed for the Google Sheets benchmark script.
@@ -150,7 +150,7 @@ python -m autoannotation --profile tcruzi-clbrener --locus TcCLB.503799.4 --name
 Run the backend:
 
 ```bash
-uvicorn backend.api:app --host 0.0.0.0 --port 8000
+uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
 ```
 
 Run the frontend:

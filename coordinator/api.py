@@ -55,7 +55,7 @@ if load_dotenv is not None:
     load_dotenv()
 
 
-DEFAULT_DB_PATH = Path("backend/jobs.sqlite3")
+DEFAULT_DB_PATH = Path("coordinator/jobs.sqlite3")
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "2000"))
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:3000",

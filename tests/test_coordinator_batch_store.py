@@ -1,5 +1,5 @@
-from backend.batch_store import BatchStore
-from backend.job_store import JobStore
+from coordinator.batch_store import BatchStore
+from coordinator.job_store import JobStore
 
 
 def test_creates_and_fetches_batch(tmp_path):

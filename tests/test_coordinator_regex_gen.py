@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from backend import regex_gen
+from coordinator import regex_gen
 
 
 def test_regex_from_examples_infers_clean_pattern():
