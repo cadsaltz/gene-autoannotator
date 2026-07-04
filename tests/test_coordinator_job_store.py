@@ -138,3 +138,13 @@ def test_clear_finished_jobs_keeps_running_and_queued_jobs(tmp_path):
 
     assert deleted_count == 2
     assert remaining_ids == {queued["id"], running["id"]}
+
+
+def test_new_job_has_worker_and_lease_defaults(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    job = store.create_job(
+        {"profile": "mtb-h37rv", "locus": "Rv0001", "cache_dir": "./.cache", "output_dir": "gen_json"}
+    )
+    assert job["worker_id"] is None
+    assert job["lease_expires_at"] is None
+    assert job["attempts"] == 0

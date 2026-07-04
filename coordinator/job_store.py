@@ -38,7 +38,10 @@ class JobStore:
                     output_path TEXT,
                     created_at TEXT NOT NULL,
                     started_at TEXT,
-                    finished_at TEXT
+                    finished_at TEXT,
+                    worker_id TEXT,
+                    lease_expires_at TEXT,
+                    attempts INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
@@ -50,6 +53,9 @@ class JobStore:
             )
             self._ensure_column(connection, "annotation_error", "TEXT")
             self._ensure_column(connection, "batch_id", "TEXT")
+            self._ensure_column(connection, "worker_id", "TEXT")
+            self._ensure_column(connection, "lease_expires_at", "TEXT")
+            self._ensure_column(connection, "attempts", "INTEGER NOT NULL DEFAULT 0")
 
     def _ensure_column(self, connection, column_name, column_type):
         columns = {
@@ -304,6 +310,9 @@ class JobStore:
             "status": row["status"],
             "current_step": row["current_step"],
             "batch_id": row["batch_id"],
+            "worker_id": row["worker_id"],
+            "lease_expires_at": row["lease_expires_at"],
+            "attempts": row["attempts"],
             "request": json.loads(row["request_json"]),
             "result": result,
             "error": row["error"],
