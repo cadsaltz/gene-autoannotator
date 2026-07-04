@@ -8,11 +8,13 @@ class FakeClient:
         self.completed = []
         self.failed = []
         self.progress_calls = []
+        self.claim_calls = []
 
     def heartbeat(self, active_jobs, free_slots, memory_available_bytes, cpu_percent, state):
         return {"required_version": None, "drain": False}
 
     def claim(self, free_slots):
+        self.claim_calls.append(free_slots)
         return self._claim_job
 
     def progress(self, job_id, current_step):
@@ -40,6 +42,7 @@ def _config():
 
 def test_run_once_claims_and_completes(monkeypatch):
     monkeypatch.setattr(agent, "_memory_available_bytes", lambda: 1 << 62)
+    monkeypatch.setattr(agent, "_models_ready", lambda: True)
     claim = {
         "job_id": "j1",
         "request": {"profile": "mtb-h37rv", "locus": "Rv0001"},
@@ -57,6 +60,7 @@ def test_run_once_claims_and_completes(monkeypatch):
 
 def test_run_once_reports_failure(monkeypatch):
     monkeypatch.setattr(agent, "_memory_available_bytes", lambda: 1 << 62)
+    monkeypatch.setattr(agent, "_models_ready", lambda: True)
     claim = {
         "job_id": "j1",
         "request": {"profile": "mtb-h37rv", "locus": "Rv0001"},
@@ -71,8 +75,17 @@ def test_run_once_reports_failure(monkeypatch):
     assert client.failed[0][0] == "j1"
 
 
-def test_run_once_no_free_slots_skips_claim():
+def test_run_once_no_free_slots_skips_claim(monkeypatch):
+    monkeypatch.setattr(agent, "_models_ready", lambda: True)
     client = FakeClient(claim_job={"job_id": "should-not-claim"})
     did_work = agent.run_once(client, _config(), active_jobs=2, execute=lambda r: {})
     assert did_work is False
     assert client.completed == []
+
+
+def test_run_once_skips_claim_while_provisioning(monkeypatch):
+    monkeypatch.setattr(agent, "_memory_available_bytes", lambda: 1 << 62)
+    monkeypatch.setattr(agent, "_models_ready", lambda: False)
+    client = FakeClient()
+    assert agent.run_once(client, _config(), active_jobs=0, execute=lambda r: {}) is False
+    assert len(client.claim_calls) == 0

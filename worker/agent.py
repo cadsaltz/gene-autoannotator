@@ -11,6 +11,21 @@ log = logging.getLogger(__name__)
 
 PERMANENT_ERROR_MARKERS = ("locus_schema_mismatch", "profile or organism", "name or locus")
 
+_models_ready_flag = False
+
+
+def _models_ready():
+    return _models_ready_flag
+
+
+def _ensure_models_ready():
+    global _models_ready_flag
+    from worker import ollama_bootstrap
+
+    log.info("Ensuring Ollama models are available...")
+    ollama_bootstrap.ensure_models()
+    _models_ready_flag = True
+
 
 def _memory_available_bytes():
     try:
@@ -40,6 +55,15 @@ def _default_execute(request_dict):
 
 def run_once(client, config, *, active_jobs, execute):
     free_slots = max(0, config.max_slots - active_jobs)
+    if not _models_ready():
+        client.heartbeat(
+            active_jobs=active_jobs,
+            free_slots=free_slots,
+            memory_available_bytes=_memory_available_bytes(),
+            cpu_percent=_cpu_percent(),
+            state="provisioning",
+        )
+        return False
     client.heartbeat(
         active_jobs=active_jobs,
         free_slots=free_slots,
@@ -72,6 +96,7 @@ def run(poll_seconds=5):
     logging.basicConfig(level=logging.INFO)
     config = load_config()
     client = CoordinatorClient(config)
+    _ensure_models_ready()
     client.register()
     log.info("Registered worker %s (%s slots)", config.worker_name, config.max_slots)
     if config.max_slots <= 0:

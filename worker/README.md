@@ -21,25 +21,27 @@ The main loop is `worker.agent.run()`:
 - The repository installed with its dependencies (see the root and
   `coordinator/README.md` setup steps: `requirements.txt` + `requirements-web.txt`).
 - A reachable coordinator (see `coordinator/README.md`).
-- **Ollama running locally with the required LLM models already pulled.** Real
-  jobs run the same annotation code as the CLI, so the worker host needs the same
-  local services, models, network access, and cache/output directories as the
-  terminal command.
+- **Ollama running locally.** Real jobs run the same annotation code as the CLI, so
+  the worker host needs the same local services, network access, and cache/output
+  directories as the terminal command. Required LLM models are **auto-pulled on
+  startup** via `worker.ollama_bootstrap.ensure_models()` (called from
+  `worker.agent.run()` before registration).
 
 ### Ollama models
 
 The set of required models is derived from `autoannotation.models`
-(`MODEL_SUMMARY` plus `MODEL_CONSENSUS` and `MODEL_AGGREGATION`). A helper to pull
-any missing ones is available:
+(`MODEL_SUMMARY` plus `MODEL_CONSENSUS` and `MODEL_AGGREGATION`). On startup,
+`worker.agent.run()` calls `ensure_models()` to pull any missing ones via the
+local Ollama client:
 
 ```python
 from worker.ollama_bootstrap import ensure_models
 ensure_models()  # pulls any missing models via the local Ollama client
 ```
 
-Note: `worker.agent.run()` does **not** call `ensure_models()` automatically in
-this phase — the models must already be present on the worker host. Automatic
-model pull on startup is wired in a later phase.
+Until model provisioning finishes, the worker heartbeats with `state="provisioning"`
+and does not claim jobs. After all required models are present, heartbeats use
+`state="ready"` and the worker may claim work.
 
 ## Environment variables
 
@@ -80,7 +82,7 @@ warning about 0 slots, raise `ANNOTATION_MEMORY_BUDGET_GB`.
 ## Local end-to-end smoke test (manual, needs Ollama)
 
 This exercises the full control-plane/worker split on one machine. It requires a
-running Ollama with the required models present.
+running Ollama instance (missing models are pulled automatically on worker startup).
 
 **Terminal 1 — coordinator with the embedded worker OFF** (control-plane only):
 
