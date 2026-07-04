@@ -47,6 +47,7 @@ def test_worker_registers_and_appears_in_health(tmp_path):
 
 def test_worker_agent_completes_job_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "_memory_available_bytes", lambda: 1 << 62)
+    monkeypatch.setattr(agent, "_models_ready", lambda: True)
     http, store = _client_and_store(tmp_path)
     coordinator = CoordinatorClient(_config(), http_client=http)
     worker_id = coordinator.register()
