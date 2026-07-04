@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 from contextlib import asynccontextmanager
@@ -65,6 +66,8 @@ except ImportError:  # pragma: no cover - dependency is optional at import time.
 if load_dotenv is not None:
     load_dotenv()
 
+
+log = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path("coordinator/jobs.sqlite3")
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "2000"))
@@ -185,7 +188,12 @@ def create_app(
 
         def reaper_loop():
             while not stop_reaper.wait(30):
-                store.requeue_expired_leases(max_attempts=max_attempts)
+                # Never let a transient error (e.g. a momentary SQLite lock)
+                # kill the reaper thread permanently and stop all lease recovery.
+                try:
+                    store.requeue_expired_leases(max_attempts=max_attempts)
+                except Exception:  # noqa: BLE001 - keep the reaper alive across failures.
+                    log.exception("Lease reaper iteration failed")
 
         reaper = threading.Thread(target=reaper_loop, daemon=True)
         reaper.start()
