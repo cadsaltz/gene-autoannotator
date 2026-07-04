@@ -158,6 +158,7 @@ def create_app(
     run_jobs_inline=False,
     start_worker=True,
     worker_api_token=None,
+    worker_capacity_required=False,
 ):
     store = job_store or JobStore(DEFAULT_DB_PATH)
     batches = batch_store or BatchStore(store.db_path)
@@ -175,6 +176,26 @@ def create_app(
         user_store=user_profile_store_from_env()
     )
     worker_lock = threading.Lock()
+
+    def _embedded_worker_enabled():
+        return os.getenv("AUTOANNOTATOR_EMBEDDED_WORKER", "false").lower() == "true"
+
+    def _require_worker_fleet():
+        if not worker_capacity_required or _embedded_worker_enabled() or run_jobs_inline:
+            return
+        summary = workers.summary(offline_after_seconds=offline_after_seconds)
+        if summary["connected"] == 0 or summary["total_slots"] == 0:
+            raise HTTPException(
+                status_code=503,
+                detail="No workers connected with job capacity.",
+            )
+
+    def _schedule_job_execution(background_tasks):
+        if run_jobs_inline:
+            drain_queue()
+            return
+        if _embedded_worker_enabled() and start_worker:
+            background_tasks.add_task(drain_queue)
 
     def _require_worker_token(authorization):
         if not worker_token:
@@ -223,7 +244,7 @@ def create_app(
     async def lifespan(app):
         # The embedded in-process worker is opt-in so external workers can claim
         # jobs without the coordinator also draining the queue in-process.
-        embedded = start_worker and os.getenv("AUTOANNOTATOR_EMBEDDED_WORKER", "false").lower() == "true"
+        embedded = start_worker and _embedded_worker_enabled()
         if embedded:
             # Running jobs cannot be resumed safely after an API restart because
             # the annotator is invoked in-process and has no checkpoint protocol.
@@ -614,6 +635,8 @@ def create_app(
         if not ready_entries:
             raise HTTPException(status_code=422, detail="No ready entries to queue.")
 
+        _require_worker_fleet()
+
         skipped = [entry for entry in entries if entry["status"] != "ready"]
         batch = batches.create_batch(
             profile=request.profile,
@@ -637,10 +660,7 @@ def create_app(
         if not job_ids:
             raise HTTPException(status_code=422, detail="No ready entries to queue.")
 
-        if run_jobs_inline:
-            drain_queue()
-        elif start_worker:
-            background_tasks.add_task(drain_queue)
+        _schedule_job_execution(background_tasks)
 
         return {
             "batch_id": batch["id"],
@@ -675,12 +695,11 @@ def create_app(
         target = _resolve_target_for_request(request)
         _reject_invalid_target(target)
         stored_request = _stored_request_for_target(request, target)
+        _require_worker_fleet()
         job = store.create_job(stored_request)
+        _schedule_job_execution(background_tasks)
         if run_jobs_inline:
-            drain_queue()
             job = store.get_job(job["id"])
-        elif start_worker:
-            background_tasks.add_task(drain_queue)
         return {"job_id": job["id"], "status": job["status"]}
 
     @app.get("/jobs", response_model=JobsListResponse)
@@ -834,4 +853,4 @@ def create_app(
     return app
 
 
-app = create_app()
+app = create_app(worker_capacity_required=True)

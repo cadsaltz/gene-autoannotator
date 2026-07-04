@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import threading
 import time
 
@@ -132,8 +133,17 @@ def run_once(client, config, *, active_jobs, execute, heartbeat_interval=None):
     return True
 
 
+def _configure_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s | %(message)s",
+        stream=sys.stdout,
+        force=True,
+    )
+
+
 def run(poll_seconds=5):
-    logging.basicConfig(level=logging.INFO)
+    _configure_logging()
     config = load_config()
     client = CoordinatorClient(config)
     _ensure_models_ready()
@@ -155,4 +165,5 @@ def run(poll_seconds=5):
             log.info("Draining for update; exiting")
             return
         if not did_work:
+            log.debug("No work claimed; sleeping %ss", poll_seconds)
             time.sleep(poll_seconds)

@@ -1327,3 +1327,47 @@ def test_health_includes_worker_summary():
     health = client.get("/health").json()
     assert "workers" in health
     assert health["workers"]["total"] == 1
+
+
+def test_create_job_rejects_without_workers_when_capacity_required(tmp_path, monkeypatch):
+    monkeypatch.delenv("AUTOANNOTATOR_EMBEDDED_WORKER", raising=False)
+    app = create_app(
+        job_store=JobStore(tmp_path / "jobs.sqlite3"),
+        start_worker=False,
+        worker_capacity_required=True,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/jobs",
+        json={"profile": "mtb-h37rv", "locus": "Rv0001", "allow_online_name_lookup": False},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "No workers connected with job capacity."
+
+
+def test_create_job_stays_queued_without_embedded_worker(tmp_path, monkeypatch):
+    monkeypatch.delenv("AUTOANNOTATOR_EMBEDDED_WORKER", raising=False)
+
+    def fail_if_called(_request):
+        raise AssertionError("coordinator must not run annotation in-process")
+
+    app = create_app(
+        job_store=JobStore(tmp_path / "jobs.sqlite3"),
+        run_job=fail_if_called,
+        start_worker=False,
+        worker_capacity_required=True,
+        worker_api_token="test-token",
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer test-token"}
+    client.post("/workers/register", json=_register_body(), headers=headers)
+
+    response = client.post(
+        "/jobs",
+        json={"profile": "mtb-h37rv", "locus": "Rv0001", "allow_online_name_lookup": False},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "queued"
