@@ -224,3 +224,19 @@ Rv0002,
 After parsing, a single token (`Rv0001` or `dnaA`) goes through hybrid
 resolution; an explicit `locus,name` pair is treated like a single-job submission
 with both identifiers supplied.
+
+## Docker Compose
+
+From the project root, copy `coordinator.env.example` to `.env`, then start the
+coordinator API and Next.js frontend:
+
+```bash
+cp coordinator.env.example .env
+docker compose -f deploy/compose/docker-compose.coordinator.yml up --build
+```
+
+The coordinator listens on port 8000 and the frontend on port 3000. Job queue
+state is persisted in a Docker volume mounted at `/app/coordinator` (SQLite).
+Set `MONGO_URI` in `.env` for annotation history and profile storage; the
+frontend proxy uses `COORDINATOR_API_BASE_URL=http://coordinator:8000` inside
+the compose network.

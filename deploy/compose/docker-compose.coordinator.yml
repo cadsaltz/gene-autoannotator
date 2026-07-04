@@ -1,0 +1,27 @@
+services:
+  coordinator:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.coordinator
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../../.env
+    volumes:
+      - coordinator-data:/app/coordinator
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../../.env
+    environment:
+      COORDINATOR_API_BASE_URL: http://coordinator:8000
+    depends_on:
+      - coordinator
+
+volumes:
+  coordinator-data:
