@@ -3,6 +3,7 @@ __pycache__/**
 .venv/
 .env
 .env.local
+worker.env
 .worktrees/
 **/*.pyc
 coordinator/*.sqlite3
