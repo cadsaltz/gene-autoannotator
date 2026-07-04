@@ -97,19 +97,18 @@ Job and validation requests require either `profile` or `organism`, and either
 Supplying both name and locus gives the target resolver the strongest evidence,
 but name-only and locus-only submissions are accepted.
 
-## Running with external workers
+## Running with workers
 
-The coordinator can either run jobs in-process (the default embedded worker) or
-act as a control plane only, handing jobs to one or more external workers (see
-`worker/README.md`). The following environment variables control that behavior:
+The coordinator is a **control plane only** — it queues jobs and hands them to
+external workers (see `worker/README.md`). It never runs annotation jobs
+in-process.
+
+Environment variables:
 
 - `WORKER_API_TOKEN`: shared secret required on the worker endpoints
   (`/workers/*`, `/jobs/{id}/progress|complete|fail`). Workers must send it as
   `Authorization: Bearer <token>`. **If unset, the worker endpoints are
   unauthenticated.**
-- `AUTOANNOTATOR_EMBEDDED_WORKER` (default `true`): set to `false` to make the
-  coordinator control-plane only, so it queues jobs but does not run them
-  in-process. Leave it at the default to keep the legacy single-process behavior.
 - `LEASE_SECONDS` (default `14400`): how long a claimed job's lease is valid
   before the reaper may requeue it.
 - `MAX_ATTEMPTS` (default `3`): maximum number of times a job is retried before it
@@ -121,12 +120,13 @@ act as a control plane only, handing jobs to one or more external workers (see
 - `COORDINATOR_PUBLIC_URL` / `APP_VERSION`: surfaced by `GET /coordinator-info`
   so workers can discover the coordinator URL and version.
 
-To run as a control plane with external workers:
+Start the coordinator:
 
 ```bash
-AUTOANNOTATOR_EMBEDDED_WORKER=false WORKER_API_TOKEN=dev-token \
-uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
+WORKER_API_TOKEN=dev-token uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
 ```
+
+Job submission returns **503** when no workers are connected with available slots.
 
 ## Endpoint Summary
 

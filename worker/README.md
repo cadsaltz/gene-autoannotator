@@ -84,11 +84,10 @@ warning about 0 slots, raise `ANNOTATION_MEMORY_BUDGET_GB`.
 This exercises the full control-plane/worker split on one machine. It requires a
 running Ollama instance (missing models are pulled automatically on worker startup).
 
-**Terminal 1 — coordinator with the embedded worker OFF** (control-plane only):
+**Terminal 1 — coordinator** (control plane only):
 
 ```bash
-AUTOANNOTATOR_EMBEDDED_WORKER=false WORKER_API_TOKEN=dev-token \
-uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
+WORKER_API_TOKEN=dev-token uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
 ```
 
 **Terminal 2 — the worker:**
@@ -177,7 +176,6 @@ If `worker.env` already exists, bootstrap reuses saved values. Otherwise run
 
    ```bash
    WORKER_API_TOKEN=<token>
-   AUTOANNOTATOR_EMBEDDED_WORKER=false
    COORDINATOR_PUBLIC_URL=http://<lan-ip>:8000
    ```
 

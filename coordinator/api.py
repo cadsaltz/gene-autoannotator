@@ -177,11 +177,8 @@ def create_app(
     )
     worker_lock = threading.Lock()
 
-    def _embedded_worker_enabled():
-        return os.getenv("AUTOANNOTATOR_EMBEDDED_WORKER", "false").lower() == "true"
-
     def _require_worker_fleet():
-        if not worker_capacity_required or _embedded_worker_enabled() or run_jobs_inline:
+        if not worker_capacity_required or run_jobs_inline:
             return
         summary = workers.summary(offline_after_seconds=offline_after_seconds)
         if summary["connected"] == 0 or summary["total_slots"] == 0:
@@ -190,12 +187,10 @@ def create_app(
                 detail="No workers connected with job capacity.",
             )
 
-    def _schedule_job_execution(background_tasks):
+    def _maybe_run_jobs_inline():
+        # Unit tests only. Production coordinators never execute annotation jobs.
         if run_jobs_inline:
             drain_queue()
-            return
-        if _embedded_worker_enabled() and start_worker:
-            background_tasks.add_task(drain_queue)
 
     def _require_worker_token(authorization):
         if not worker_token:
@@ -242,16 +237,6 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app):
-        # The embedded in-process worker is opt-in so external workers can claim
-        # jobs without the coordinator also draining the queue in-process.
-        embedded = start_worker and _embedded_worker_enabled()
-        if embedded:
-            # Running jobs cannot be resumed safely after an API restart because
-            # the annotator is invoked in-process and has no checkpoint protocol.
-            store.mark_interrupted_running_jobs("Job interrupted by API restart")
-            worker = threading.Thread(target=drain_queue, daemon=True)
-            worker.start()
-
         public_url = os.getenv("COORDINATOR_PUBLIC_URL")
         lan_ip = _detect_lan_ip()
         worker_url = public_url or (f"http://{lan_ip}:8000" if lan_ip else None)
@@ -269,7 +254,6 @@ def create_app(
             "Public URL (COORDINATOR_PUBLIC_URL): %s",
             public_url or "not set",
         )
-        log.info("Embedded worker: %s", str(embedded).lower())
 
         stop_reaper = threading.Event()
 
@@ -284,6 +268,7 @@ def create_app(
 
         reaper = threading.Thread(target=reaper_loop, daemon=True)
         reaper.start()
+        _maybe_run_jobs_inline()
         try:
             yield
         finally:
@@ -660,7 +645,7 @@ def create_app(
         if not job_ids:
             raise HTTPException(status_code=422, detail="No ready entries to queue.")
 
-        _schedule_job_execution(background_tasks)
+        _maybe_run_jobs_inline()
 
         return {
             "batch_id": batch["id"],
@@ -697,7 +682,7 @@ def create_app(
         stored_request = _stored_request_for_target(request, target)
         _require_worker_fleet()
         job = store.create_job(stored_request)
-        _schedule_job_execution(background_tasks)
+        _maybe_run_jobs_inline()
         if run_jobs_inline:
             job = store.get_job(job["id"])
         return {"job_id": job["id"], "status": job["status"]}

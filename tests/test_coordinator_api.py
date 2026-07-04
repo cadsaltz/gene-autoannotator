@@ -528,8 +528,7 @@ def test_job_submission_stores_profile_config_for_user_profile(tmp_path):
     assert "target_preflight" in listed_job["request"]
 
 
-def test_worker_marks_stale_invalid_saved_profile_locus_job_failed(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTOANNOTATOR_EMBEDDED_WORKER", "true")
+def test_worker_marks_stale_invalid_saved_profile_locus_job_failed(tmp_path):
     profile_store = BuiltinAndUserProfileStore(user_store=InMemoryUserProfileStore())
     profile_store.create_user_profile({
         "profile_id": "ecoli-k12-mg1655",
@@ -555,7 +554,8 @@ def test_worker_marks_stale_invalid_saved_profile_locus_job_failed(tmp_path, mon
         job_store=job_store,
         profile_store=profile_store,
         run_job=fail_if_called,
-        start_worker=True,
+        run_jobs_inline=True,
+        start_worker=False,
     )
 
     with TestClient(app):
@@ -600,24 +600,19 @@ def test_result_endpoint_rejects_unfinished_jobs(tmp_path):
     assert result_response.json()["detail"] == "Job is not completed"
 
 
-def test_startup_worker_drains_existing_queued_jobs(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTOANNOTATOR_EMBEDDED_WORKER", "true")
+def test_startup_leaves_queued_jobs_for_workers(tmp_path):
     store = JobStore(tmp_path / "jobs.sqlite3")
     queued = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0001"})
     app = create_app(
         job_store=store,
         run_job=lambda request: {"annotation": {"gene_id": request.locus}},
-        start_worker=True,
+        start_worker=False,
     )
 
     with TestClient(app):
-        for _ in range(50):
-            job = store.get_job(queued["id"])
-            if job["status"] == "completed":
-                break
-            time.sleep(0.02)
+        pass
 
-    assert store.get_job(queued["id"])["status"] == "completed"
+    assert store.get_job(queued["id"])["status"] == "queued"
 
 
 def test_job_submission_rejects_conflicting_profile_and_organism(tmp_path):
@@ -1329,8 +1324,7 @@ def test_health_includes_worker_summary():
     assert health["workers"]["total"] == 1
 
 
-def test_create_job_rejects_without_workers_when_capacity_required(tmp_path, monkeypatch):
-    monkeypatch.delenv("AUTOANNOTATOR_EMBEDDED_WORKER", raising=False)
+def test_create_job_rejects_without_workers_when_capacity_required(tmp_path):
     app = create_app(
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         start_worker=False,
@@ -1347,9 +1341,7 @@ def test_create_job_rejects_without_workers_when_capacity_required(tmp_path, mon
     assert response.json()["detail"] == "No workers connected with job capacity."
 
 
-def test_create_job_stays_queued_without_embedded_worker(tmp_path, monkeypatch):
-    monkeypatch.delenv("AUTOANNOTATOR_EMBEDDED_WORKER", raising=False)
-
+def test_create_job_stays_queued_without_inline_runner(tmp_path):
     def fail_if_called(_request):
         raise AssertionError("coordinator must not run annotation in-process")
 
