@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 import time
 
 from shared.job_contract import AnnotationJobRequest
@@ -53,7 +54,8 @@ def _default_execute(request_dict):
     return executor.run_annotation_job(AnnotationJobRequest(**request_dict))
 
 
-def run_once(client, config, *, active_jobs, execute):
+def run_once(client, config, *, active_jobs, execute, heartbeat_interval=None):
+    interval = heartbeat_interval if heartbeat_interval is not None else config.heartbeat_seconds
     free_slots = max(0, config.max_slots - active_jobs)
     if not _models_ready():
         client.heartbeat(
@@ -80,6 +82,22 @@ def run_once(client, config, *, active_jobs, execute):
         return False
 
     job_id = claim["job_id"]
+    job_active_jobs = active_jobs + 1
+    job_free_slots = max(0, config.max_slots - job_active_jobs)
+    stop_heartbeat = threading.Event()
+
+    def heartbeat_loop():
+        while not stop_heartbeat.wait(interval):
+            client.heartbeat(
+                active_jobs=job_active_jobs,
+                free_slots=job_free_slots,
+                memory_available_bytes=_memory_available_bytes(),
+                cpu_percent=_cpu_percent(),
+                state="ready",
+            )
+
+    heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+    heartbeat_thread.start()
     try:
         client.progress(job_id, "running")
         result = execute(claim["request"])
@@ -89,6 +107,9 @@ def run_once(client, config, *, active_jobs, execute):
         message = str(exc)
         client.fail(job_id, message, _is_retryable(message))
         log.warning("Job %s failed: %s", job_id, message)
+    finally:
+        stop_heartbeat.set()
+        heartbeat_thread.join(timeout=5)
     return True
 
 
