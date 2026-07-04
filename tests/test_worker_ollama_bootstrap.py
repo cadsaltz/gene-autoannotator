@@ -31,3 +31,22 @@ def test_ensure_models_pulls_only_missing():
     ollama_bootstrap.ensure_models(client=client, required=required)
     assert client.pulled == required[1:]
     assert required[0] not in client.pulled
+
+
+def test_ensure_models_recognizes_ollama_list_response_shape():
+    from ollama._types import ListResponse
+
+    required = ["gemma3:12b", "llama3:8b"]
+    response = ListResponse(
+        models=[
+            ListResponse.Model(model="gemma3:12b"),
+            ListResponse.Model(model="llama3:8b"),
+        ]
+    )
+    client = FakeOllama(installed=[])
+    client.list = lambda: response  # noqa: ARG005 - mirrors ollama.list() return type
+
+    pulled = ollama_bootstrap.ensure_models(client=client, required=required)
+
+    assert pulled == []
+    assert client.pulled == []

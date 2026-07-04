@@ -11,10 +11,18 @@ def required_models():
     return {name for name in names if name}
 
 
+def _model_entries(list_result):
+    if isinstance(list_result, dict):
+        return list_result.get("models", [])
+    models = getattr(list_result, "models", None)
+    if models is not None:
+        return models
+    return list_result
+
+
 def _installed_names(list_result):
-    entries = list_result.get("models", []) if isinstance(list_result, dict) else list_result
     names = set()
-    for entry in entries:
+    for entry in _model_entries(list_result):
         if isinstance(entry, dict):
             name = entry.get("model") or entry.get("name")
         else:
