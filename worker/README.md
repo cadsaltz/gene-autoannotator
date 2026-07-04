@@ -133,3 +133,110 @@ uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
 
 Submit the same job. It runs in-process, exactly as before the split, with no
 external worker required.
+
+## Deployment scripts
+
+Scripts live under `deploy/scripts/`:
+
+| Script | Purpose |
+| --- | --- |
+| `generate-worker-token.sh` | Emit a random hex token for `WORKER_API_TOKEN` (set the same value on coordinator and workers). |
+| `test-coordinator-reachability.sh` | Verify LAN connectivity to the coordinator (`curl` `/health`). |
+| `install-worker.sh` | Create `.venv`, install dependencies, and write `worker.env` in a repo clone. |
+| `update-worker.sh` | Drain active jobs, `git pull`, and restart the worker (systemd or manual). |
+
+Make them executable once (the install script also runs `chmod +x` on the set):
+
+```bash
+chmod +x deploy/scripts/*.sh
+```
+
+### Install a worker (dev/lab clone)
+
+From the repository root:
+
+```bash
+deploy/scripts/install-worker.sh
+```
+
+With coordinator URL and token (non-interactive):
+
+```bash
+deploy/scripts/install-worker.sh http://192.168.1.10:8000 "$(deploy/scripts/generate-worker-token.sh)"
+```
+
+If `worker.env` already exists, bootstrap reuses saved values. Otherwise run
+`python -m worker` once for interactive prompts.
+
+### Two-machine LAN setup
+
+**Coordinator machine**
+
+1. Generate a shared token: `deploy/scripts/generate-worker-token.sh`
+2. Configure the coordinator (`.env` or environment):
+
+   ```bash
+   WORKER_API_TOKEN=<token>
+   AUTOANNOTATOR_EMBEDDED_WORKER=false
+   COORDINATOR_PUBLIC_URL=http://<lan-ip>:8000
+   ```
+
+   `COORDINATOR_PUBLIC_URL` is the address workers should use — set it to the
+   coordinator's LAN IP (not `127.0.0.1`). The startup banner and
+   `GET /coordinator-info` echo this value.
+
+3. Allow inbound HTTP on port 8000 (example with ufw):
+
+   ```bash
+   sudo ufw allow 8000/tcp
+   ```
+
+4. Start the coordinator bound to all interfaces:
+
+   ```bash
+   uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
+   ```
+
+**Worker machine(s)**
+
+1. Clone the repo and run `deploy/scripts/install-worker.sh` (or set `worker.env` manually).
+2. Test reachability before starting the worker:
+
+   ```bash
+   deploy/scripts/test-coordinator-reachability.sh http://<lan-ip>:8000
+   ```
+
+3. Start the worker (`python -m worker` or systemd below).
+
+Each worker needs Ollama running locally with enough RAM for its slot count.
+
+### systemd install (production)
+
+After running `install-worker.sh` in a clone at `/opt/gene-autoannotator`:
+
+```bash
+sudo mkdir -p /etc/gene-autoannotator
+sudo cp worker.env /etc/gene-autoannotator/worker.env
+sudo cp deploy/systemd/gene-autoannotator-worker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now gene-autoannotator-worker
+```
+
+The unit file reads `/etc/gene-autoannotator/worker.env`, runs from
+`/opt/gene-autoannotator`, and restarts the agent on failure.
+
+Check status: `sudo systemctl status gene-autoannotator-worker`
+
+### Updating a worker
+
+Drain, pull, and restart:
+
+```bash
+deploy/scripts/update-worker.sh
+# or with an explicit coordinator URL:
+deploy/scripts/update-worker.sh http://192.168.1.10:8000
+```
+
+The script polls `GET /workers` until this host's worker reports
+`active_jobs=0` (or times out), then runs `git pull` and restarts via systemd
+when the unit is enabled.

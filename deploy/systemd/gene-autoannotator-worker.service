@@ -1,0 +1,14 @@
+[Unit]
+Description=Gene Autoannotator Worker Agent
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/gene-autoannotator/worker.env
+WorkingDirectory=/opt/gene-autoannotator
+ExecStart=/opt/gene-autoannotator/.venv/bin/python -m worker
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
