@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 import cloudscraper as cs
@@ -7,6 +8,11 @@ from . import utils
 
 COOLDOWN_SECONDS_DEFAULT = 0.5
 TIMEOUT_SECONDS_DEFAULT = 60
+
+
+def ncbi_api_key_param():
+    key = os.getenv("NCBI_API_KEY") or os.getenv("ENTREZ_API_KEY")
+    return f"&api_key={key}" if key else ""
 
 logging.basicConfig(format='%(asctime)s %(levelname).1s | %(message)s')
 log = logging.getLogger(__name__)

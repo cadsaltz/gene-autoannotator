@@ -9,6 +9,8 @@ from urllib.parse import quote_plus
 import pandas as pd
 import requests
 
+from . import http_
+
 # Gene names are hints for retrieval and prompts, not primary identity. The
 # locus remains canonical; every lookup result carries source/confidence data so
 # generated metadata can explain whether a name was curated, cached, online, or
@@ -275,6 +277,7 @@ class NcbiGeneSource:
         )
         search_url = (
             f'{NCBI_BASE_URL}esearch.fcgi?db=gene&retmode=json&retmax=5&term={term}'
+            + http_.ncbi_api_key_param()
         )
         try:
             search_response = self.session.get(search_url, timeout=self.timeout)
@@ -299,6 +302,7 @@ class NcbiGeneSource:
 
         summary_url = (
             f'{NCBI_BASE_URL}esummary.fcgi?db=gene&retmode=json&id={ids[0]}'
+            + http_.ncbi_api_key_param()
         )
         try:
             summary_response = self.session.get(summary_url, timeout=self.timeout)

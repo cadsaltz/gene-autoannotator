@@ -170,7 +170,7 @@ class PmcPaperManager(papers.PaperManager):
 
         if gene:
             search_term_locus = search_term_locus_tmpl.format(locus=gene)
-            search_url1 = search_url_tmpl.format(term=search_term_locus)
+            search_url1 = search_url_tmpl.format(term=search_term_locus) + http_.ncbi_api_key_param()
 
             log.debug(f'Searching PubMed Central by gene locus {gene}')
             idlist1 = self._search_pmc_idlist(search_url1, search_term_locus, f'{gene} locus')
@@ -186,7 +186,7 @@ class PmcPaperManager(papers.PaperManager):
             log.debug(f'Searching PubMed Central by gene name {name}')
 
             search_term_name = self._build_name_search_term(name)
-            search_url2 = search_url_tmpl.format(term=search_term_name)
+            search_url2 = search_url_tmpl.format(term=search_term_name) + http_.ncbi_api_key_param()
 
             idlist2 = self._search_pmc_idlist(search_url2, search_term_name, f'{search_label} name')
             log.debug(f'Found {len(idlist2)} papers by name ({name}) for gene {search_label}')
@@ -220,7 +220,7 @@ class PmcPaperManager(papers.PaperManager):
             return self._search_pubmed_for_pmc_ids(search_term, query_label)
 
     def _search_pubmed_for_pmc_ids(self, search_term, query_label):
-        pubmed_search_url = pubmed_search_url_tmpl.format(term=search_term)
+        pubmed_search_url = pubmed_search_url_tmpl.format(term=search_term) + http_.ncbi_api_key_param()
         response = self.throttler.get(pubmed_search_url, base_url)
         result = json.loads(response.text)
         pubmed_ids = self._extract_esearch_idlist(result, f'{query_label} PubMed fallback')
