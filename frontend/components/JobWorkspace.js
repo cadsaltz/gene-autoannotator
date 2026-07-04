@@ -26,6 +26,7 @@ import {
   getVisibleJobs,
   shouldShowRunningSpinner,
 } from "../lib/jobQueue";
+import { formatResourceDetail } from "../lib/healthFormat";
 
 const stepLabels = {
   queued: "Waiting in queue",
@@ -146,35 +147,6 @@ function HealthBadge({ label, status, detail }) {
       {detail ? <p className="workbench-muted mt-2 text-xs leading-5">{detail}</p> : null}
     </div>
   );
-}
-
-function formatBytes(bytes) {
-  if (bytes == null || Number.isNaN(Number(bytes))) {
-    return "unknown";
-  }
-
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let value = Number(bytes);
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
-function formatResourceDetail(resources) {
-  if (!resources || resources.status !== "ok") {
-    return resources?.message;
-  }
-
-  const cpu = `${Math.round(resources.cpu_percent ?? 0)}%`;
-  const used = formatBytes(resources.memory_used_bytes);
-  const total = formatBytes(resources.memory_total_bytes);
-  const available = formatBytes(resources.memory_available_bytes);
-  const memoryPercent = Math.round(resources.memory_percent ?? 0);
-
-  return `CPU ${cpu} · RAM ${used} / ${total} used (${memoryPercent}%) · ${available} available`;
 }
 
 function JobTile({ job }) {
