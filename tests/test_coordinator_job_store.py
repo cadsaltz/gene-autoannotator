@@ -215,3 +215,21 @@ def test_fail_job_requeues_when_retryable(tmp_path):
     store.assign_job_to_worker("worker-a", lease_seconds=3600)
     store.fail_job(job["id"], "bad locus", retryable=False, max_attempts=3)
     assert store.get_job(job["id"])["status"] == "failed"
+
+
+def test_complete_if_running_ignores_non_running_job(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    job = _queued(store, "Rv0001")
+    # Job is queued, not running: completion must be refused and status preserved.
+    assert store.complete_if_running(job["id"], {"annotation": {"gene_id": "Rv0001"}}) is False
+    assert store.get_job(job["id"])["status"] == "queued"
+
+
+def test_complete_if_running_refuses_after_requeue(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    job = _queued(store, "Rv0001")
+    store.assign_job_to_worker("worker-a", lease_seconds=-1)  # expired lease
+    store.requeue_expired_leases(max_attempts=3)  # back to queued
+    # A stale worker that lost its lease must not be able to complete the job.
+    assert store.complete_if_running(job["id"], {"annotation": {}}) is False
+    assert store.get_job(job["id"])["status"] == "queued"

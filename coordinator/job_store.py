@@ -24,7 +24,10 @@ class JobStore:
         self._initialize()
 
     def _connect(self):
-        return sqlite3.connect(self.db_path)
+        connection = sqlite3.connect(self.db_path, timeout=30.0)
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA busy_timeout=30000")
+        return connection
 
     def _initialize(self):
         with self._connect() as connection:
@@ -273,6 +276,7 @@ class JobStore:
         requeued, failed = [], []
         with self._connect() as connection:
             connection.row_factory = sqlite3.Row
+            connection.execute("BEGIN IMMEDIATE")
             expired = connection.execute(
                 """
                 SELECT id, attempts FROM annotation_jobs
@@ -306,6 +310,7 @@ class JobStore:
                         (row["id"],),
                     )
                     requeued.append(row["id"])
+            connection.commit()
         return {"requeued": requeued, "failed": failed}
 
     def complete_if_running(self, job_id, result, output_path=None):
@@ -315,7 +320,7 @@ class JobStore:
             row = connection.execute(
                 "SELECT status FROM annotation_jobs WHERE id = ?", (job_id,)
             ).fetchone()
-            if row is None or row["status"] == "completed":
+            if row is None or row["status"] != "running":
                 connection.commit()
                 return False
             connection.execute(

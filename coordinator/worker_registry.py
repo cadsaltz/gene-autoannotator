@@ -16,7 +16,10 @@ class WorkerRegistry:
         self._initialize()
 
     def _connect(self):
-        return sqlite3.connect(self.db_path)
+        connection = sqlite3.connect(self.db_path, timeout=30.0)
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA busy_timeout=30000")
+        return connection
 
     def _initialize(self):
         with self._connect() as connection:
