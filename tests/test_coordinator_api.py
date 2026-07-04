@@ -45,6 +45,9 @@ def test_health_endpoint(tmp_path):
     assert "memory_used_bytes" in payload["resources"]
     assert "memory_available_bytes" in payload["resources"]
     assert "memory_percent" in payload["resources"]
+    assert "regex_model" in payload
+    assert payload["regex_model"]["status"] in {"ok", "unavailable", "unconfigured"}
+    assert "model" in payload["regex_model"]
 
 
 def test_cors_allows_local_frontend_origin(tmp_path):

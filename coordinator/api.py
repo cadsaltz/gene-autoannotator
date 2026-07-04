@@ -81,6 +81,41 @@ def _detect_lan_ip():
         return None
 
 
+def _regex_model_health():
+    from autoannotation import models
+
+    model = os.getenv("AUTOANNOTATION_REGEX_MODEL") or models.MODEL_REGEX
+    if not model:
+        return {
+            "status": "unconfigured",
+            "model": None,
+            "message": "No regex model configured",
+        }
+
+    try:
+        import ollama
+
+        list_result = ollama.list()
+        entries = list_result.get("models", []) if isinstance(list_result, dict) else list_result
+        installed = set()
+        for entry in entries:
+            if isinstance(entry, dict):
+                name = entry.get("model") or entry.get("name")
+            else:
+                name = getattr(entry, "model", None) or getattr(entry, "name", None)
+            if name:
+                installed.add(name)
+        if model in installed:
+            return {"status": "ok", "model": model}
+        return {
+            "status": "unavailable",
+            "model": model,
+            "message": f"Model {model!r} is not installed in Ollama",
+        }
+    except Exception as exc:  # noqa: BLE001 - health reports Ollama failures without failing /health.
+        return {"status": "unavailable", "model": model, "message": str(exc)}
+
+
 DEFAULT_DB_PATH = Path("coordinator/jobs.sqlite3")
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "2000"))
 DEFAULT_CORS_ORIGINS = (
@@ -476,6 +511,7 @@ def create_app(
             "queue": store.queue_summary(),
             "workers": workers.summary(offline_after_seconds=offline_after_seconds),
             "resources": resource_snapshot(),
+            "regex_model": _regex_model_health(),
         }
 
     @app.get("/profiles", response_model=ProfilesResponse)
