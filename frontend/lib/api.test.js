@@ -11,6 +11,7 @@ import {
   getApiBaseUrl,
   getBatch,
   getProfile,
+  getWorkers,
   updateProfile,
   validateBatch,
   validateJob,
@@ -49,6 +50,17 @@ function mockErrorFetch(payload, status = 422) {
     json: async () => payload,
   });
 }
+
+test("getWorkers fetches worker list from coordinator", async () => {
+  process.env.BACKEND_API_BASE_URL = "http://backend.test";
+  mockFetch(() => ({
+    workers: [{ id: "w1", worker_name: "host", state: "ready", max_slots: 1, active_jobs: 0 }],
+  }));
+
+  const result = await getWorkers();
+
+  assert.equal(result.workers.length, 1);
+});
 
 test("profile helpers call encoded profile endpoints", async () => {
   process.env.BACKEND_API_BASE_URL = "http://backend.test";

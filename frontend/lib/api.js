@@ -81,6 +81,10 @@ export async function getHealth() {
   return apiFetch("/health");
 }
 
+export async function getWorkers() {
+  return apiFetch("/workers");
+}
+
 export async function getProfiles() {
   return apiFetch("/profiles");
 }
