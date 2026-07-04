@@ -9,7 +9,11 @@ export const runtime = "nodejs";
 // keeps local/server deployments consistent and avoids exposing a public backend
 // URL to client bundles.
 function getBackendApiBaseUrl() {
-  return process.env.BACKEND_API_BASE_URL || DEFAULT_BACKEND_API_BASE_URL;
+  return (
+    process.env.COORDINATOR_API_BASE_URL ||
+    process.env.BACKEND_API_BASE_URL ||
+    DEFAULT_BACKEND_API_BASE_URL
+  );
 }
 
 async function buildBackendUrl(request, context) {

@@ -98,7 +98,7 @@ Useful environment variables:
 - `AUTOANNOTATION_AGGREGATION_MODEL=model`
 - `OLLAMA_HOST=http://host:11434` when Ollama is not local.
 - `MONGO_URI` or `MONGODB_URI` to enable annotation history/search and saved user profiles. Set it for the FastAPI backend so completed jobs and custom profiles can be saved, and set it in `frontend/.env.local` so Next.js can read stored annotations directly.
-- `BACKEND_API_BASE_URL=http://127.0.0.1:8000` for the Next.js proxy/server calls.
+- `COORDINATOR_API_BASE_URL=http://127.0.0.1:8000` for the Next.js proxy/server calls (legacy `BACKEND_API_BASE_URL` still honored as a fallback).
 - `CORS_ORIGINS` and `CORS_ORIGIN_REGEX` for FastAPI browser access.
 - `GO_BASIC_OBO_PATH=data/go-basic.obo` for richer functional-category comparison.
 

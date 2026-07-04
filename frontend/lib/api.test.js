@@ -261,6 +261,21 @@ test("getApiBaseUrl uses the private backend API URL on the server", () => {
   });
 });
 
+test("getApiBaseUrl prefers COORDINATOR_API_BASE_URL over BACKEND_API_BASE_URL on the server", () => {
+  const originalCoord = process.env.COORDINATOR_API_BASE_URL;
+  const originalBackend = process.env.BACKEND_API_BASE_URL;
+  try {
+    process.env.COORDINATOR_API_BASE_URL = "http://coordinator.test";
+    process.env.BACKEND_API_BASE_URL = "http://backend.test";
+    assert.equal(getApiBaseUrl(), "http://coordinator.test");
+  } finally {
+    if (originalCoord === undefined) delete process.env.COORDINATOR_API_BASE_URL;
+    else process.env.COORDINATOR_API_BASE_URL = originalCoord;
+    if (originalBackend === undefined) delete process.env.BACKEND_API_BASE_URL;
+    else process.env.BACKEND_API_BASE_URL = originalBackend;
+  }
+});
+
 test("getApiBaseUrl ignores a loopback API URL in the browser", () => {
   withApiBaseUrl("http://localhost:8000", () => {
     withBrowserLocation({ protocol: "http:", hostname: "10.1.2.3" }, () => {
