@@ -1,6 +1,7 @@
 import argparse
 
 from worker import agent, bootstrap
+from worker.lock import acquire_worker_lock
 
 
 def main():
@@ -17,6 +18,7 @@ def main():
     if args.memory_gb is not None:
         overrides["ANNOTATION_MEMORY_BUDGET_GB"] = args.memory_gb
     bootstrap.ensure_worker_env(cli_overrides=overrides)
+    acquire_worker_lock()
     agent.run()
 
 
