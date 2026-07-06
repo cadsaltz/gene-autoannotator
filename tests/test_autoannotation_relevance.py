@@ -82,11 +82,12 @@ class FakeLlmHandler:
         return GENE_JSON, 0.1
 
     def get_llm_consensus_json(
-        self, json1, json2, json3, model, section_type='abstract',
-        organism_profile=None, allow_missing_locus=False,
-        field_defs_profile=None,
+        self, candidates, *, excerpt=None, expected_gene_id=None, expected_name=None,
+        model, section_type='abstract', organism_profile=None,
+        allow_missing_locus=False, field_defs_profile=None,
     ):
         assert section_type == 'abstract'
+        json1 = candidates[0]
         if json1 == ORTHolog_JSON:
             return ORTHolog_JSON, 0.1
         if '"TcCLB' in json1:

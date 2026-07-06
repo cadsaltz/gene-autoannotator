@@ -488,9 +488,10 @@ def run_depth_first(
             model_name=model_consensus,
             call=lambda candidates=candidates, section=section: (
                 executor.handler.get_llm_consensus_json(
-                    candidates[0],
-                    candidates[1],
-                    candidates[2],
+                    candidates,
+                    excerpt=section["text"],
+                    expected_gene_id=context.locus,
+                    expected_name=context.gene_name,
                     model=model_consensus,
                     section_type=section["section_type"],
                     organism_profile=context.profile,
@@ -560,9 +561,10 @@ def run_breadth_first(
             model_name=model_consensus,
             call=lambda candidates=candidates, section=section: (
                 executor.handler.get_llm_consensus_json(
-                    candidates[0],
-                    candidates[1],
-                    candidates[2],
+                    candidates,
+                    excerpt=section["text"],
+                    expected_gene_id=context.locus,
+                    expected_name=context.gene_name,
                     model=model_consensus,
                     section_type=section["section_type"],
                     organism_profile=context.profile,
