@@ -8,6 +8,8 @@ coordinator.env
 .worktrees/
 **/*.pyc
 coordinator/*.sqlite3
+coordinator/*.sqlite3-shm
+coordinator/*.sqlite3-wal
 
 creds/
 data/go-basic.obo
@@ -24,7 +26,3 @@ docs/
 gen_json/
 test_json/
 trust_json/
-
-/coordinator/jobs.sqlite3-shm
-/coordinator/jobs.sqlite3-wal
-/coordinator/jobs.sqlite3
