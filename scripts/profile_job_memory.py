@@ -159,10 +159,21 @@ def submit_job(client: httpx.Client, *, profile: str, locus: str) -> str:
     return job_id
 
 
-def poll_job(client: httpx.Client, job_id: str, poll_interval: float = 10.0) -> dict:
+def poll_job(
+    client: httpx.Client,
+    job_id: str,
+    poll_interval: float = 10.0,
+    *,
+    log_progress: bool = True,
+) -> dict:
+    last_status = None
     while True:
         job = client.get(f"/jobs/{job_id}").json()
         status = job.get("status")
+        step = job.get("current_step")
+        if log_progress and (status, step) != last_status:
+            print(f"  job {job_id}: status={status} step={step}", flush=True)
+            last_status = (status, step)
         if status in ("completed", "failed"):
             return job
         time.sleep(poll_interval)
@@ -211,8 +222,10 @@ def build_report(
     return {
         "profile": profile,
         "locus": locus,
-        "job_id": job.get("id"),
+        "job_id": job.get("id") or job.get("job_id"),
         "job_status": job.get("status"),
+        "job_error": job.get("error"),
+        "job_current_step": job.get("current_step"),
         "ortholog_pass_ran": ortholog_ran,
         "sample_count": len(samples),
         "baseline_used_bytes": baseline_mean,
@@ -222,6 +235,20 @@ def build_report(
         "safety_factor": safety_factor,
         "recommended_job_memory_gb": recommended_gb,
     }
+
+
+def write_artifacts(
+    out_dir: Path,
+    *,
+    samples: list[dict[str, Any]],
+    report: dict[str, Any],
+) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (out_dir / "samples.json").write_text(json.dumps(samples, indent=2), encoding="utf-8")
+    text = format_report_text(report)
+    (out_dir / "report.txt").write_text(text, encoding="utf-8")
+    return out_dir
 
 
 def format_report_text(report: dict[str, Any]) -> str:
@@ -236,6 +263,7 @@ def format_report_text(report: dict[str, Any]) -> str:
         f"Profile / locus:  {report['profile']} / {report['locus']}",
         f"Job ID:           {report['job_id']}",
         f"Job status:       {report['job_status']}",
+        f"Job error:        {report.get('job_error') or '(none)'}",
         f"Ortholog pass ran:{report['ortholog_pass_ran']}",
         f"Samples:          {report['sample_count']}",
         "",
@@ -248,9 +276,56 @@ def format_report_text(report: dict[str, Any]) -> str:
         "",
         f"Safety margin:              {int(report['safety_factor'] * 100)}%",
         f"Recommended job allocation: {report['recommended_job_memory_gb']} GB",
-        "=" * 64,
     ]
+    if report.get("job_status") == "failed":
+        lines.extend([
+            "",
+            "Note: Job failed but memory samples above are still valid for sizing.",
+        ])
+    lines.append("=" * 64)
     return "\n".join(lines)
+
+
+def recover_report(
+    *,
+    log_path: Path,
+    out_dir: Path | None,
+    baseline_samples: int,
+    safety_factor: float,
+    profile: str,
+    locus: str,
+    coordinator_url: str,
+    token: str,
+    job_id: str | None,
+) -> tuple[Path, dict[str, Any], int]:
+    """Build a report from an existing memory.log (e.g. after a failed run)."""
+    if not log_path.is_file():
+        raise FileNotFoundError(f"Memory log not found: {log_path}")
+
+    job: dict[str, Any] = {"id": job_id, "status": "unknown"}
+    if job_id:
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        with httpx.Client(base_url=coordinator_url, headers=headers, timeout=30.0) as client:
+            resp = client.get(f"/jobs/{job_id}")
+            if resp.status_code == 200:
+                job = resp.json()
+
+    samples = parse_memory_log(log_path)
+    report = build_report(
+        samples=samples,
+        baseline_samples=baseline_samples,
+        job=job,
+        safety_factor=safety_factor,
+        profile=profile,
+        locus=locus,
+    )
+    report["mongo_verified"] = False
+    report["recovered_from_log"] = str(log_path)
+
+    dest = out_dir or log_path.parent
+    write_artifacts(dest, samples=samples, report=report)
+    exit_code = 0 if job.get("status") == "completed" else 1
+    return dest, report, exit_code
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -272,7 +347,34 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--safety-factor", type=float, default=DEFAULT_SAFETY_FACTOR)
     parser.add_argument("--output-dir", default=".cache/memory_profiles")
+    parser.add_argument(
+        "--recover-log",
+        type=Path,
+        help="Rebuild report from an existing memory.log (skip job submission)",
+    )
+    parser.add_argument(
+        "--job-id",
+        help="Job ID to attach when using --recover-log",
+    )
     args = parser.parse_args(argv)
+
+    baseline_samples = max(1, int(args.baseline_sec / args.interval_sec))
+
+    if args.recover_log is not None:
+        out_dir, report, exit_code = recover_report(
+            log_path=args.recover_log,
+            out_dir=args.recover_log.parent,
+            baseline_samples=baseline_samples,
+            safety_factor=args.safety_factor,
+            profile=args.profile,
+            locus=args.locus,
+            coordinator_url=args.coordinator_url,
+            token=args.token,
+            job_id=args.job_id,
+        )
+        print(format_report_text(report))
+        print(f"\nArtifacts: {out_dir}")
+        return exit_code
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out_dir = Path(args.output_dir) / run_id
@@ -280,9 +382,10 @@ def main(argv: list[str] | None = None) -> int:
 
     preflight(args.coordinator_url, args.token)
 
-    baseline_samples = max(1, int(args.baseline_sec / args.interval_sec))
     job: dict = {}
     saved: dict | None = None
+    job_failed = False
+    job_error: str | None = None
 
     sampler = MemoryLogSampler(log_path=log_path, interval_sec=args.interval_sec)
     sampler.start()
@@ -295,11 +398,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Submitted job {job_id}; sampling memory...", flush=True)
             job = poll_job(client, job_id)
             if job.get("status") != "completed":
-                raise RuntimeError(f"Job failed: {job.get('error')}")
-
-            saved = verify_annotation_saved(client, args.profile, args.locus)
-            if saved is None:
-                print("Warning: job completed but annotation not found in Mongo.", file=sys.stderr)
+                job_failed = True
+                job_error = job.get("error") or "unknown error"
+            else:
+                saved = verify_annotation_saved(client, args.profile, args.locus)
+                if saved is None:
+                    print(
+                        "Warning: job completed but annotation not found in Mongo.",
+                        file=sys.stderr,
+                    )
     finally:
         sampler.stop()
 
@@ -313,14 +420,13 @@ def main(argv: list[str] | None = None) -> int:
         locus=args.locus,
     )
     report["mongo_verified"] = saved is not None
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-    (out_dir / "samples.json").write_text(json.dumps(samples, indent=2), encoding="utf-8")
-    text = format_report_text(report)
-    (out_dir / "report.txt").write_text(text, encoding="utf-8")
-    print(text)
+    write_artifacts(out_dir, samples=samples, report=report)
+    print(format_report_text(report))
     print(f"\nArtifacts: {out_dir}")
+    if job_failed:
+        print(f"\nJob failed: {job_error}", file=sys.stderr)
+        print("Memory report saved anyway (see report.txt).", file=sys.stderr)
+        return 1
     return 0
 
 

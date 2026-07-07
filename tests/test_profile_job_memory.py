@@ -254,6 +254,40 @@ def test_build_report_raises_on_insufficient_samples():
         )
 
 
+def test_build_report_failed_job():
+    report = pm.build_report(
+        samples=_memory_samples(40, 40, 55),
+        baseline_samples=2,
+        job={
+            "id": "job-fail",
+            "status": "failed",
+            "error": "Expecting value: line 1 column 1 (char 0)",
+            "current_step": "failed",
+        },
+        safety_factor=0.20,
+        profile="mtb-h37rv",
+        locus="Rv1734c",
+    )
+    assert report["job_status"] == "failed"
+    assert "Expecting value" in report["job_error"]
+    assert report["ortholog_pass_ran"] is None
+    assert report["recommended_job_memory_gb"] == 18
+
+
+def test_format_report_text_failed_job():
+    report = pm.build_report(
+        samples=_memory_samples(40, 40, 55),
+        baseline_samples=2,
+        job={"id": "job-fail", "status": "failed", "error": "boom"},
+        safety_factor=0.20,
+        profile="mtb-h37rv",
+        locus="Rv1734c",
+    )
+    text = pm.format_report_text(report)
+    assert "Job error:        boom" in text
+    assert "memory samples above are still valid" in text
+
+
 def test_format_report_text():
     report = pm.build_report(
         samples=_memory_samples(40, 40, 50, 61.6),
