@@ -1,6 +1,11 @@
 import importlib.util
+import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
+
+import httpx
+import pytest
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "profile_job_memory.py"
 _spec = importlib.util.spec_from_file_location("profile_job_memory", _SCRIPT)
@@ -51,3 +56,133 @@ def test_parse_memory_log(tmp_path):
     samples = pm.parse_memory_log(log)
     assert len(samples) == 1
     assert samples[0]["used_bytes"] == 45634048
+
+
+def _healthy_response() -> dict:
+    return {
+        "status": "ok",
+        "workers": {"connected": 1, "total_slots": 4},
+        "stores": {"annotations": {"status": "ok"}},
+    }
+
+
+def _client_with_transport(handler):
+    transport = httpx.MockTransport(handler)
+    return httpx.Client(base_url="http://coordinator.test", transport=transport)
+
+
+def _patch_preflight_client(handler):
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.Client
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    return patch.object(pm.httpx, "Client", side_effect=client_factory)
+
+
+def test_preflight_ok():
+    def handler(request):
+        assert request.url.path == "/health"
+        assert request.headers["authorization"] == "Bearer secret-token"
+        return httpx.Response(200, json=_healthy_response())
+
+    with _patch_preflight_client(handler):
+        health = pm.preflight("http://coordinator.test", "secret-token")
+    assert health["status"] == "ok"
+
+
+def test_preflight_raises_on_no_workers():
+    def handler(request):
+        health = _healthy_response()
+        health["workers"]["connected"] = 0
+        return httpx.Response(200, json=health)
+
+    with _patch_preflight_client(handler):
+        with pytest.raises(RuntimeError, match="No workers connected"):
+            pm.preflight("http://coordinator.test", "")
+
+
+def test_preflight_raises_on_zero_slots():
+    def handler(request):
+        health = _healthy_response()
+        health["workers"]["total_slots"] = 0
+        return httpx.Response(200, json=health)
+
+    with _patch_preflight_client(handler):
+        with pytest.raises(RuntimeError, match="0 slots"):
+            pm.preflight("http://coordinator.test", "")
+
+
+def test_preflight_raises_on_unhealthy_coordinator():
+    def handler(request):
+        return httpx.Response(200, json={"status": "degraded"})
+
+    with _patch_preflight_client(handler):
+        with pytest.raises(RuntimeError, match="Coordinator unhealthy"):
+            pm.preflight("http://coordinator.test", "")
+
+
+def test_preflight_raises_on_mongo_unavailable():
+    def handler(request):
+        health = _healthy_response()
+        health["stores"]["annotations"]["status"] = "unavailable"
+        return httpx.Response(200, json=health)
+
+    with _patch_preflight_client(handler):
+        with pytest.raises(RuntimeError, match="Mongo annotation store unavailable"):
+            pm.preflight("http://coordinator.test", "")
+
+
+def test_submit_job_payload():
+    captured: dict = {}
+
+    def handler(request):
+        assert request.method == "POST"
+        assert request.url.path == "/jobs"
+        captured["payload"] = json.loads(request.content.decode())
+        return httpx.Response(200, json={"id": "job-123"})
+
+    client = _client_with_transport(handler)
+    job_id = pm.submit_job(client, profile="mtb-h37rv", locus="Rv0001")
+    assert job_id == "job-123"
+    assert captured["payload"] == {
+        "profile": "mtb-h37rv",
+        "locus": "Rv0001",
+        "allow_online_name_lookup": False,
+        "allow_ortholog_fallback": True,
+    }
+
+
+def test_poll_job_returns_on_completion():
+    poll_count = {"n": 0}
+
+    def handler(request):
+        poll_count["n"] += 1
+        status = "running" if poll_count["n"] == 1 else "completed"
+        return httpx.Response(200, json={"id": "job-123", "status": status})
+
+    client = _client_with_transport(handler)
+    with patch.object(pm.time, "sleep"):
+        job = pm.poll_job(client, "job-123", poll_interval=0.01)
+    assert job["status"] == "completed"
+    assert poll_count["n"] == 2
+
+
+def test_verify_annotation_saved_found():
+    def handler(request):
+        assert request.url.path == "/annotations/mtb-h37rv:Rv0001"
+        return httpx.Response(200, json={"id": "mtb-h37rv:Rv0001", "locus": "Rv0001"})
+
+    client = _client_with_transport(handler)
+    annotation = pm.verify_annotation_saved(client, "mtb-h37rv", "Rv0001")
+    assert annotation == {"id": "mtb-h37rv:Rv0001", "locus": "Rv0001"}
+
+
+def test_verify_annotation_saved_missing():
+    def handler(request):
+        return httpx.Response(404)
+
+    client = _client_with_transport(handler)
+    assert pm.verify_annotation_saved(client, "mtb-h37rv", "Rv0001") is None
