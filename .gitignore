@@ -8,6 +8,8 @@ coordinator.env
 .worktrees/
 **/*.pyc
 coordinator/*.sqlite3
+coordinator/*.sqlite3-shm
+coordinator/*.sqlite3-wal
 
 creds/
 data/go-basic.obo
