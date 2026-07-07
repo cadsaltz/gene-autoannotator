@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import re
+import time
+import time
 
 import ollama
 
@@ -380,27 +382,48 @@ def build_section_prompt(
     ) + missing_locus_rule
 
 
-# json consensus prompt
-prompt2_tmpl = '''
-The following candidate JSON objects were generated from the same excerpt with different models.
-Each candidate uses null for fields not supported by that excerpt.
+BATCH_CONSENSUS_PROMPT = '''
+You merge annotation candidate values from different extractor models for the same paper section.
 
-Return one consensus JSON object with the same keys. Per field:
-- If every candidate is null, output null.
-- If only one candidate has a non-null value and the others are null, output that value.
-- If two or more non-null candidates agree, output their shared value.
-- If non-null candidates conflict (including true vs false), output null.
+Candidate objects (same section, different extractor models):
+{candidates_json}
 
-Never invent information not present in the candidates. Do not replace null with a guess.
+Merge ONLY these fields: {field_list}
 
-Section type: {3}
+Return JSON with exactly those keys. Use null for any field you cannot reconcile from the candidates.
 
-First candidate: {0}
-
-Second candidate: {1}
-
-Third candidate: {2}
+Rules:
+- Reconcile only from the candidate values provided. You do not have access to the source text.
+- You may combine overlapping meaning from multiple candidates for the same field using concise wording.
+- Do not add facts not present in any candidate.
+- If candidates describe incompatible biology for a field, return null for that field.
+- Do NOT choose one candidate over others when they conflict — return null instead.
+- For list fields, include only category labels that appear in multiple candidates or clearly overlap in meaning.
+- Prefer concise phrasing drawn from the candidates.
 '''
+
+
+def _batch_consensus_schema(unresolved_fields, field_defs_profile=None, organism_profile=None):
+    properties = {}
+    profile = field_defs_profile or organism_profile
+    type_by_key = {}
+    if profile is not None:
+        for field_def in field_defs.llm_schema_fields(profile):
+            type_by_key[field_def.key] = field_def.type
+    for field_key in unresolved_fields:
+        field_type = type_by_key.get(field_key, 'string')
+        if field_type == 'array:string':
+            properties[field_key] = {'type': ['array', 'null'], 'items': {'type': 'string'}}
+        elif field_type == 'boolean':
+            properties[field_key] = {'type': ['boolean', 'null']}
+        else:
+            properties[field_key] = {'type': ['string', 'null']}
+    return {
+        'type': 'object',
+        'properties': properties,
+        'required': unresolved_fields,
+        'additionalProperties': False,
+    }
 
 # json aggregation prompt
 prompt3_prefix = '''
@@ -691,85 +714,154 @@ class LlmHandler:
                 raise RuntimeError(f'Failed to get response back from {model}') from ke
         return response_text, duration_sec
 
-    def get_llm_consensus_json(
-        self, json1, json2, json3, model='gemma3:12b', json_schema=None,
-        retry=True, section_type='unknown', organism_profile=None, allow_missing_locus=False,
+    def _ollama_batch_consensus_merge(
+        self,
+        candidates,
+        unresolved_fields,
+        *,
+        model,
+        organism_profile=None,
         field_defs_profile=None,
     ):
+        candidate_payload = [
+            {field_key: candidate.get(field_key) for field_key in unresolved_fields}
+            for candidate in candidates
+        ]
+        prompt = BATCH_CONSENSUS_PROMPT.format(
+            candidates_json=json.dumps(candidate_payload, indent=2),
+            field_list=', '.join(unresolved_fields),
+        )
+        schema = _batch_consensus_schema(
+            unresolved_fields,
+            field_defs_profile=field_defs_profile,
+            organism_profile=organism_profile,
+        )
+        response = ollama.chat(
+            model=model,
+            messages=[{'role': 'user', 'content': prompt}],
+            format=schema,
+            options={'temperature': 0},
+        )
+        payload = json.loads(response['message']['content'])
+        duration_sec = response['total_duration'] / 1_000_000_000
+        return (
+            {field_key: payload.get(field_key) for field_key in unresolved_fields},
+            duration_sec,
+        )
+
+    def get_llm_consensus_json(
+        self,
+        candidates,
+        *,
+        excerpt=None,
+        expected_gene_id=None,
+        expected_name=None,
+        model='qwen3:8b',
+        json_schema=None,
+        retry=True,
+        section_type='unknown',
+        organism_profile=None,
+        allow_missing_locus=False,
+        field_defs_profile=None,
+    ):
+        from . import consensus
+
+        if len(candidates) < 2:
+            raise ValueError('consensus requires at least two candidate JSON objects')
+
+        organism_profile = organism_profile or organisms.resolve_profile('mtb-h37rv')
         json_schema = json_schema or build_json_schema(
             organism_profile,
             allow_missing_locus=allow_missing_locus,
             field_defs_profile=field_defs_profile,
         )
-        json1 = self.normalize_response_json(
-            json1, organism_profile=organism_profile, field_defs_profile=field_defs_profile,
+        fields = consensus.field_specs_from_profile(
+            field_defs_profile=field_defs_profile,
+            organism_profile=organism_profile,
         )
-        json2 = self.normalize_response_json(
-            json2, organism_profile=organism_profile, field_defs_profile=field_defs_profile,
-        )
-        json3 = self.normalize_response_json(
-            json3, organism_profile=organism_profile, field_defs_profile=field_defs_profile,
-        )
-        prompt = prompt2_tmpl.format(json1, json2, json3, section_type)
 
-        cached_response, cached_dur = self._read_cache(model, prompt, json_schema)
-        if cached_response is not None:
-            log.debug((
-                f'Returning cached candidate-aggregation response ({len(cached_response)} chars)'
-            ))
-            self._record_usage(
-                'section_consensus', model, cached_dur, cache_hit=True,
-                usage=self._read_cache_usage(model, prompt, json_schema),
+        def batch_merger(normalized, unresolved_fields):
+            cache_prompt = BATCH_CONSENSUS_PROMPT.format(
+                candidates_json=json.dumps(
+                    [{key: item.get(key) for key in unresolved_fields} for item in normalized],
+                    indent=2,
+                ),
+                field_list=', '.join(unresolved_fields),
             )
-            return self.normalize_response_json(
-                cached_response,
-                organism_profile=organism_profile,
+            batch_schema = _batch_consensus_schema(
+                unresolved_fields,
                 field_defs_profile=field_defs_profile,
-            ), cached_dur
+                organism_profile=organism_profile,
+            )
+            cached_response, cached_dur = self._read_cache(model, cache_prompt, batch_schema)
+            if cached_response is not None:
+                self._record_usage(
+                    'section_consensus', model, cached_dur, cache_hit=True,
+                    usage=self._read_cache_usage(model, cache_prompt, batch_schema),
+                )
+                return json.loads(cached_response)
 
-        log.debug((
-            f'Submitting candidate-aggregation job (length {len(prompt)} chars) to LLM (model ' + \
-                f'{model})'
-        ))
+            try:
+                result, duration_sec = self._ollama_batch_consensus_merge(
+                    normalized,
+                    unresolved_fields,
+                    model=model,
+                    organism_profile=organism_profile,
+                    field_defs_profile=field_defs_profile,
+                )
+                usage = None
+                self._record_usage('section_consensus', model, duration_sec, usage=usage)
+                self._write_cache(
+                    model, cache_prompt, batch_schema,
+                    json.dumps(result), duration_sec, usage=usage,
+                )
+                return result
+            except KeyError as ke:
+                if retry:
+                    raise ke
+                raise RuntimeError(f'Failed to get response back from {model}') from ke
+
+        start = time.perf_counter()
         try:
-            response = ollama.chat(
-                model=model,
-                messages=[
-                    {
-                        'role': 'user',
-                        'content': prompt,
-                    },
-                ],
-                format=json_schema,
-                options={
-                    'temperature': 0,
-                },
-            )
-            response_text = response['message']['content']
-            duration_sec = response['total_duration'] / 1_000_000_000
-            log.debug(
-                f'Got response ({len(response_text)} chars) back from {model} in ' + \
-                    utils.seconds_to_str(duration_sec)
-            )
-            response_text = self.normalize_response_json(
-                response_text,
+            merged, provenance, llm_calls = consensus.hybrid_section_consensus(
+                candidates,
+                excerpt=excerpt,
+                expected_gene_id=expected_gene_id,
+                expected_name=expected_name,
+                fields=fields,
                 organism_profile=organism_profile,
                 field_defs_profile=field_defs_profile,
+                batch_merger=batch_merger,
             )
-            usage = self._usage_from_response(response, duration_sec)
-            self._record_usage('section_consensus', model, duration_sec, usage=usage)
-            self._write_cache(model, prompt, json_schema, response_text, duration_sec, usage)
         except KeyError as ke:
             if retry:
                 return self.get_llm_consensus_json(
-                    json1, json2, json3, model=model, json_schema=json_schema, retry=False,
-                    section_type=section_type, organism_profile=organism_profile,
+                    candidates,
+                    excerpt=excerpt,
+                    expected_gene_id=expected_gene_id,
+                    expected_name=expected_name,
+                    model=model,
+                    json_schema=json_schema,
+                    retry=False,
+                    section_type=section_type,
+                    organism_profile=organism_profile,
                     allow_missing_locus=allow_missing_locus,
                     field_defs_profile=field_defs_profile,
                 )
-            else:
-                raise RuntimeError(f'Failed to get response back from {model}') from ke
-        return response_text, duration_sec
+            raise RuntimeError(f'Failed to get response back from {model}') from ke
+        duration_sec = time.perf_counter() - start
+        log.debug(
+            'Section consensus (%s): llm_calls=%s provenance=%s',
+            section_type, llm_calls, provenance,
+        )
+        response_text = json.dumps(merged)
+        if llm_calls == 0:
+            self._record_usage('section_consensus', model, duration_sec, cache_hit=False)
+        return self.normalize_response_json(
+            response_text,
+            organism_profile=organism_profile,
+            field_defs_profile=field_defs_profile,
+        ), duration_sec
 
     def get_llm_gene_info_json(
         self, gene_id, gene_name, info_text, model, json_schema=None,

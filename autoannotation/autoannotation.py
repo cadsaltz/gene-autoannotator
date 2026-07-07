@@ -163,9 +163,13 @@ def run_paper_annotation_pass(
                     section_distillation_candidate, duration_sec,
                 ))
             section_distillation, duration_sec = llm_handler.get_llm_consensus_json(
-                section_distillation_candidates_cur[0], section_distillation_candidates_cur[1],
-                section_distillation_candidates_cur[2], model=MODEL_CONSENSUS,
-                section_type=label, organism_profile=organism_profile,
+                section_distillation_candidates_cur,
+                excerpt=section,
+                expected_gene_id=gene,
+                expected_name=llm_name,
+                model=MODEL_CONSENSUS,
+                section_type=label,
+                organism_profile=organism_profile,
                 allow_missing_locus=gene is None,
                 field_defs_profile=field_defs_profile,
             )

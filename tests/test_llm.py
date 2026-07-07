@@ -218,49 +218,82 @@ def test_section_summary_uses_nullable_schema_when_gene_missing():
 	assert json.loads(response)["gene_id"] is None
 
 
-def test_consensus_schema_stays_strict_by_default_when_candidate_gene_id_is_null():
+def test_consensus_schema_stays_strict_by_default_when_candidate_gene_id_is_null(monkeypatch):
 	captured = {}
 	handler = llms.LlmHandler(cache_dir="./.cache")
-	null_candidate = json.dumps({"gene_id": None, "name": "abc1"})
-	locus_candidate = json.dumps({"gene_id": "Rv0001", "name": "abc1"})
+	null_candidate = json.dumps({"gene_id": None, "name": "abc1", "function": "Same."})
+	locus_candidate = json.dumps({"gene_id": "Rv0001", "name": "abc1", "function": "Same."})
 
-	def fake_read_cache(model, prompt, json_schema):
-		captured["schema"] = json_schema
-		return locus_candidate, 0.1
-
-	handler._read_cache = fake_read_cache
+	original = llms.build_json_schema
+	def capture_schema(*args, **kwargs):
+		captured["schema"] = original(*args, **kwargs)
+		return captured["schema"]
+	monkeypatch.setattr(llms, "build_json_schema", capture_schema)
 
 	handler.get_llm_consensus_json(
-		null_candidate,
-		locus_candidate,
-		locus_candidate,
+		[null_candidate, locus_candidate],
+		excerpt="Same.",
+		expected_gene_id="Rv0001",
+		expected_name="abc1",
 		model="fake-model",
 	)
 
 	assert captured["schema"]["properties"]["gene_id"]["type"] == "string"
 
 
-def test_consensus_schema_allows_null_gene_id_when_explicitly_enabled():
+def test_consensus_schema_allows_null_gene_id_when_explicitly_enabled(monkeypatch):
 	captured = {}
 	handler = llms.LlmHandler(cache_dir="./.cache")
-	null_candidate = json.dumps({"gene_id": None, "name": "abc1"})
-	locus_candidate = json.dumps({"gene_id": "Rv0001", "name": "abc1"})
+	null_candidate = json.dumps({"gene_id": None, "name": "abc1", "function": "Same."})
+	locus_candidate = json.dumps({"gene_id": "Rv0001", "name": "abc1", "function": "Same."})
 
-	def fake_read_cache(model, prompt, json_schema):
-		captured["schema"] = json_schema
-		return null_candidate, 0.1
-
-	handler._read_cache = fake_read_cache
+	original = llms.build_json_schema
+	def capture_schema(*args, **kwargs):
+		captured["schema"] = original(*args, **kwargs)
+		return captured["schema"]
+	monkeypatch.setattr(llms, "build_json_schema", capture_schema)
 
 	handler.get_llm_consensus_json(
-		null_candidate,
-		locus_candidate,
-		locus_candidate,
+		[null_candidate, locus_candidate],
+		excerpt="Same.",
+		expected_gene_id="Rv0001",
+		expected_name="abc1",
 		model="fake-model",
 		allow_missing_locus=True,
 	)
 
 	assert captured["schema"]["properties"]["gene_id"]["type"] == ["string", "null"]
+
+
+def test_batch_consensus_merge_is_candidate_only(monkeypatch):
+	captured = {}
+
+	def fake_chat(**kwargs):
+		captured["prompt"] = kwargs["messages"][0]["content"]
+		captured["format"] = kwargs["format"]
+		return {
+			"message": {"content": json.dumps({"function": "Initiates DNA replication at oriC."})},
+			"total_duration": 1_000_000_000,
+		}
+
+	monkeypatch.setattr("autoannotation.llms.ollama.chat", fake_chat)
+	handler = llms.LlmHandler(cache_dir="./.cache")
+	section_excerpt = "This excerpt must NOT appear in the consensus LLM prompt."
+	result, _duration = handler._ollama_batch_consensus_merge(
+		candidates=[
+			{"function": "Initiates DNA replication."},
+			{"function": "DNA replication initiator."},
+		],
+		unresolved_fields=["function"],
+		model="fake-model",
+	)
+	assert result == {"function": "Initiates DNA replication at oriC."}
+	assert "Candidate objects" in captured["prompt"]
+	assert section_excerpt not in captured["prompt"]
+	assert "Excerpt:" not in captured["prompt"]
+	assert "do not choose one candidate over others when they conflict" in captured["prompt"].lower()
+	assert "do not add facts not present in any candidate" in captured["prompt"].lower()
+	assert captured["format"]["required"] == ["function"]
 
 
 def test_aggregate_schema_stays_strict_by_default_when_section_gene_id_is_null():

@@ -24,29 +24,17 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from autoannotation import consensus as production_consensus
 from autoannotation import llms
-BatchMerger = Callable[[str, list[dict[str, Any]], list[str]], dict[str, Any]]
+BatchMerger = Callable[[list[dict[str, Any]], list[str]], dict[str, Any]]
+LegacyBatchMerger = Callable[[str, list[dict[str, Any]], list[str]], dict[str, Any]]
 
 UNKNOWN_STRINGS = llms.UNKNOWN_STRINGS
 MIN_AGREEMENT = 2
 
 
-@dataclass(frozen=True)
-class FieldSpec:
-    key: str
-    kind: str  # identity | boolean | string | array
-
-
-DEFAULT_FIELDS = (
-    FieldSpec('gene_id', 'identity'),
-    FieldSpec('name', 'identity'),
-    FieldSpec('function', 'string'),
-    FieldSpec('functional_category', 'array'),
-    FieldSpec('drug_susc_impact', 'string'),
-    FieldSpec('infection_impact', 'string'),
-    FieldSpec('essential_in_vitro', 'boolean'),
-    FieldSpec('essential_in_vivo', 'boolean'),
-)
+DEFAULT_FIELDS = production_consensus.DEFAULT_FIELD_SPECS
+FieldSpec = production_consensus.FieldSpec
 
 
 def normalize_candidate(raw: dict[str, Any]) -> dict[str, Any]:
@@ -312,38 +300,20 @@ def conservative_batch_llm_simulator(
 
 
 def ollama_batch_merger(
-    excerpt: str,
     candidates: list[dict[str, Any]],
     unresolved_fields: list[str],
 ) -> dict[str, Any]:
-    """One Ollama call to merge all unresolved fields (production-shaped)."""
+    """One Ollama call to merge all unresolved fields (candidate-only, production-shaped)."""
     import ollama
 
     candidate_payload = [
         {field_key: candidate.get(field_key) for field_key in unresolved_fields}
         for candidate in candidates
     ]
-    prompt = f'''
-You merge annotation candidates for a single paper section.
-
-Excerpt:
-{excerpt}
-
-Candidate objects (same section, different extractor models):
-{json.dumps(candidate_payload, indent=2)}
-
-Merge ONLY these fields: {", ".join(unresolved_fields)}
-
-Return JSON with exactly those keys. Use null for any field you cannot support from the excerpt.
-
-Rules:
-- Merge only from facts present in the excerpt.
-- You may combine overlapping wording from multiple candidates for the same field.
-- Do not add facts absent from the excerpt.
-- Do not infer essentiality, drug effects, or infection phenotypes without explicit evidence.
-- If candidates conflict materially, return null for that field.
-- For list fields, include only categories explicitly supported by the excerpt.
-'''
+    prompt = llms.BATCH_CONSENSUS_PROMPT.format(
+        candidates_json=json.dumps(candidate_payload, indent=2),
+        field_list=', '.join(unresolved_fields),
+    )
     properties: dict[str, Any] = {}
     field_kind = {field.key: field.kind for field in DEFAULT_FIELDS}
     for field_key in unresolved_fields:
@@ -440,22 +410,22 @@ def deterministic_consensus(
     expected_name: str,
     fields: tuple[FieldSpec, ...] = DEFAULT_FIELDS,
 ) -> tuple[dict[str, Any], dict[str, str]]:
-    normalized = [normalize_candidate(candidate) for candidate in candidates]
-    merged: dict[str, Any] = {}
-    provenance: dict[str, str] = {}
-
-    for field in fields:
-        values = [item.get(field.key) for item in normalized]
-        value, reason, _ = _merge_field_rules_only(
-            field,
-            values,
-            expected_gene_id=expected_gene_id,
-            expected_name=expected_name,
-        )
-        merged[field.key] = value
-        provenance[field.key] = reason
-
+    merged, provenance, _ = production_consensus.deterministic_section_consensus(
+        candidates,
+        expected_gene_id=expected_gene_id,
+        expected_name=expected_name,
+        fields=fields,
+    )
     return merged, provenance
+
+
+def _wrap_legacy_batch_merger(
+    batch_merger: LegacyBatchMerger,
+    excerpt: str,
+) -> BatchMerger:
+    def wrapped(normalized: list[dict[str, Any]], unresolved_fields: list[str]) -> dict[str, Any]:
+        return batch_merger(excerpt, normalized, unresolved_fields)
+    return wrapped
 
 
 def hybrid_consensus_batch(
@@ -465,41 +435,24 @@ def hybrid_consensus_batch(
     expected_gene_id: str | None,
     expected_name: str,
     fields: tuple[FieldSpec, ...] = DEFAULT_FIELDS,
-    batch_merger: BatchMerger = conservative_batch_llm_simulator,
+    batch_merger: LegacyBatchMerger | BatchMerger = conservative_batch_llm_simulator,
 ) -> tuple[dict[str, Any], dict[str, str], int]:
     """Production-shaped Design B: rules first, then one batched LLM call if needed."""
-    normalized = [normalize_candidate(candidate) for candidate in candidates]
-    merged: dict[str, Any] = {}
-    provenance: dict[str, str] = {}
-    unresolved: list[str] = []
+    if batch_merger is ollama_batch_merger:
+        production_merger: BatchMerger = batch_merger
+    elif batch_merger in (conservative_batch_llm_simulator, generative_batch_llm_simulator):
+        production_merger = _wrap_legacy_batch_merger(batch_merger, excerpt)
+    else:
+        production_merger = batch_merger  # type: ignore[assignment]
 
-    for field in fields:
-        values = [item.get(field.key) for item in normalized]
-        value, reason, needs_llm = _merge_field_rules_only(
-            field,
-            values,
-            expected_gene_id=expected_gene_id,
-            expected_name=expected_name,
-        )
-        merged[field.key] = value
-        provenance[field.key] = reason
-        if needs_llm:
-            unresolved.append(field.key)
-
-    llm_calls = 0
-    if unresolved:
-        llm_calls = 1
-        batch_result = batch_merger(excerpt, normalized, unresolved)
-        for field_key in unresolved:
-            llm_value = batch_result.get(field_key)
-            if llms.is_unknown_value(llm_value):
-                merged[field_key] = None
-                provenance[field_key] = 'llm_batch_null'
-            else:
-                merged[field_key] = llm_value
-                provenance[field_key] = 'llm_batch_merge'
-
-    return merged, provenance, llm_calls
+    return production_consensus.hybrid_section_consensus(
+        candidates,
+        excerpt=excerpt,
+        expected_gene_id=expected_gene_id,
+        expected_name=expected_name,
+        fields=fields,
+        batch_merger=production_merger,
+    )
 
 
 def hybrid_consensus_per_field(
