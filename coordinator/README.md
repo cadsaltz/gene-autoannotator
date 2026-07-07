@@ -109,7 +109,7 @@ Environment variables:
   (`/workers/*`, `/jobs/{id}/progress|complete|fail`). Workers must send it as
   `Authorization: Bearer <token>`. **If unset, the worker endpoints are
   unauthenticated.**
-- `LEASE_SECONDS` (default `14400`): how long a claimed job's lease is valid
+- `LEASE_SECONDS` (default `31536000`, 365 days): how long a claimed job's lease is valid
   before the reaper may requeue it.
 - `MAX_ATTEMPTS` (default `3`): maximum number of times a job is retried before it
   is marked failed.

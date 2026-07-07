@@ -164,7 +164,7 @@ def create_app(
     batches = batch_store or BatchStore(store.db_path)
     workers = worker_registry or WorkerRegistry(store.db_path)
     worker_token = worker_api_token if worker_api_token is not None else os.getenv("WORKER_API_TOKEN")
-    lease_seconds = int(os.getenv("LEASE_SECONDS", "14400"))
+    lease_seconds = int(os.getenv("LEASE_SECONDS", "31536000"))
     max_attempts = int(os.getenv("MAX_ATTEMPTS", "3"))
     offline_after_seconds = int(os.getenv("WORKER_OFFLINE_SECONDS", "60"))
     annotations = (

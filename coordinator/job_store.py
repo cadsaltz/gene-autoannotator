@@ -226,7 +226,7 @@ class JobStore:
             connection.commit()
         return self.get_job(queued["id"])
 
-    def assign_job_to_worker(self, worker_id, *, lease_seconds=14400):
+    def assign_job_to_worker(self, worker_id, *, lease_seconds=31536000):
         with self._connect() as connection:
             connection.row_factory = sqlite3.Row
             connection.execute("BEGIN IMMEDIATE")
@@ -254,7 +254,7 @@ class JobStore:
             connection.commit()
         return self.get_job(queued["id"])
 
-    def renew_lease(self, job_id, *, lease_seconds=14400):
+    def renew_lease(self, job_id, *, lease_seconds=31536000):
         with self._connect() as connection:
             connection.execute(
                 "UPDATE annotation_jobs SET lease_expires_at = ? WHERE id = ? AND status = 'running'",
