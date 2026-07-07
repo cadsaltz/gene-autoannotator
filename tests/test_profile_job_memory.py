@@ -142,7 +142,7 @@ def test_submit_job_payload():
         assert request.method == "POST"
         assert request.url.path == "/jobs"
         captured["payload"] = json.loads(request.content.decode())
-        return httpx.Response(200, json={"id": "job-123"})
+        return httpx.Response(201, json={"job_id": "job-123", "status": "queued"})
 
     client = _client_with_transport(handler)
     job_id = pm.submit_job(client, profile="mtb-h37rv", locus="Rv0001")

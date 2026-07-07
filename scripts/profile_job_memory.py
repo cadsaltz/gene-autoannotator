@@ -152,7 +152,11 @@ def submit_job(client: httpx.Client, *, profile: str, locus: str) -> str:
     }
     resp = client.post("/jobs", json=payload)
     resp.raise_for_status()
-    return resp.json()["id"]
+    body = resp.json()
+    job_id = body.get("job_id") or body.get("id")
+    if not job_id:
+        raise RuntimeError(f"Unexpected /jobs response (no job_id): {body}")
+    return job_id
 
 
 def poll_job(client: httpx.Client, job_id: str, poll_interval: float = 10.0) -> dict:
