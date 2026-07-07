@@ -1,0 +1,63 @@
+# =============================================================================
+# Batch gene list format examples (gene-autoannotator)
+# Accepted file types: .txt, .csv, .tsv
+# Use ONE format per submission — do not mix formats in the same file.
+# Each line/token can be a locus OR a gene name; the system resolves it.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# FORMAT A — One identifier per line (recommended)
+# -----------------------------------------------------------------------------
+
+# Example A1: MTB loci only
+Rv0001
+Rv0002
+Rv0003
+
+# Example A2: MTB gene names only
+dnaA
+dnaN
+rpoB
+
+# Example A3: Mixed loci and names
+Rv0001
+dnaN
+Rv2007c
+
+
+# -----------------------------------------------------------------------------
+# FORMAT B — Delimited single-column list (same genes, different layout)
+# -----------------------------------------------------------------------------
+
+# Example B1: Comma-separated on one line
+Rv0001, Rv0002, Rv0003
+
+# Example B2: Semicolon-separated
+Rv0001; Rv0002; dnaA
+
+# Example B3: Tab-separated on one line
+Rv0001	Rv0002	rpoB
+
+
+# -----------------------------------------------------------------------------
+# FORMAT C — Two columns: locus,name (save as .csv or .tsv)
+# At least one column must be filled per row.
+# -----------------------------------------------------------------------------
+
+# Example C1: CSV with header
+locus,name
+Rv0001,dnaA
+Rv0002,dnaN
+Rv0003,
+
+# Example C2: CSV without header
+Rv0001,dnaA
+Rv0002,dnaN
+,dnaA
+
+# Example C3: TSV (tab-separated) with header
+locus	name
+Rv0001	dnaA
+Rv0002	dnaN
+Rv0003	
