@@ -67,6 +67,26 @@ to slots and to the per-claim admission gate:
 Slots are computed as `floor((ANNOTATION_MEMORY_BUDGET_GB - WORKER_MEMORY_HEADROOM_GB) / JOB_MEMORY_ESTIMATE_GB)`.
 With the defaults, `ANNOTATION_MEMORY_BUDGET_GB=24` yields 1 slot.
 
+### Measuring JOB_MEMORY_ESTIMATE_GB
+
+To measure real per-job memory without changing the annotation pipeline:
+
+1. Start coordinator (with `MONGO_URI`) and worker as usual.
+2. Confirm the locus triggers ortholog fallback:
+   `python scripts/investigate_ortholog_pipeline.py Rv1734c`
+3. Run the profiler (defaults to `Rv1734c`):
+
+```bash
+python scripts/profile_job_memory.py
+# or explicitly:
+python scripts/profile_job_memory.py --locus Rv1734c
+```
+
+The script samples `free` every 2 seconds, submits a normal job with
+`allow_ortholog_fallback=true`, and writes a report under
+`.cache/memory_profiles/<timestamp>/`. Set `JOB_MEMORY_ESTIMATE_GB` to the
+recommended value from `report.txt`.
+
 ## Running the worker
 
 ```bash
