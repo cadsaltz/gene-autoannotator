@@ -5,29 +5,30 @@ import os
 
 # Model roles are deliberately separated: summary models create independent
 # section candidates, a consensus model reconciles each section, and an
-# aggregation model synthesizes across papers. The consensus prompt expects
-# exactly three summary candidates.
+# aggregation model synthesizes across papers. Two or more summary models are
+# supported; the default performance stack uses two extractors from different
+# families.
 # === Performance models ===
 PERF_MODELS = {
-    'summary': ['mistral-nemo:12b','llama3:8b','gemma3:12b'],
-    'consensus': 'phi4:14b',
-    'aggregation': 'gemma3:12b'
+    'summary': ['qwen3:14b', 'gemma3:12b'],
+    'consensus': 'qwen3:8b',
+    'aggregation': 'gemma3:27b',
 }
 
 # === Lite models (<3GB each) ===
 # Use smaller, RAM-friendly alternatives that roughly mimic variety:
 LITE_MODELS = {
-    'summary': ['mistral:7b-instruct', 'llama3.2:3b', 'gemma3:4b'],
-    'consensus': 'phi3:3.8b',
-    'aggregation': 'gemma3:4b'
+    'summary': ['mistral:7b-instruct', 'gemma3:4b'],
+    'consensus': 'qwen3:8b',
+    'aggregation': 'gemma3:4b',
 }
 
 def _parse_summary_models(value):
     if not value:
         return None
     models = [item.strip() for item in value.split(',') if item.strip()]
-    if len(models) != 3:
-        raise ValueError('AUTOANNOTATION_SUMMARY_MODELS must contain exactly three models')
+    if len(models) < 2:
+        raise ValueError('AUTOANNOTATION_SUMMARY_MODELS must contain at least two models')
     return models
 
 
