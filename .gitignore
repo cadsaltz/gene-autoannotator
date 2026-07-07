@@ -25,6 +25,6 @@ gen_json/
 test_json/
 trust_json/
 
-coordinator/jobs.sqlite3-shm
-coordinator/jobs.sqlite3-wal
-coordinator/jobs.sqlite3
+/coordinator/jobs.sqlite3-shm
+/coordinator/jobs.sqlite3-wal
+/coordinator/jobs.sqlite3
