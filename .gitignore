@@ -24,3 +24,7 @@ docs/
 gen_json/
 test_json/
 trust_json/
+
+jobs.sqlite3-shm
+jobs.sqlite3-wal
+jobs.sqlite3
