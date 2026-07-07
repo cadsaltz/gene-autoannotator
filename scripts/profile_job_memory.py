@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
+import argparse
+import json
+import os
 import re
 import statistics
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -167,3 +171,154 @@ def verify_annotation_saved(client: httpx.Client, profile: str, locus: str) -> d
         return None
     resp.raise_for_status()
     return resp.json()
+
+
+def build_report(
+    *,
+    samples: list[dict[str, Any]],
+    baseline_samples: int,
+    job: dict,
+    safety_factor: float,
+    profile: str,
+    locus: str,
+) -> dict[str, Any]:
+    if len(samples) < baseline_samples + 1:
+        raise RuntimeError("Not enough memory samples collected.")
+
+    baseline_used = [s["used_bytes"] for s in samples[:baseline_samples]]
+    baseline_mean = int(statistics.mean(baseline_used))
+
+    used_series = [s["used_bytes"] for s in samples]
+    incremental = [max(0, u - baseline_mean) for u in used_series]
+    used_stats = summarize_bytes(used_series)
+    incr_stats = summarize_bytes(incremental)
+
+    peak_incremental = incr_stats["max"]
+    recommended_gb = recommend_job_memory_gb(peak_incremental, safety_factor=safety_factor)
+
+    ortholog_ran = None
+    result = job.get("result") or {}
+    annotation = result.get("annotation") or {}
+    meta = annotation.get("annotation_metadata") or {}
+    ortholog_pass = meta.get("ortholog_pass")
+    if isinstance(ortholog_pass, dict):
+        ortholog_ran = ortholog_pass.get("ran")
+
+    return {
+        "profile": profile,
+        "locus": locus,
+        "job_id": job.get("id"),
+        "job_status": job.get("status"),
+        "ortholog_pass_ran": ortholog_ran,
+        "sample_count": len(samples),
+        "baseline_used_bytes": baseline_mean,
+        "system_used_bytes": used_stats,
+        "incremental_used_bytes": incr_stats,
+        "peak_incremental_bytes": peak_incremental,
+        "safety_factor": safety_factor,
+        "recommended_job_memory_gb": recommended_gb,
+    }
+
+
+def format_report_text(report: dict[str, Any]) -> str:
+    def gb(x: int) -> str:
+        return f"{x / GIB:.1f} GB"
+
+    incr = report["incremental_used_bytes"]
+    lines = [
+        "=" * 64,
+        "Gene Autoannotator — Observational Job Memory Profile",
+        "=" * 64,
+        f"Profile / locus:  {report['profile']} / {report['locus']}",
+        f"Job ID:           {report['job_id']}",
+        f"Job status:       {report['job_status']}",
+        f"Ortholog pass ran:{report['ortholog_pass_ran']}",
+        f"Samples:          {report['sample_count']}",
+        "",
+        "Incremental memory (above baseline):",
+        f"  min:  {gb(incr['min'])}",
+        f"  mean: {gb(incr['mean'])}",
+        f"  p95:  {gb(incr['p95'])}",
+        f"  p99:  {gb(incr['p99'])}",
+        f"  max:  {gb(incr['max'])}  ← peak",
+        "",
+        f"Safety margin:              {int(report['safety_factor'] * 100)}%",
+        f"Recommended job allocation: {report['recommended_job_memory_gb']} GB",
+        "=" * 64,
+    ]
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--coordinator-url", default="http://127.0.0.1:8000")
+    parser.add_argument("--token", default=os.getenv("WORKER_API_TOKEN", ""))
+    parser.add_argument("--profile", default="mtb-h37rv")
+    parser.add_argument(
+        "--locus",
+        default="Rv1734c",
+        help="Gene locus (default test gene; should trigger ortholog pass)",
+    )
+    parser.add_argument("--interval-sec", type=float, default=2.0)
+    parser.add_argument(
+        "--baseline-sec",
+        type=float,
+        default=10.0,
+        help="Seconds to sample before submitting the job",
+    )
+    parser.add_argument("--safety-factor", type=float, default=DEFAULT_SAFETY_FACTOR)
+    parser.add_argument("--output-dir", default=".cache/memory_profiles")
+    args = parser.parse_args(argv)
+
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out_dir = Path(args.output_dir) / run_id
+    log_path = out_dir / "memory.log"
+
+    preflight(args.coordinator_url, args.token)
+
+    baseline_samples = max(1, int(args.baseline_sec / args.interval_sec))
+    job: dict = {}
+    saved: dict | None = None
+
+    sampler = MemoryLogSampler(log_path=log_path, interval_sec=args.interval_sec)
+    sampler.start()
+    try:
+        time.sleep(args.baseline_sec)
+
+        headers = {"Authorization": f"Bearer {args.token}"} if args.token else {}
+        with httpx.Client(base_url=args.coordinator_url, headers=headers, timeout=30.0) as client:
+            job_id = submit_job(client, profile=args.profile, locus=args.locus)
+            print(f"Submitted job {job_id}; sampling memory...", flush=True)
+            job = poll_job(client, job_id)
+            if job.get("status") != "completed":
+                raise RuntimeError(f"Job failed: {job.get('error')}")
+
+            saved = verify_annotation_saved(client, args.profile, args.locus)
+            if saved is None:
+                print("Warning: job completed but annotation not found in Mongo.", file=sys.stderr)
+    finally:
+        sampler.stop()
+
+    samples = parse_memory_log(log_path)
+    report = build_report(
+        samples=samples,
+        baseline_samples=baseline_samples,
+        job=job,
+        safety_factor=args.safety_factor,
+        profile=args.profile,
+        locus=args.locus,
+    )
+    report["mongo_verified"] = saved is not None
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (out_dir / "samples.json").write_text(json.dumps(samples, indent=2), encoding="utf-8")
+    text = format_report_text(report)
+    (out_dir / "report.txt").write_text(text, encoding="utf-8")
+    print(text)
+    print(f"\nArtifacts: {out_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
