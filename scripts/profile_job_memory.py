@@ -3,11 +3,71 @@
 
 from __future__ import annotations
 
+import re
 import statistics
+import subprocess
+import threading
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 GIB = 1024 ** 3
 DEFAULT_SAFETY_FACTOR = 0.20
+
+
+@dataclass
+class MemoryLogSampler:
+    log_path: Path
+    interval_sec: float = 2.0
+    _thread: threading.Thread | None = None
+    _stop: threading.Event | None = None
+
+    def start(self) -> None:
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._stop = threading.Event()
+
+        def _loop() -> None:
+            with self.log_path.open("a", encoding="utf-8") as fh:
+                while not self._stop.is_set():
+                    ts = datetime.now(timezone.utc).isoformat()
+                    fh.write(f"\n=== {ts} ===\n")
+                    fh.flush()
+                    for cmd in (["free", "-b"], ["free", "-h"]):
+                        try:
+                            out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
+                        except (OSError, subprocess.CalledProcessError) as exc:
+                            out = f"<error running {cmd}: {exc}>\n"
+                        fh.write(out)
+                        if not out.endswith("\n"):
+                            fh.write("\n")
+                        fh.flush()
+                    self._stop.wait(self.interval_sec)
+
+        self._thread = threading.Thread(target=_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self._stop is not None:
+            self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=self.interval_sec + 5)
+
+
+def parse_memory_log(log_path: Path) -> list[dict[str, Any]]:
+    text = log_path.read_text(encoding="utf-8")
+    parts = re.split(r"\n=== (.+?) ===\n", text)
+    samples: list[dict[str, Any]] = []
+    for i in range(1, len(parts), 2):
+        timestamp = parts[i]
+        block = parts[i + 1]
+        for line in block.splitlines():
+            if line.strip().startswith("Mem:"):
+                parsed = parse_free_b_mem_line(line)
+                if parsed is not None:
+                    samples.append({"timestamp": timestamp, **parsed})
+                break
+    return samples
 
 
 def parse_free_b_mem_line(line: str) -> dict[str, int] | None:
