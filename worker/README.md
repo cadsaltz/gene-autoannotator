@@ -87,6 +87,23 @@ The script samples `free` every 2 seconds, submits a normal job with
 `.cache/memory_profiles/<timestamp>/`. Set `JOB_MEMORY_ESTIMATE_GB` to the
 recommended value from `report.txt`.
 
+### Ollama memory: one model at a time
+
+By default the annotation pipeline sets `keep_alive=0` on every Ollama call so
+each model unloads immediately after use. That avoids holding multiple large
+models in RAM during model switches (Ollama's server default is ~5 minutes).
+
+```bash
+# Default: unload after each call (recommended on memory-constrained workers)
+# AUTOANNOTATION_OLLAMA_KEEP_ALIVE=0
+
+# Keep models warm for faster repeated calls to the same model:
+export AUTOANNOTATION_OLLAMA_KEEP_ALIVE=5m
+```
+
+You can also set `OLLAMA_KEEP_ALIVE=0` on the Ollama **server** process, but the
+per-request setting above overrides it when the worker makes calls.
+
 ## Running the worker
 
 ```bash

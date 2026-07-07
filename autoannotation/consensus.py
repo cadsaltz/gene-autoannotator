@@ -181,9 +181,19 @@ def _normalize_candidates(
     field_defs_profile=None,
 ) -> list[dict[str, Any]]:
     normalized = []
-    for candidate in candidates:
+    for index, candidate in enumerate(candidates):
         if isinstance(candidate, str):
-            parsed = json.loads(candidate)
+            try:
+                parsed = json.loads(candidate)
+            except json.JSONDecodeError as exc:
+                preview = candidate[:120].replace('\n', ' ')
+                raise ValueError(
+                    f'Consensus candidate {index} is not valid JSON: {exc}; preview={preview!r}'
+                ) from exc
+            if not isinstance(parsed, dict):
+                raise ValueError(
+                    f'Consensus candidate {index} must be a JSON object, got {type(parsed).__name__}'
+                )
         else:
             parsed = candidate
         normalized.append(

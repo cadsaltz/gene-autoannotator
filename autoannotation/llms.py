@@ -4,7 +4,6 @@ import logging
 import os
 import re
 import time
-import time
 
 import ollama
 
@@ -138,6 +137,62 @@ def _duration_from_nanoseconds(value):
     if value is None:
         return None
     return value / 1_000_000_000
+
+
+def _ollama_keep_alive():
+    """Unload policy for Ollama models after each API call.
+
+    Default ``0`` unloads the model immediately so only one model tends to stay
+    in RAM between pipeline steps. Set ``AUTOANNOTATION_OLLAMA_KEEP_ALIVE=5m``
+    (or another duration) to keep models warm for repeated calls.
+    """
+    raw = os.getenv('AUTOANNOTATION_OLLAMA_KEEP_ALIVE', '0').strip()
+    if not raw:
+        return 0
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
+
+
+def chat_response_content(response, *, role: str, model: str) -> str:
+    try:
+        content = response['message']['content']
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(
+            f'Ollama {role} response missing message content (model {model})'
+        ) from exc
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError(f'Ollama {role} returned empty content (model {model})')
+    return content
+
+
+def parse_response_json(text: str, *, role: str, model: str) -> dict:
+    if not isinstance(text, str) or not text.strip():
+        raise RuntimeError(f'Cannot parse empty JSON for Ollama {role} (model {model})')
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f'Invalid JSON from Ollama {role} (model {model}): {exc}'
+        ) from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(
+            f'Expected JSON object from Ollama {role} (model {model}), got {type(payload).__name__}'
+        )
+    return payload
+
+
+def ollama_chat(*, model: str, messages, json_schema=None, role: str = 'inference'):
+    kwargs = {
+        'model': model,
+        'messages': messages,
+        'options': {'temperature': 0},
+        'keep_alive': _ollama_keep_alive(),
+    }
+    if json_schema is not None:
+        kwargs['format'] = json_schema
+    return ollama.chat(**kwargs)
 
 
 def _nullable_string(description):
@@ -513,8 +568,10 @@ class LlmHandler:
     @staticmethod
     def normalize_response_json(
         gene_json, *, require_biology_keys=False, organism_profile=None, field_defs_profile=None,
+        model: str = 'unknown',
+        role: str = 'response',
     ):
-        parsed = json.loads(gene_json)
+        parsed = parse_response_json(gene_json, role=role, model=model)
         normalized = normalize_annotation_fields(
             parsed,
             require_biology_keys=require_biology_keys,
@@ -665,6 +722,8 @@ class LlmHandler:
                 require_biology_keys=True,
                 organism_profile=organism_profile,
                 field_defs_profile=field_defs_profile,
+                model=model,
+                role='gene_aggregation',
             ), cached_dur
 
         log.debug((
@@ -672,7 +731,7 @@ class LlmHandler:
             f'{len(prompt)} chars) to LLM (model {model})'
         ))
         try:
-            response = ollama.chat(
+            response = ollama_chat(
                 model=model,
                 messages=[
                     {
@@ -680,12 +739,12 @@ class LlmHandler:
                         'content': prompt,
                     },
                 ],
-                format=json_schema,
-                options={
-                    'temperature': 0,
-                },
+                json_schema=json_schema,
+                role='gene_aggregation',
             )
-            response_text = response['message']['content']
+            response_text = chat_response_content(
+                response, role='gene_aggregation', model=model,
+            )
             duration_sec = response['total_duration'] / 1_000_000_000
             log.debug(
                 f'Got response ({len(response_text)} chars) back from {model} in ' + \
@@ -696,11 +755,13 @@ class LlmHandler:
                 require_biology_keys=True,
                 organism_profile=organism_profile,
                 field_defs_profile=field_defs_profile,
+                model=model,
+                role='gene_aggregation',
             )
             usage = self._usage_from_response(response, duration_sec)
             self._record_usage('gene_aggregation', model, duration_sec, usage=usage)
             self._write_cache(model, prompt, json_schema, response_text, duration_sec, usage)
-        except KeyError as ke:
+        except (KeyError, RuntimeError) as exc:
             if retry:
                 return self.get_llm_aggregate_json(
                     json_responses, pmids, model=model, json_schema=json_schema,
@@ -710,8 +771,7 @@ class LlmHandler:
                     evidence_mode=evidence_mode, ortholog_context=ortholog_context,
                     field_defs_profile=field_defs_profile,
                 )
-            else:
-                raise RuntimeError(f'Failed to get response back from {model}') from ke
+            raise RuntimeError(f'Failed to get response back from {model}') from exc
         return response_text, duration_sec
 
     def _ollama_batch_consensus_merge(
@@ -736,18 +796,72 @@ class LlmHandler:
             field_defs_profile=field_defs_profile,
             organism_profile=organism_profile,
         )
-        response = ollama.chat(
+        response = ollama_chat(
             model=model,
             messages=[{'role': 'user', 'content': prompt}],
-            format=schema,
-            options={'temperature': 0},
+            json_schema=schema,
+            role='section_consensus',
         )
-        payload = json.loads(response['message']['content'])
+        payload = parse_response_json(
+            chat_response_content(response, role='section_consensus', model=model),
+            role='section_consensus',
+            model=model,
+        )
         duration_sec = response['total_duration'] / 1_000_000_000
         return (
             {field_key: payload.get(field_key) for field_key in unresolved_fields},
             duration_sec,
         )
+
+    def _null_consensus_batch(self, unresolved_fields):
+        return {field_key: None for field_key in unresolved_fields}
+
+    def _load_cached_json(self, model, prompt, json_schema, *, role: str):
+        cached_response, cached_dur = self._read_cache(model, prompt, json_schema)
+        if cached_response is None:
+            return None, cached_dur
+        try:
+            return (
+                parse_response_json(cached_response, role=role, model=model),
+                cached_dur,
+            )
+        except RuntimeError as exc:
+            log.warning('Ignoring invalid cached %s for model %s: %s', role, model, exc)
+            self._invalidate_cache(model, prompt, json_schema)
+            return None, cached_dur
+
+    def _run_consensus_batch_merge(
+        self,
+        normalized,
+        unresolved_fields,
+        *,
+        model,
+        organism_profile=None,
+        field_defs_profile=None,
+        retry: bool = True,
+    ):
+        for attempt in range(2 if retry else 1):
+            try:
+                return self._ollama_batch_consensus_merge(
+                    normalized,
+                    unresolved_fields,
+                    model=model,
+                    organism_profile=organism_profile,
+                    field_defs_profile=field_defs_profile,
+                )
+            except RuntimeError as exc:
+                if attempt == 0 and retry:
+                    log.warning(
+                        'Consensus batch merge failed for model %s (attempt 1), retrying: %s',
+                        model, exc,
+                    )
+                    continue
+                log.warning(
+                    'Consensus batch merge failed for model %s; nulling fields %s: %s',
+                    model, unresolved_fields, exc,
+                )
+                return self._null_consensus_batch(unresolved_fields), 0.0
+        return self._null_consensus_batch(unresolved_fields), 0.0
 
     def get_llm_consensus_json(
         self,
@@ -793,33 +907,31 @@ class LlmHandler:
                 field_defs_profile=field_defs_profile,
                 organism_profile=organism_profile,
             )
-            cached_response, cached_dur = self._read_cache(model, cache_prompt, batch_schema)
-            if cached_response is not None:
+            cached_payload, cached_dur = self._load_cached_json(
+                model, cache_prompt, batch_schema, role='section_consensus',
+            )
+            if cached_payload is not None:
                 self._record_usage(
                     'section_consensus', model, cached_dur, cache_hit=True,
                     usage=self._read_cache_usage(model, cache_prompt, batch_schema),
                 )
-                return json.loads(cached_response)
+                return cached_payload
 
-            try:
-                result, duration_sec = self._ollama_batch_consensus_merge(
-                    normalized,
-                    unresolved_fields,
-                    model=model,
-                    organism_profile=organism_profile,
-                    field_defs_profile=field_defs_profile,
-                )
-                usage = None
-                self._record_usage('section_consensus', model, duration_sec, usage=usage)
-                self._write_cache(
-                    model, cache_prompt, batch_schema,
-                    json.dumps(result), duration_sec, usage=usage,
-                )
-                return result
-            except KeyError as ke:
-                if retry:
-                    raise ke
-                raise RuntimeError(f'Failed to get response back from {model}') from ke
+            result, duration_sec = self._run_consensus_batch_merge(
+                normalized,
+                unresolved_fields,
+                model=model,
+                organism_profile=organism_profile,
+                field_defs_profile=field_defs_profile,
+                retry=retry,
+            )
+            usage = None
+            self._record_usage('section_consensus', model, duration_sec, usage=usage)
+            self._write_cache(
+                model, cache_prompt, batch_schema,
+                json.dumps(result), duration_sec, usage=usage,
+            )
+            return result
 
         start = time.perf_counter()
         try:
@@ -833,7 +945,7 @@ class LlmHandler:
                 field_defs_profile=field_defs_profile,
                 batch_merger=batch_merger,
             )
-        except KeyError as ke:
+        except (KeyError, ValueError) as exc:
             if retry:
                 return self.get_llm_consensus_json(
                     candidates,
@@ -848,7 +960,7 @@ class LlmHandler:
                     allow_missing_locus=allow_missing_locus,
                     field_defs_profile=field_defs_profile,
                 )
-            raise RuntimeError(f'Failed to get response back from {model}') from ke
+            raise RuntimeError(f'Failed to get response back from {model}') from exc
         duration_sec = time.perf_counter() - start
         log.debug(
             'Section consensus (%s): llm_calls=%s provenance=%s',
@@ -861,6 +973,8 @@ class LlmHandler:
             response_text,
             organism_profile=organism_profile,
             field_defs_profile=field_defs_profile,
+            model=model,
+            role='section_consensus',
         ), duration_sec
 
     def get_llm_gene_info_json(
@@ -898,13 +1012,15 @@ class LlmHandler:
                 cached_response,
                 organism_profile=organism_profile,
                 field_defs_profile=field_defs_profile,
+                model=model,
+                role='section_summary',
             ), cached_dur
 
         log.debug((
             f'Submitting section-summary job (length {len(prompt)} chars) to LLM (model {model})'
         ))
         try:
-            response = ollama.chat(
+            response = ollama_chat(
                 model=model,
                 messages=[
                     {
@@ -912,12 +1028,12 @@ class LlmHandler:
                         'content': prompt,
                     },
                 ],
-                format=json_schema,
-                options={
-                    'temperature': 0,
-                },
+                json_schema=json_schema,
+                role='section_summary',
             )
-            response_text = response['message']['content']
+            response_text = chat_response_content(
+                response, role='section_summary', model=model,
+            )
             duration_sec = response['total_duration'] / 1_000_000_000
             log.debug(
                 f'Got response ({len(response_text)} chars) back from {model} in ' + \
@@ -927,11 +1043,13 @@ class LlmHandler:
                 response_text,
                 organism_profile=organism_profile,
                 field_defs_profile=field_defs_profile,
+                model=model,
+                role='section_summary',
             )
             usage = self._usage_from_response(response, duration_sec)
             self._record_usage('section_summary', model, duration_sec, usage=usage)
             self._write_cache(model, prompt, json_schema, response_text, duration_sec, usage)
-        except KeyError as ke:
+        except (KeyError, RuntimeError) as exc:
             if retry:
                 return self.get_llm_gene_info_json(
                     gene_id, gene_name, info_text, model, json_schema=json_schema, retry=False,
@@ -939,9 +1057,15 @@ class LlmHandler:
                     evidence_mode=evidence_mode, ortholog_context=ortholog_context,
                     field_defs_profile=field_defs_profile,
                 )
-            else:
-                raise RuntimeError(f'Failed to get response back from {model}') from ke
+            raise RuntimeError(f'Failed to get response back from {model}') from exc
         return response_text, duration_sec
+
+    def _invalidate_cache(self, model, prompt, json_schema):
+        cache_path = self._get_file(model, prompt, json_schema)
+        try:
+            os.remove(cache_path)
+        except OSError:
+            pass
 
     def _get_file(self, model, prompt, json_schema):
         # Cache identity includes the model, full prompt, and JSON schema. That
@@ -959,9 +1083,19 @@ class LlmHandler:
         if not os.path.exists(cache_path):
             return None, None
         log.debug(f'Reading cached response for LLM {model}')
-        with open(cache_path) as cache_file:
-            cache_obj = json.load(cache_file)
-            return cache_obj['response_text'], cache_obj['duration_sec']
+        try:
+            with open(cache_path) as cache_file:
+                cache_obj = json.load(cache_file)
+        except (OSError, json.JSONDecodeError) as exc:
+            log.warning('Ignoring unreadable cache for model %s at %s: %s', model, cache_path, exc)
+            self._invalidate_cache(model, prompt, json_schema)
+            return None, None
+        response_text = cache_obj.get('response_text')
+        if not isinstance(response_text, str) or not response_text.strip():
+            log.warning('Ignoring empty cached response for model %s at %s', model, cache_path)
+            self._invalidate_cache(model, prompt, json_schema)
+            return None, None
+        return response_text, cache_obj.get('duration_sec')
 
     def _read_cache_usage(self, model, prompt, json_schema):
         cache_path = self._get_file(model, prompt, json_schema)
@@ -976,6 +1110,9 @@ class LlmHandler:
         return usage if isinstance(usage, dict) else None
 
     def _write_cache(self, model, prompt, json_schema, response_text, duration_sec, usage=None):
+        if not isinstance(response_text, str) or not response_text.strip():
+            log.warning('Refusing to cache empty response from LLM %s', model)
+            return False
         log.debug(f'Caching response from LLM {model}')
         cache_path = self._get_file(model, prompt, json_schema)
 

@@ -358,3 +358,54 @@ def test_aggregate_schema_allows_null_gene_id_when_explicitly_enabled():
 
 	assert captured["schema"]["properties"]["gene_id"]["type"] == ["string", "null"]
 
+
+def test_ollama_chat_passes_keep_alive_zero_by_default(monkeypatch):
+	captured = {}
+
+	def fake_chat(**kwargs):
+		captured.update(kwargs)
+		return {
+			"message": {"content": "{}"},
+			"total_duration": 1_000_000_000,
+		}
+
+	monkeypatch.delenv("AUTOANNOTATION_OLLAMA_KEEP_ALIVE", raising=False)
+	monkeypatch.setattr("autoannotation.llms.ollama.chat", fake_chat)
+	llms.ollama_chat(
+		model="fake-model",
+		messages=[{"role": "user", "content": "hi"}],
+		role="test",
+	)
+	assert captured["keep_alive"] == 0
+
+
+def test_read_cache_ignores_empty_response_text(tmp_path):
+	handler = llms.LlmHandler(cache_dir=str(tmp_path))
+	model = "fake-model"
+	prompt = "prompt"
+	schema = {"type": "object"}
+	cache_path = handler._get_file(model, prompt, schema)
+	cache_path.parent.mkdir(parents=True, exist_ok=True)
+	cache_path.write_text(json.dumps({"response_text": "", "duration_sec": 0.1}))
+	assert handler._read_cache(model, prompt, schema) == (None, None)
+	assert not cache_path.exists()
+
+
+def test_run_consensus_batch_merge_nulls_fields_after_empty_response(monkeypatch):
+	def fake_chat(**kwargs):
+		return {
+			"message": {"content": ""},
+			"total_duration": 1_000_000_000,
+		}
+
+	monkeypatch.setattr("autoannotation.llms.ollama.chat", fake_chat)
+	handler = llms.LlmHandler(cache_dir="./.cache")
+	result, duration = handler._run_consensus_batch_merge(
+		[{"function": "A"}, {"function": "B"}],
+		["function"],
+		model="fake-model",
+		retry=True,
+	)
+	assert result == {"function": None}
+	assert duration == 0.0
+

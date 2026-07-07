@@ -96,6 +96,7 @@ Useful environment variables:
 - `AUTOANNOTATION_SUMMARY_MODELS=model1,model2,model3`
 - `AUTOANNOTATION_CONSENSUS_MODEL=model`
 - `AUTOANNOTATION_AGGREGATION_MODEL=model`
+- `AUTOANNOTATION_OLLAMA_KEEP_ALIVE=0` (default) unloads each Ollama model immediately after every call; use `5m` to keep models warm between calls.
 - `OLLAMA_HOST=http://host:11434` when Ollama is not local.
 - `MONGO_URI` or `MONGODB_URI` to enable annotation history/search and saved user profiles. Set it for the FastAPI backend so completed jobs and custom profiles can be saved, and set it in `frontend/.env.local` so Next.js can read stored annotations directly.
 - `COORDINATOR_API_BASE_URL=http://127.0.0.1:8000` for the Next.js proxy/server calls (legacy `BACKEND_API_BASE_URL` still honored as a fallback).
