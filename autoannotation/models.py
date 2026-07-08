@@ -15,12 +15,21 @@ PERF_MODELS = {
     'aggregation': 'gemma3:27b',
 }
 
-# === Lite models (<3GB each) ===
+# === Lite models (~4GB total) ===
 # Use smaller, RAM-friendly alternatives that roughly mimic variety:
 LITE_MODELS = {
-    'summary': ['mistral:7b-instruct', 'gemma3:4b'],
-    'consensus': 'qwen3:8b',
-    'aggregation': 'gemma3:4b',
+    'summary': ['qwen3.5:0.8b', 'gemma3:1b'],
+    'consensus': 'qwen3:0.6b',
+    'aggregation': 'qwen3:1.7b',
+}
+
+# === Nano models (~2GB total on GPU) ===
+# Infrastructure / router testing on ~8GB VRAM: two homogeneous Ollama servers
+# can each keep all four models warm. Not for production annotation quality.
+NANO_MODELS = {
+    'summary': ['qwen3:0.6b', 'qwen2.5:0.5b'],
+    'consensus': 'gemma3:270m',
+    'aggregation': 'gemma3:1b',
 }
 
 def _parse_summary_models(value):
@@ -38,7 +47,11 @@ def _select_model_set(mode):
         return PERF_MODELS
     if normalized_mode == 'lite':
         return LITE_MODELS
-    raise ValueError("AUTOANNOTATION_MODEL_MODE must be 'performance' or 'lite'")
+    if normalized_mode == 'nano':
+        return NANO_MODELS
+    raise ValueError(
+        "AUTOANNOTATION_MODEL_MODE must be 'performance', 'lite', or 'nano'"
+    )
 
 
 # === Select mode ===

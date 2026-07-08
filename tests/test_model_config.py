@@ -32,11 +32,22 @@ def test_model_config_can_use_lite_mode(monkeypatch):
     configured = reload_models(monkeypatch, AUTOANNOTATION_MODEL_MODE="lite")
 
     assert configured.MODEL_SUMMARY == [
-        "mistral:7b-instruct",
-        "gemma3:4b",
+        "qwen3.5:0.8b",
+        "gemma3:1b",
     ]
-    assert configured.MODEL_CONSENSUS == "qwen3:8b"
-    assert configured.MODEL_AGGREGATION == "gemma3:4b"
+    assert configured.MODEL_CONSENSUS == "qwen3:0.6b"
+    assert configured.MODEL_AGGREGATION == "qwen3:1.7b"
+
+
+def test_model_config_can_use_nano_mode(monkeypatch):
+    configured = reload_models(monkeypatch, AUTOANNOTATION_MODEL_MODE="nano")
+
+    assert configured.MODEL_SUMMARY == [
+        "qwen3:0.6b",
+        "qwen2.5:0.5b",
+    ]
+    assert configured.MODEL_CONSENSUS == "gemma3:270m"
+    assert configured.MODEL_AGGREGATION == "gemma3:1b"
 
 
 def test_model_config_can_be_overridden_by_environment(monkeypatch):
