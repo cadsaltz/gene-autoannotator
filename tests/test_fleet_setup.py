@@ -77,10 +77,18 @@ def test_start_fleet_launches_one_process_per_server(monkeypatch):
         return FakePopen()
 
     monkeypatch.setattr(setup, "start_ollama_server", fake_start)
-    monkeypatch.setattr(setup, "_port_is_open", lambda _port: True)
+    monkeypatch.setattr(setup, "_ensure_ports_free", lambda ports, **kw: None)
     procs = setup.start_fleet(cfg, spec)
     assert len(procs) == 2
     assert launched == [(11434, 3, 0), (11435, 3, 1)]
+
+
+def test_build_ollama_server_env_does_not_inherit_parent_host(monkeypatch):
+    monkeypatch.setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+    env = setup._build_ollama_server_env(port=11435, parallel=2, gpu_index=0)
+    assert env["OLLAMA_HOST"] == "127.0.0.1:11435"
+    assert env["OLLAMA_NUM_PARALLEL"] == "2"
+    assert env["CUDA_VISIBLE_DEVICES"] == "0"
 
 
 def test_ensure_fleet_config_loads_from_env(tmp_path, monkeypatch):
@@ -117,6 +125,7 @@ def test_kill_all_ollama_servers_sends_sigterm(monkeypatch):
         return [100, 200] if calls["count"] == 1 else []
 
     monkeypatch.setattr(setup, "_stop_snap_ollama", lambda: None)
+    monkeypatch.setattr(setup, "_stop_systemd_ollama", lambda: None)
     monkeypatch.setattr(setup, "_pids_listening_on_port", lambda _port: [])
     monkeypatch.setattr(setup, "_find_ollama_serve_pids", fake_find)
     killed = []

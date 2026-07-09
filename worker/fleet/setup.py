@@ -31,6 +31,102 @@ def _default_env_path() -> Path:
 
 DEFAULT_OLLAMA_BASE_PORT = 11434
 OLLAMA_PORT_SCAN_COUNT = 16
+OLLAMA_SERVER_READY_TIMEOUT_SEC = 15.0
+OLLAMA_SERVER_POLL_INTERVAL_SEC = 0.1
+
+_ENV_PASSTHROUGH_KEYS = (
+    "PATH",
+    "HOME",
+    "USER",
+    "LANG",
+    "LC_ALL",
+    "LD_LIBRARY_PATH",
+    "NVIDIA_VISIBLE_DEVICES",
+    "CUDA_VISIBLE_DEVICES",
+    "OLLAMA_MODELS",
+    "OLLAMA_KEEP_ALIVE",
+    "OLLAMA_FLASH_ATTENTION",
+    "OLLAMA_LOAD_TIMEOUT",
+    "OLLAMA_MAX_LOADED_MODELS",
+    "OLLAMA_MAX_QUEUE",
+)
+
+
+def _ollama_executable() -> str:
+    path = shutil.which("ollama")
+    if path is None:
+        raise RuntimeError("ollama executable not found on PATH")
+    return path
+
+
+def _ollama_is_snap() -> bool:
+    path = _ollama_executable()
+    return "/snap/" in path
+
+
+def _ollama_serve_binary() -> str:
+    """Prefer the real binary when the PATH entry is a snap wrapper."""
+    path = _ollama_executable()
+    if not _ollama_is_snap():
+        return path
+    candidates = (
+        Path("/snap/ollama/current/bin/ollama"),
+        Path("/snap/ollama/current/usr/bin/ollama"),
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return path
+
+
+def _build_ollama_server_env(
+    *,
+    port: int,
+    parallel: int,
+    gpu_index: int | None,
+) -> dict[str, str]:
+    # Do not inherit OLLAMA_HOST from the parent shell/worker.env; each fleet
+    # member must bind its own port explicitly.
+    env: dict[str, str] = {}
+    for key in _ENV_PASSTHROUGH_KEYS:
+        value = os.environ.get(key)
+        if value:
+            env[key] = value
+    env["OLLAMA_HOST"] = f"127.0.0.1:{port}"
+    env["OLLAMA_NUM_PARALLEL"] = str(parallel)
+    if gpu_index is not None:
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
+    return env
+
+
+def _read_process_stderr(proc: subprocess.Popen) -> str:
+    if proc.stderr is None:
+        return ""
+    try:
+        return proc.stderr.read() or ""
+    except Exception:
+        return ""
+
+
+def _wait_for_ollama_server(
+    proc: subprocess.Popen,
+    *,
+    port: int,
+    timeout_sec: float = OLLAMA_SERVER_READY_TIMEOUT_SEC,
+) -> None:
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            stderr = _read_process_stderr(proc).strip()
+            detail = stderr or f"exit code {proc.returncode}"
+            raise RuntimeError(f"ollama serve failed on port {port}: {detail}")
+        if _port_is_open(port):
+            return
+        time.sleep(OLLAMA_SERVER_POLL_INTERVAL_SEC)
+    shutdown_fleet([proc])
+    raise RuntimeError(
+        f"Ollama server did not start listening on 127.0.0.1:{port} within {timeout_sec:.0f}s"
+    )
 
 
 def _read_line(prompt: str) -> str:
@@ -81,22 +177,24 @@ def start_ollama_server(
     parallel: int,
     gpu_index: int | None,
 ) -> subprocess.Popen:
-    env = os.environ.copy()
-    env["OLLAMA_HOST"] = f"127.0.0.1:{port}"
-    env["OLLAMA_NUM_PARALLEL"] = str(parallel)
-    if gpu_index is not None:
-        env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
+    env = _build_ollama_server_env(port=port, parallel=parallel, gpu_index=gpu_index)
+    binary = _ollama_serve_binary()
+    log.info(
+        "Starting Ollama server on 127.0.0.1:%s (binary=%s, OLLAMA_HOST=%s, parallel=%s, gpu=%s)",
+        port,
+        binary,
+        env["OLLAMA_HOST"],
+        parallel,
+        gpu_index,
+    )
     proc = subprocess.Popen(
-        ["ollama", "serve"],
+        [binary, "serve"],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
     )
-    time.sleep(0.25)
-    if proc.poll() is not None:
-        stderr = (proc.stderr.read() if proc.stderr else "") or f"exit code {proc.returncode}"
-        raise RuntimeError(f"ollama serve failed on port {port}: {stderr.strip()}")
+    _wait_for_ollama_server(proc, port=port)
     return proc
 
 
@@ -105,6 +203,8 @@ def start_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
     for i in range(cfg.num_servers):
         gpu = i % spec.gpu_count if spec.gpu_count else None
         port = cfg.base_port + i
+        if i > 0:
+            _ensure_ports_free([port], timeout_sec=5.0)
         procs.append(
             start_ollama_server(
                 port=port,
@@ -112,9 +212,6 @@ def start_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
                 gpu_index=gpu,
             )
         )
-        if not _port_is_open(port):
-            shutdown_fleet(procs)
-            raise RuntimeError(f"Ollama server did not start listening on 127.0.0.1:{port}")
     return procs
 
 
@@ -180,6 +277,26 @@ def _pids_listening_on_port(port: int) -> list[int]:
     return []
 
 
+def _stop_systemd_ollama() -> None:
+    if shutil.which("systemctl") is None:
+        return
+    status = subprocess.run(
+        ["systemctl", "is-active", "ollama"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if status.returncode != 0:
+        return
+    log.info("Stopping systemd ollama service")
+    subprocess.run(
+        ["systemctl", "stop", "ollama"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
 def _stop_snap_ollama() -> None:
     if shutil.which("snap") is None:
         return
@@ -193,6 +310,11 @@ def _stop_snap_ollama() -> None:
         return
     log.info("Stopping snap ollama service")
     subprocess.run(["snap", "stop", "ollama"], check=False, capture_output=True, text=True)
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if not _pids_listening_on_port(DEFAULT_OLLAMA_BASE_PORT):
+            return
+        time.sleep(0.1)
 
 
 def _ollama_fleet_ports(num_servers: int = 1, base_port: int = DEFAULT_OLLAMA_BASE_PORT) -> list[int]:
@@ -202,6 +324,7 @@ def _ollama_fleet_ports(num_servers: int = 1, base_port: int = DEFAULT_OLLAMA_BA
 def kill_all_ollama_servers(*, timeout_sec: float = 10.0) -> None:
     """Stop Ollama server processes before starting a fresh fleet."""
     _stop_snap_ollama()
+    _stop_systemd_ollama()
 
     ports = _ollama_fleet_ports(
         num_servers=OLLAMA_PORT_SCAN_COUNT,
@@ -286,6 +409,12 @@ def reset_ollama_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Po
     kill_all_ollama_servers()
     ports = [cfg.base_port + i for i in range(cfg.num_servers)]
     _ensure_ports_free(ports)
+    if cfg.num_servers > 1 and _ollama_is_snap():
+        log.warning(
+            "Snap Ollama detected with %s fleet servers; if startup fails, set "
+            "OLLAMA_FLEET_SERVERS=1 in worker.env or install the native Ollama package.",
+            cfg.num_servers,
+        )
     return start_fleet(cfg, spec)
 
 
