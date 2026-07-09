@@ -74,7 +74,12 @@ def _shutdown_fleet(procs: list[Any]) -> None:
 
 
 def main(argv=None):
-    args = _parse_args(list(argv) if argv is not None else None)
+    if isinstance(argv, argparse.Namespace):
+        args = argv
+    elif argv is None:
+        args = _parse_args(None)
+    else:
+        args = _parse_args(list(argv))
     ensure_worker_env()
     fleet = ensure_fleet_config(interactive=False)
     spec = probe_system()
