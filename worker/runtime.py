@@ -66,6 +66,7 @@ class WorkerRuntime:
         execute_fn,
         heartbeat_fn=None,
         collect_metrics: bool = False,
+        metrics_collector=None,
     ) -> None:
         self._config = config
         self._fleet_config = fleet_config
@@ -73,6 +74,7 @@ class WorkerRuntime:
         self._execute_fn = execute_fn
         self._heartbeat_fn = heartbeat_fn
         self._collect_metrics = collect_metrics
+        self._metrics_collector = metrics_collector
 
         self._max_slots = int(getattr(fleet_config, "max_slots", getattr(config, "max_slots", 0)))
         self._heartbeat_seconds = float(getattr(config, "heartbeat_seconds", 15))
@@ -146,14 +148,19 @@ class WorkerRuntime:
                 finished.append((job_id, active.future))
 
         for job_id, future in finished:
-            self._active_jobs.pop(job_id, None)
+            active = self._active_jobs.pop(job_id, None)
+            wall_ms = 0
+            if active is not None:
+                wall_ms = max(0, int((time.monotonic() - active.started_at) * 1000))
             try:
                 result = future.result()
             except Exception as exc:  # noqa: BLE001 - report all execution errors.
                 error = str(exc)
                 self._job_source.on_fail(job_id, error, _is_retryable(error))
+                self._metrics_record_job_done(job_id, wall_ms=wall_ms, failed=True)
             else:
                 self._job_source.on_complete(job_id, result)
+                self._metrics_record_job_done(job_id, wall_ms=wall_ms, failed=False)
 
     def _start_heartbeat_thread(self) -> None:
         if self._heartbeat_fn is None:
@@ -187,10 +194,21 @@ class WorkerRuntime:
             return
 
     def _metrics_begin(self) -> None:
-        return
+        if self._metrics_collector is None:
+            return
+        self._metrics_collector.begin_batch()
 
     def _metrics_end(self) -> None:
-        return
+        if self._metrics_collector is None:
+            return
+        self._metrics_collector.end_batch()
+
+    def _metrics_record_job_done(self, job_id: str, *, wall_ms: int, failed: bool) -> None:
+        if not self._collect_metrics:
+            return
+        if self._metrics_collector is None:
+            return
+        self._metrics_collector.record_job_done(job_id, wall_ms=wall_ms, failed=failed)
 
     def _maybe_build_report(self) -> dict[str, Any] | None:
         build_report = getattr(self._job_source, "build_report", None)
