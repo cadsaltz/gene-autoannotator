@@ -124,6 +124,13 @@ class WorkerRegistry:
             self._row_to_worker(row, offline_after_seconds=offline_after_seconds) for row in rows
         ]
 
+    def list_ready_workers(self, *, offline_after_seconds=60):
+        return [
+            worker
+            for worker in self.list_workers(offline_after_seconds=offline_after_seconds)
+            if worker["state"] == "ready" and worker["free_slots"] > 0
+        ]
+
     def summary(self, *, offline_after_seconds=60):
         workers = self.list_workers(offline_after_seconds=offline_after_seconds)
         online = [w for w in workers if w["state"] != "offline"]
