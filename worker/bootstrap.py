@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from shared.env_persist import load_env_file, resolve_value, save_env_file
+from worker.fleet import setup as fleet_setup
 
 
 def default_env_path() -> Path:
@@ -98,3 +99,5 @@ def ensure_worker_env(*, cli_overrides: dict | None = None) -> None:
     os.environ.setdefault("COORDINATOR_URL", url)
     os.environ.setdefault("WORKER_API_TOKEN", token)
     os.environ.setdefault("ANNOTATION_MEMORY_BUDGET_GB", mem_str)
+
+    fleet_setup.ensure_fleet_config(interactive=sys.stdin.isatty(), env_path=path)

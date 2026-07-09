@@ -10,6 +10,7 @@ VRAM_HEADROOM_RATIO = 0.15
 MAX_PARALLEL = 16
 MAX_SERVERS = 16
 SUBPROCESS_OVERHEAD_BYTES = 2 * 1024**3  # Python/papers/cache per job
+DEFAULT_C_SLOT_BYTES = int(0.4 * 1024**3)
 
 
 @dataclass(frozen=True)

@@ -22,6 +22,17 @@ def test_bootstrap_writes_env_file(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(bootstrap, "_prompt_token", lambda: "dev-token")
     monkeypatch.setattr(bootstrap, "prompt_memory_budget_gb", lambda: 24.0)
+    monkeypatch.setattr(
+        bootstrap.fleet_setup,
+        "ensure_fleet_config",
+        lambda **kwargs: bootstrap.fleet_setup.FleetConfig(
+            num_servers=1,
+            parallel=1,
+            max_slots=1,
+            w_all_bytes=2 * 1024**3,
+            c_slot_bytes=int(0.4 * 1024**3),
+        ),
+    )
     bootstrap.ensure_worker_env(cli_overrides={})
     from shared.env_persist import load_env_file
 
