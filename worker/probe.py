@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-import dataclasses
+import csv
+import io
+import logging
 import shutil
 import subprocess
-from typing import List
+from dataclasses import dataclass
 
-import psutil
+log = logging.getLogger(__name__)
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclass(frozen=True)
 class SystemSpec:
     gpu_count: int
-    vram_bytes: List[int]
+    vram_bytes: tuple[int, ...]
     system_ram_bytes: int
     cpu_physical: int
     cpu_logical: int
@@ -21,9 +23,39 @@ class SystemSpec:
         return sum(self.vram_bytes)
 
 
-def _probe_gpus() -> tuple[int, list[int]]:
+def _probe_system_ram_bytes() -> int:
+    try:
+        import psutil
+
+        return int(psutil.virtual_memory().total)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _probe_cpu_counts() -> tuple[int, int]:
+    try:
+        import psutil
+
+        physical = psutil.cpu_count(logical=False) or 1
+        logical = psutil.cpu_count(logical=True) or 1
+        return physical, logical
+    except Exception:  # noqa: BLE001
+        return 1, 1
+
+
+def _parse_vram_line(line: str) -> int | None:
+    try:
+        parts = next(csv.reader(io.StringIO(line)))
+        if len(parts) < 3:
+            return None
+        return int(float(parts[-1].strip()) * 1024 * 1024)
+    except (StopIteration, ValueError):
+        return None
+
+
+def _probe_gpus() -> tuple[int, tuple[int, ...]]:
     if shutil.which("nvidia-smi") is None:
-        return 0, []
+        return 0, ()
     result = subprocess.run(
         [
             "nvidia-smi",
@@ -35,24 +67,27 @@ def _probe_gpus() -> tuple[int, list[int]]:
         text=True,
     )
     if result.returncode != 0:
-        return 0, []
-    vram = []
+        log.debug("nvidia-smi exited with code %s", result.returncode)
+        return 0, ()
+    vram: list[int] = []
     for line in result.stdout.strip().splitlines():
         if not line.strip():
             continue
-        parts = [part.strip() for part in line.split(",")]
-        if len(parts) >= 3:
-            vram.append(int(float(parts[2]) * 1024 * 1024))
-    return len(vram), vram
+        vram_bytes = _parse_vram_line(line)
+        if vram_bytes is None:
+            log.debug("Skipping unparseable nvidia-smi line: %r", line)
+            continue
+        vram.append(vram_bytes)
+    return len(vram), tuple(vram)
 
 
 def probe_system() -> SystemSpec:
     gpu_count, vram_bytes = _probe_gpus()
-    mem = psutil.virtual_memory()
+    cpu_physical, cpu_logical = _probe_cpu_counts()
     return SystemSpec(
         gpu_count=gpu_count,
         vram_bytes=vram_bytes,
-        system_ram_bytes=int(mem.total),
-        cpu_physical=psutil.cpu_count(logical=False) or 1,
-        cpu_logical=psutil.cpu_count(logical=True) or 1,
+        system_ram_bytes=_probe_system_ram_bytes(),
+        cpu_physical=cpu_physical,
+        cpu_logical=cpu_logical,
     )
