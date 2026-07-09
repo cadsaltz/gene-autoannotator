@@ -19,7 +19,10 @@ def main(
     cache_supplied_name=False,
     allow_ortholog_fallback=False,
     ortholog_override=None,
+    quiet=None,
 ):
+    if quiet is None:
+        quiet = bool(os.getenv('ANNOTATION_JOB_ID'))
     if profile and organism:
         raise ValueError('use either profile or organism, not both')
     result = get_gene_annotation(
@@ -49,16 +52,18 @@ def main(
 
     if parsed is None:
         if result.get("gene_distillation") is None:
-            print(f"No annotation produced for {output_gene}")
+            if not quiet:
+                print(f"No annotation produced for {output_gene}")
             return
         parsed = json.loads(result["gene_distillation"])
 
     if output_gene is None:
         output_gene = parsed.get("gene_id") or parsed.get("rv_id")
 
-    print(output_gene, json.dumps(parsed, indent=2))
-    print(f"Number of papers used: {len(used)}")
-    print(f"Selection mode: {result.get('selection_mode', 'unknown')}")
+    if not quiet:
+        print(output_gene, json.dumps(parsed, indent=2))
+        print(f"Number of papers used: {len(used)}")
+        print(f"Selection mode: {result.get('selection_mode', 'unknown')}")
 
     profile_id = parsed.get("annotation_metadata", {}).get("profile_id", "mtb-h37rv")
     output_parent = output_dir

@@ -94,7 +94,14 @@ def _run_subprocess(request: AnnotationJobRequest, *, job_id: str | None):
         stdout = completed.stdout.strip()
         if not stdout:
             raise RuntimeError("annotation subprocess produced no stdout")
-        return json.loads(stdout)
+        try:
+            return json.loads(stdout)
+        except json.JSONDecodeError as exc:
+            preview = stdout[:200].replace("\n", "\\n")
+            raise RuntimeError(
+                f"annotation subprocess stdout is not valid JSON: {exc}; "
+                f"preview={preview!r}"
+            ) from exc
     finally:
         if request_path is not None:
             os.unlink(request_path)
