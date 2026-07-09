@@ -5,10 +5,15 @@ import threading
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import TYPE_CHECKING
 
 import ollama
 
+from worker.router.metrics import MetricsCollector
 from worker.router.router import ModelNotFoundError, ModelRouter
+
+if TYPE_CHECKING:
+    from worker.fleet.config import FleetConfig
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
@@ -38,7 +43,35 @@ def _chat_response_payload(result: object) -> dict:
     return {"result": result}
 
 
-def _make_handler(router: ModelRouter, *, collect_metrics: bool):
+def _duration_ms_from_ns(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(int(value) / 1_000_000)
+    except (TypeError, ValueError):
+        return None
+
+
+def _inference_ms_from_result(result: dict) -> int:
+    return _duration_ms_from_ns(result.get("eval_duration")) or 0
+
+
+def _total_ms_from_result(result: dict, *, queue_wait_ms: int, inference_ms: int) -> int:
+    total_ms = _duration_ms_from_ns(result.get("total_duration"))
+    if total_ms is not None:
+        return total_ms
+    return queue_wait_ms + inference_ms
+
+
+def _make_handler(
+    router: ModelRouter,
+    *,
+    collect_metrics: bool,
+    metrics: MetricsCollector | None = None,
+    fleet_cfg: FleetConfig | None = None,
+    jobs_submitted: int = 0,
+    model_mode: str = "nano",
+):
     class RouterHTTPHandler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args) -> None:
             return
@@ -48,7 +81,18 @@ def _make_handler(router: ModelRouter, *, collect_metrics: bool):
                 _json_response(self, HTTPStatus.OK, {"status": "ok"})
                 return
             if self.path == "/metrics":
-                _json_response(self, HTTPStatus.OK, {})
+                if self.metrics is None:
+                    _json_response(self, HTTPStatus.OK, {})
+                    return
+                if self.fleet_cfg is None:
+                    _json_response(self, HTTPStatus.OK, {})
+                    return
+                report = self.metrics.build_report(
+                    fleet_cfg=self.fleet_cfg,
+                    jobs_submitted=self.jobs_submitted,
+                    model_mode=self.model_mode,
+                )
+                _json_response(self, HTTPStatus.OK, report)
                 return
             _json_response(self, HTTPStatus.NOT_FOUND, {"error": "not found"})
 
@@ -74,6 +118,8 @@ def _make_handler(router: ModelRouter, *, collect_metrics: bool):
                 return
 
             format_ = body.get("format")
+            role = body.get("role", "inference")
+            job_id = body.get("job_id")
 
             queue_start = time.monotonic()
             try:
@@ -96,10 +142,38 @@ def _make_handler(router: ModelRouter, *, collect_metrics: bool):
                 client = ollama.Client(host=backend.host)
                 result = client.chat(**chat_kwargs)
                 payload = _chat_response_payload(result)
+                inference_ms = _inference_ms_from_result(payload)
+                total_ms = _total_ms_from_result(
+                    payload,
+                    queue_wait_ms=queue_wait_ms,
+                    inference_ms=inference_ms,
+                )
+                if self.metrics is not None:
+                    self.metrics.record_call(
+                        model=model,
+                        role=role,
+                        backend=backend.host,
+                        queue_wait_ms=queue_wait_ms,
+                        inference_ms=inference_ms,
+                        total_ms=total_ms,
+                        job_id=job_id,
+                        success=True,
+                    )
                 payload["backend"] = backend.host
                 payload["queue_wait_ms"] = queue_wait_ms
                 _json_response(self, HTTPStatus.OK, payload)
             except Exception as exc:
+                if self.metrics is not None:
+                    self.metrics.record_call(
+                        model=model,
+                        role=role,
+                        backend=backend.host,
+                        queue_wait_ms=queue_wait_ms,
+                        inference_ms=0,
+                        total_ms=queue_wait_ms,
+                        job_id=job_id,
+                        success=False,
+                    )
                 _json_response(
                     self,
                     HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -109,6 +183,10 @@ def _make_handler(router: ModelRouter, *, collect_metrics: bool):
                 router.release(backend)
 
     RouterHTTPHandler.collect_metrics = collect_metrics
+    RouterHTTPHandler.metrics = metrics
+    RouterHTTPHandler.fleet_cfg = fleet_cfg
+    RouterHTTPHandler.jobs_submitted = jobs_submitted
+    RouterHTTPHandler.model_mode = model_mode
     return RouterHTTPHandler
 
 
@@ -118,11 +196,27 @@ def start_router_server(
     port: int,
     *,
     collect_metrics: bool = False,
+    fleet_cfg: FleetConfig | None = None,
+    jobs_submitted: int = 0,
+    model_mode: str = "nano",
 ) -> threading.Thread:
-    handler = _make_handler(router, collect_metrics=collect_metrics)
+    metrics: MetricsCollector | None = None
+    if collect_metrics:
+        metrics = MetricsCollector()
+        metrics.begin_batch()
+
+    handler = _make_handler(
+        router,
+        collect_metrics=collect_metrics,
+        metrics=metrics,
+        fleet_cfg=fleet_cfg,
+        jobs_submitted=jobs_submitted,
+        model_mode=model_mode,
+    )
     server = ThreadingHTTPServer((host, port), handler)
     thread = threading.Thread(target=server.serve_forever, name="router-server", daemon=True)
     thread._server = server  # type: ignore[attr-defined]
     thread._port = server.server_address[1]  # type: ignore[attr-defined]
+    thread._metrics = metrics  # type: ignore[attr-defined]
     thread.start()
     return thread
