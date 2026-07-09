@@ -77,6 +77,7 @@ def test_start_fleet_launches_one_process_per_server(monkeypatch):
         return FakePopen()
 
     monkeypatch.setattr(setup, "start_ollama_server", fake_start)
+    monkeypatch.setattr(setup, "_port_is_open", lambda _port: True)
     procs = setup.start_fleet(cfg, spec)
     assert len(procs) == 2
     assert launched == [(11434, 3, 0), (11435, 3, 1)]
@@ -115,12 +116,24 @@ def test_kill_all_ollama_servers_sends_sigterm(monkeypatch):
         calls["count"] += 1
         return [100, 200] if calls["count"] == 1 else []
 
+    monkeypatch.setattr(setup, "_stop_snap_ollama", lambda: None)
+    monkeypatch.setattr(setup, "_pids_listening_on_port", lambda _port: [])
     monkeypatch.setattr(setup, "_find_ollama_serve_pids", fake_find)
     killed = []
     monkeypatch.setattr(setup.os, "kill", lambda pid, sig: killed.append((pid, sig)))
     setup.kill_all_ollama_servers(timeout_sec=0.2)
     assert (100, setup.signal.SIGTERM) in killed
     assert (200, setup.signal.SIGTERM) in killed
+
+
+def test_ensure_ports_free_raises_when_still_busy(monkeypatch):
+    monkeypatch.setattr(setup, "_ports_in_use", lambda ports: ports)
+    try:
+        setup._ensure_ports_free([11434], timeout_sec=0.2)
+    except RuntimeError as exc:
+        assert "11434" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
 
 
 def test_reset_ollama_fleet_kills_before_start(monkeypatch):
@@ -141,7 +154,7 @@ def test_reset_ollama_fleet_kills_before_start(monkeypatch):
     calls: list[str] = []
 
     monkeypatch.setattr(setup, "kill_all_ollama_servers", lambda **kw: calls.append("kill"))
-    monkeypatch.setattr(setup, "_wait_for_ports_free", lambda ports, **kw: calls.append("wait"))
+    monkeypatch.setattr(setup, "_ensure_ports_free", lambda ports, **kw: calls.append("wait"))
     monkeypatch.setattr(setup, "start_fleet", lambda c, s: calls.extend(["start"]) or ["proc"])
     procs = setup.reset_ollama_fleet(cfg, spec)
     assert calls == ["kill", "wait", "start"]

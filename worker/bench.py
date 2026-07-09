@@ -78,7 +78,7 @@ def main(argv=None):
         args = _parse_args(None)
     else:
         args = _parse_args(list(argv))
-    ensure_worker_env()
+    ensure_worker_env(interactive=False)
     fleet = ensure_fleet_config(interactive=False)
     spec = probe_system()
     if getattr(args, "output_dir", None):

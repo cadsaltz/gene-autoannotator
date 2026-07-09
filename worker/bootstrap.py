@@ -113,9 +113,10 @@ def ensure_model_mode(*, env_path: Path, interactive: bool = True) -> str:
     return normalized
 
 
-def ensure_worker_env(*, cli_overrides: dict | None = None) -> None:
+def ensure_worker_env(*, cli_overrides: dict | None = None, interactive: bool | None = None) -> None:
     cli_overrides = cli_overrides or {}
     path = default_env_path()
+    is_interactive = sys.stdin.isatty() if interactive is None else interactive
 
     url, _ = resolve_value(
         "COORDINATOR_URL",
@@ -148,5 +149,5 @@ def ensure_worker_env(*, cli_overrides: dict | None = None) -> None:
     os.environ.setdefault("WORKER_API_TOKEN", token)
     os.environ.setdefault("ANNOTATION_MEMORY_BUDGET_GB", mem_str)
 
-    ensure_model_mode(env_path=path, interactive=sys.stdin.isatty())
-    fleet_setup.ensure_fleet_config(interactive=sys.stdin.isatty(), env_path=path)
+    ensure_model_mode(env_path=path, interactive=is_interactive)
+    fleet_setup.ensure_fleet_config(interactive=is_interactive, env_path=path)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import signal
 import shutil
 import subprocess
@@ -26,6 +27,10 @@ FLEET_ENV_KEYS = (
 
 def _default_env_path() -> Path:
     return Path(os.getenv("WORKER_ENV_FILE", "worker.env"))
+
+
+DEFAULT_OLLAMA_BASE_PORT = 11434
+OLLAMA_PORT_SCAN_COUNT = 16
 
 
 def _read_line(prompt: str) -> str:
@@ -81,28 +86,43 @@ def start_ollama_server(
     env["OLLAMA_NUM_PARALLEL"] = str(parallel)
     if gpu_index is not None:
         env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
-    return subprocess.Popen(["ollama", "serve"], env=env)
+    proc = subprocess.Popen(
+        ["ollama", "serve"],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    time.sleep(0.25)
+    if proc.poll() is not None:
+        stderr = (proc.stderr.read() if proc.stderr else "") or f"exit code {proc.returncode}"
+        raise RuntimeError(f"ollama serve failed on port {port}: {stderr.strip()}")
+    return proc
 
 
 def start_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
     procs: list[subprocess.Popen] = []
     for i in range(cfg.num_servers):
         gpu = i % spec.gpu_count if spec.gpu_count else None
+        port = cfg.base_port + i
         procs.append(
             start_ollama_server(
-                port=cfg.base_port + i,
+                port=port,
                 parallel=cfg.parallel,
                 gpu_index=gpu,
             )
         )
+        if not _port_is_open(port):
+            shutdown_fleet(procs)
+            raise RuntimeError(f"Ollama server did not start listening on 127.0.0.1:{port}")
     return procs
 
 
-def _find_ollama_serve_pids() -> list[int]:
+def _find_pgrep_pids(pattern: str) -> list[int]:
     if shutil.which("pgrep") is None:
         return []
     result = subprocess.run(
-        ["pgrep", "-f", "ollama serve"],
+        ["pgrep", "-f", pattern],
         check=False,
         capture_output=True,
         text=True,
@@ -117,44 +137,136 @@ def _find_ollama_serve_pids() -> list[int]:
     return pids
 
 
+def _find_ollama_serve_pids() -> list[int]:
+    patterns = (
+        "ollama serve",
+        "snap/ollama",
+        "ollama runner",
+        "/usr/local/bin/ollama",
+        "/usr/bin/ollama serve",
+    )
+    pids: set[int] = set()
+    for pattern in patterns:
+        pids.update(_find_pgrep_pids(pattern))
+    return sorted(pids)
+
+
+def _pids_listening_on_port(port: int) -> list[int]:
+    if shutil.which("fuser") is not None:
+        result = subprocess.run(
+            ["fuser", f"{port}/tcp"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        pids: list[int] = []
+        for token in (result.stdout + result.stderr).replace("/", " ").split():
+            if token.isdigit():
+                pids.append(int(token))
+        if pids:
+            return sorted(set(pids))
+    if shutil.which("ss") is not None:
+        result = subprocess.run(
+            ["ss", "-ltnp", f"sport = :{port}"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        pids = []
+        for match in re.finditer(r"pid=(\d+)", result.stdout):
+            pids.append(int(match.group(1)))
+        if pids:
+            return sorted(set(pids))
+    return []
+
+
+def _stop_snap_ollama() -> None:
+    if shutil.which("snap") is None:
+        return
+    installed = subprocess.run(
+        ["snap", "list", "ollama"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if installed.returncode != 0:
+        return
+    log.info("Stopping snap ollama service")
+    subprocess.run(["snap", "stop", "ollama"], check=False, capture_output=True, text=True)
+
+
+def _ollama_fleet_ports(num_servers: int = 1, base_port: int = DEFAULT_OLLAMA_BASE_PORT) -> list[int]:
+    return [base_port + i for i in range(max(1, num_servers))]
+
+
 def kill_all_ollama_servers(*, timeout_sec: float = 10.0) -> None:
-    """Stop every running ``ollama serve`` process before starting a fresh fleet."""
-    pids = _find_ollama_serve_pids()
+    """Stop Ollama server processes before starting a fresh fleet."""
+    _stop_snap_ollama()
+
+    ports = _ollama_fleet_ports(
+        num_servers=OLLAMA_PORT_SCAN_COUNT,
+        base_port=DEFAULT_OLLAMA_BASE_PORT,
+    )
+    pids: set[int] = set(_find_ollama_serve_pids())
+    for port in ports:
+        pids.update(_pids_listening_on_port(port))
+
     if not pids:
         return
-    log.info("Stopping %s existing Ollama server process(es)", len(pids))
-    for pid in pids:
+
+    log.info("Stopping %s existing Ollama-related process(es)", len(pids))
+    for pid in sorted(pids):
         try:
             os.kill(pid, signal.SIGTERM)
         except (ProcessLookupError, PermissionError):
             continue
+
     deadline = time.monotonic() + timeout_sec
     while time.monotonic() < deadline:
-        if not _find_ollama_serve_pids():
+        remaining = set(_find_ollama_serve_pids())
+        for port in ports:
+            remaining.update(_pids_listening_on_port(port))
+        if not remaining:
             return
         time.sleep(0.1)
-    for pid in _find_ollama_serve_pids():
+
+    remaining = set(_find_ollama_serve_pids())
+    for port in ports:
+        remaining.update(_pids_listening_on_port(port))
+    for pid in sorted(remaining):
         try:
             os.kill(pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             continue
 
 
-def _wait_for_ports_free(ports: list[int], *, timeout_sec: float = 5.0) -> None:
+def _port_is_open(port: int) -> bool:
     import socket
 
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _ports_in_use(ports: list[int]) -> list[int]:
+    return [port for port in ports if _port_is_open(port)]
+
+
+def _ensure_ports_free(ports: list[int], *, timeout_sec: float = 10.0) -> None:
     deadline = time.monotonic() + timeout_sec
     while time.monotonic() < deadline:
-        busy = False
-        for port in ports:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(0.1)
-                if sock.connect_ex(("127.0.0.1", port)) == 0:
-                    busy = True
-                    break
+        busy = _ports_in_use(ports)
         if not busy:
             return
         time.sleep(0.1)
+    busy = _ports_in_use(ports)
+    if busy:
+        raise RuntimeError(
+            "Ollama port(s) still in use after shutdown: "
+            + ", ".join(str(port) for port in busy)
+            + ". Stop the existing Ollama service manually (e.g. `snap stop ollama` "
+            "or `systemctl stop ollama`) and retry."
+        )
 
 
 def shutdown_fleet(procs: list[subprocess.Popen]) -> None:
@@ -173,7 +285,7 @@ def reset_ollama_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Po
     """Kill any existing Ollama servers, then start a fresh fleet from config."""
     kill_all_ollama_servers()
     ports = [cfg.base_port + i for i in range(cfg.num_servers)]
-    _wait_for_ports_free(ports)
+    _ensure_ports_free(ports)
     return start_fleet(cfg, spec)
 
 
