@@ -41,7 +41,7 @@ def test_health_returns_ok(router_server):
     assert response.json() == {"status": "ok"}
 
 
-def test_chat_proxies_to_ollama_and_returns_routing_metadata(router_server):
+def test_chat_proxies_to_ollama_and_strips_routing_metadata(router_server):
     base_url, _thread = router_server
     client = RouterClient(base_url)
     result = client.chat(
@@ -50,8 +50,8 @@ def test_chat_proxies_to_ollama_and_returns_routing_metadata(router_server):
         role="gene_aggregation",
         job_id="job-1",
     )
-    assert result["backend"] == "http://127.0.0.1:11434"
-    assert "queue_wait_ms" in result
+    assert "backend" not in result
+    assert "queue_wait_ms" not in result
     assert result["message"]["content"] == "{}"
 
 

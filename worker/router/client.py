@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import httpx
 
+_ROUTER_METADATA_KEYS = frozenset({'backend', 'queue_wait_ms'})
+
 
 class RouterClient:
     def __init__(self, base_url: str) -> None:
@@ -26,4 +28,5 @@ class RouterClient:
             payload["format"] = format
         response = self._http.post("/v1/chat", json=payload)
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        return {k: v for k, v in payload.items() if k not in _ROUTER_METADATA_KEYS}

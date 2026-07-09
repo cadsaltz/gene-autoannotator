@@ -183,7 +183,34 @@ def parse_response_json(text: str, *, role: str, model: str) -> dict:
     return payload
 
 
-def ollama_chat(*, model: str, messages, json_schema=None, role: str = 'inference'):
+def _router_client():
+    url = os.getenv('OLLAMA_ROUTER_URL')
+    if not url:
+        return None
+    from worker.router.client import RouterClient
+    return RouterClient(url)
+
+
+def ollama_chat(
+    *,
+    model: str,
+    messages,
+    json_schema=None,
+    role: str = 'inference',
+    job_id: str | None = None,
+):
+    job_id = job_id or os.getenv('ANNOTATION_JOB_ID')
+    router = _router_client()
+    if router is not None:
+        chat_kwargs = {
+            'model': model,
+            'messages': messages,
+            'role': role,
+            'job_id': job_id,
+        }
+        if json_schema is not None:
+            chat_kwargs['format'] = json_schema
+        return router.chat(**chat_kwargs)
     kwargs = {
         'model': model,
         'messages': messages,

@@ -359,6 +359,24 @@ def test_aggregate_schema_allows_null_gene_id_when_explicitly_enabled():
 	assert captured["schema"]["properties"]["gene_id"]["type"] == ["string", "null"]
 
 
+def test_ollama_chat_uses_router_when_configured(monkeypatch):
+	monkeypatch.setenv("OLLAMA_ROUTER_URL", "http://127.0.0.1:11499")
+	calls = []
+
+	class FakeRouter:
+		def chat(self, **kwargs):
+			calls.append(kwargs)
+			return {"message": {"content": "{}"}, "total_duration": 1_000_000_000}
+
+	monkeypatch.setattr(llms, "_router_client", lambda: FakeRouter())
+	llms.ollama_chat(
+		model="gemma3:1b",
+		messages=[{"role": "user", "content": "hi"}],
+		role="gene_aggregation",
+	)
+	assert calls[0]["model"] == "gemma3:1b"
+
+
 def test_ollama_chat_passes_keep_alive_zero_by_default(monkeypatch):
 	captured = {}
 
