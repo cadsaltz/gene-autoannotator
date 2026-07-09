@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -8,6 +9,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 PERMANENT_ERROR_MARKERS = ("locus_schema_mismatch", "profile or organism", "name or locus")
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -129,6 +132,8 @@ class WorkerRuntime:
             self._start_job(job)
 
     def _start_job(self, job: JobSpec) -> None:
+        locus = job.request.get("locus") or job.request.get("name") or "?"
+        log.info("Started job %s (locus=%s)", job.job_id, locus)
         future = self._pool.submit(self._execute, job)
         self._active_jobs[job.job_id] = ActiveJob(
             job_id=job.job_id,
@@ -156,9 +161,11 @@ class WorkerRuntime:
                 result = future.result()
             except Exception as exc:  # noqa: BLE001 - report all execution errors.
                 error = str(exc)
+                log.warning("Failed job %s after %dms: %s", job_id, wall_ms, error)
                 self._job_source.on_fail(job_id, error, _is_retryable(error))
                 self._metrics_record_job_done(job_id, wall_ms=wall_ms, failed=True)
             else:
+                log.info("Completed job %s in %dms", job_id, wall_ms)
                 self._job_source.on_complete(job_id, result)
                 self._metrics_record_job_done(job_id, wall_ms=wall_ms, failed=False)
 

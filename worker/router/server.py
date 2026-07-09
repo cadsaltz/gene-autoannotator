@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from http import HTTPStatus
@@ -11,6 +12,8 @@ import ollama
 
 from worker.router.metrics import MetricsCollector
 from worker.router.router import ModelNotFoundError, ModelRouter
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from worker.fleet.config import FleetConfig
@@ -67,6 +70,7 @@ def _make_handler(
     router: ModelRouter,
     *,
     collect_metrics: bool,
+    log_requests: bool = False,
     metrics: MetricsCollector | None = None,
     fleet_cfg: FleetConfig | None = None,
     jobs_submitted: int = 0,
@@ -133,6 +137,14 @@ def _make_handler(
                 return
 
             queue_wait_ms = int((time.monotonic() - queue_start) * 1000)
+            if self.log_requests and queue_wait_ms >= 500:
+                log.info(
+                    "router wait job=%s model=%s role=%s queue=%dms",
+                    job_id or "-",
+                    model,
+                    role,
+                    queue_wait_ms,
+                )
 
             chat_kwargs: dict = {"model": model, "messages": messages}
             if format_ is not None:
@@ -159,6 +171,18 @@ def _make_handler(
                         job_id=job_id,
                         success=True,
                     )
+                if self.log_requests:
+                    log.info(
+                        "router chat job=%s model=%s role=%s backend=%s "
+                        "queue=%dms infer=%dms total=%dms",
+                        job_id or "-",
+                        model,
+                        role,
+                        backend.host,
+                        queue_wait_ms,
+                        inference_ms,
+                        total_ms,
+                    )
                 payload["backend"] = backend.host
                 payload["queue_wait_ms"] = queue_wait_ms
                 _json_response(self, HTTPStatus.OK, payload)
@@ -183,6 +207,7 @@ def _make_handler(
                 router.release(backend)
 
     RouterHTTPHandler.collect_metrics = collect_metrics
+    RouterHTTPHandler.log_requests = log_requests
     RouterHTTPHandler.metrics = metrics
     RouterHTTPHandler.fleet_cfg = fleet_cfg
     RouterHTTPHandler.jobs_submitted = jobs_submitted
@@ -196,6 +221,7 @@ def start_router_server(
     port: int,
     *,
     collect_metrics: bool = False,
+    log_requests: bool = False,
     fleet_cfg: FleetConfig | None = None,
     jobs_submitted: int = 0,
     model_mode: str = "nano",
@@ -208,6 +234,7 @@ def start_router_server(
     handler = _make_handler(
         router,
         collect_metrics=collect_metrics,
+        log_requests=log_requests,
         metrics=metrics,
         fleet_cfg=fleet_cfg,
         jobs_submitted=jobs_submitted,

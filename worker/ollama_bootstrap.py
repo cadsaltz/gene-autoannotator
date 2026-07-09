@@ -42,5 +42,7 @@ def ensure_models(*, client=None, required=None):
     missing = [name for name in required if name not in installed]
     for name in missing:
         log.info("Pulling missing Ollama model %s", name)
+        print(f"Pulling Ollama model {name}...", flush=True)
         client.pull(name)
+        print(f"Pulled Ollama model {name}", flush=True)
     return missing

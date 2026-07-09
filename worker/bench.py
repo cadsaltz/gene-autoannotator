@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import shutil
 import sys
@@ -25,6 +26,22 @@ from worker.router import Backend, ModelRouter
 from worker.router.server import start_router_server
 from worker.runtime import WorkerRuntime
 from worker.sources.batch import BatchJobSource
+
+log = logging.getLogger(__name__)
+
+
+def _configure_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s | %(message)s",
+        stream=sys.stdout,
+        force=True,
+    )
+
+
+def _progress(message: str) -> None:
+    print(message, flush=True)
+    log.info(message)
 
 
 def _report_path(explicit_path: str | None) -> Path:
@@ -72,6 +89,7 @@ def _apply_output_dir(output_dir: str | None) -> None:
 
 
 def main(argv=None):
+    _configure_logging()
     if isinstance(argv, argparse.Namespace):
         args = argv
     elif argv is None:
@@ -83,11 +101,23 @@ def main(argv=None):
     spec = probe_system()
     if getattr(args, "output_dir", None):
         _apply_output_dir(args.output_dir)
+        _progress(f"Annotation output directory: {os.environ['WORKER_OUTPUT_DIR']}")
+
+    model_mode = os.getenv("AUTOANNOTATION_MODEL_MODE", "performance")
+    _progress(
+        f"Bench setup: model_mode={model_mode}, fleet={fleet.num_servers}x"
+        f"parallel={fleet.parallel}, slots={args.slots if args.slots is not None else fleet.max_slots}"
+    )
+    _progress("Resetting Ollama fleet (stop existing servers, start fresh)...")
     procs = reset_ollama_fleet(fleet, spec)
+    _progress(
+        f"Ollama fleet listening on {', '.join(fleet.backend_hosts())}"
+    )
 
     if args.cache == "cold":
         _purge_llm_cache()
         os.environ.setdefault("AUTOANNOTATION_OLLAMA_KEEP_ALIVE", "5m")
+        _progress("LLM cache cleared (cold start)")
 
     source = BatchJobSource(args.jobs)
     selected_slots = args.slots if args.slots is not None else fleet.max_slots
@@ -101,22 +131,32 @@ def main(argv=None):
     router_thread = None
     try:
         primary_host = runtime_fleet.backend_hosts()[0]
-        ensure_models(client=ollama.Client(host=primary_host))
+        _progress(f"Ensuring models are available on {primary_host}...")
+        pulled = ensure_models(client=ollama.Client(host=primary_host))
+        if pulled:
+            _progress(f"Pulled {len(pulled)} model(s): {', '.join(pulled)}")
+        else:
+            _progress("All required models already present")
         router_thread = start_router_server(
             router,
             "127.0.0.1",
             0,
             collect_metrics=True,
+            log_requests=True,
             fleet_cfg=runtime_fleet,
             jobs_submitted=source.jobs_submitted,
-            model_mode=os.getenv("AUTOANNOTATION_MODEL_MODE", "performance"),
+            model_mode=model_mode,
         )
         os.environ["OLLAMA_ROUTER_URL"] = f"http://127.0.0.1:{router_thread._port}"
+        _progress(f"Model router ready at {os.environ['OLLAMA_ROUTER_URL']}")
 
         config = load_config()
         runtime_cfg = SimpleNamespace(
             max_slots=selected_slots,
             heartbeat_seconds=getattr(config, "heartbeat_seconds", 15),
+        )
+        _progress(
+            f"Running {source.jobs_submitted} job(s) with {selected_slots} concurrent slot(s)..."
         )
         runtime = WorkerRuntime(
             config=runtime_cfg,
@@ -148,6 +188,12 @@ def main(argv=None):
         report_path = _report_path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        batch = report.get("batch", {})
+        _progress(
+            f"Bench complete: {batch.get('jobs_completed', 0)}/{batch.get('jobs_submitted', 0)} "
+            f"jobs, jobs_per_hour={batch.get('jobs_per_hour', 0):.2f}, "
+            f"report={report_path}"
+        )
         failures = int(report.get("batch", {}).get("jobs_failed", len(source.failed)))
         return 0 if failures == 0 else 1
     finally:
