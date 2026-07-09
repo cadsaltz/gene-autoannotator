@@ -3,6 +3,7 @@ import socket
 from dataclasses import dataclass
 
 from worker import capacity
+from worker.fleet.config import FleetConfig
 
 
 @dataclass
@@ -35,7 +36,17 @@ def load_config():
     dedicated_gb = float(os.getenv("ANNOTATION_MEMORY_BUDGET_GB", "0"))
     dedicated_bytes = int(dedicated_gb * (1024 ** 3))
     total_bytes = _total_memory_bytes()
-    slots = capacity.compute_slots(dedicated_gb) if dedicated_gb else 0
+    fleet_keys_present = bool(os.getenv("OLLAMA_FLEET_SERVERS") or os.getenv("OLLAMA_FLEET_PARALLEL"))
+    worker_max_slots = os.getenv("WORKER_MAX_SLOTS")
+    if fleet_keys_present and worker_max_slots is not None:
+        fleet = FleetConfig(
+            num_servers=int(os.getenv("OLLAMA_FLEET_SERVERS", "1")),
+            parallel=int(os.getenv("OLLAMA_FLEET_PARALLEL", "1")),
+            max_slots=int(worker_max_slots),
+        )
+        slots = capacity.compute_slots_from_fleet(fleet)
+    else:
+        slots = capacity.compute_slots(dedicated_gb) if dedicated_gb else 0
     return WorkerConfig(
         coordinator_url=coordinator_url,
         worker_api_token=token,

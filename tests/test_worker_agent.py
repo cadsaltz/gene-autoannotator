@@ -89,3 +89,14 @@ def test_run_once_skips_claim_while_provisioning(monkeypatch):
     client = FakeClient()
     assert agent.run_once(client, _config(), active_jobs=0, execute=lambda r: {}) is False
     assert len(client.claim_calls) == 0
+
+
+def test_run_delegates_to_serve_main(monkeypatch):
+    called = {}
+
+    def fake_main(args=None):
+        called["ok"] = args
+
+    monkeypatch.setattr("worker.serve.main", fake_main)
+    agent.run()
+    assert called["ok"] == {"bootstrap_env": False}

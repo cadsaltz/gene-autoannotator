@@ -1,13 +1,9 @@
 import logging
-import os
 import sys
 import threading
-import time
 
 from shared.job_contract import AnnotationJobRequest
 from worker import capacity, executor
-from worker.client import CoordinatorClient
-from worker.config import load_config
 
 log = logging.getLogger(__name__)
 
@@ -143,27 +139,7 @@ def _configure_logging():
 
 
 def run(poll_seconds=5):
-    _configure_logging()
-    config = load_config()
-    client = CoordinatorClient(config)
-    _ensure_models_ready()
-    client.register()
-    log.info("Registered worker %s (%s slots)", config.worker_name, config.max_slots)
-    if config.max_slots <= 0:
-        log.warning(
-            "Worker registered with 0 slots (ANNOTATION_MEMORY_BUDGET_GB=%s); it will "
-            "never claim jobs. Increase the memory budget above one job's requirement.",
-            os.getenv("ANNOTATION_MEMORY_BUDGET_GB"),
-        )
-    while True:
-        try:
-            did_work = run_once(client, config, active_jobs=0, execute=_default_execute)
-        except Exception:  # noqa: BLE001 - survive transient coordinator/network errors.
-            log.exception("Worker loop iteration failed; backing off")
-            did_work = False
-        if _draining:
-            log.info("Draining for update; exiting")
-            return
-        if not did_work:
-            log.debug("No work claimed; sleeping %ss", poll_seconds)
-            time.sleep(poll_seconds)
+    del poll_seconds
+    from worker import serve
+
+    serve.main({"bootstrap_env": False})
