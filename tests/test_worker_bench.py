@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -71,7 +72,7 @@ def test_bench_completes_and_writes_report(tmp_path, monkeypatch):
     monkeypatch.setattr(bench, "probe_system", _spec)
     monkeypatch.setattr(
         bench,
-        "start_fleet",
+        "reset_ollama_fleet",
         lambda cfg, spec: calls["start_fleet"].append((cfg, spec)) or [],
     )
     monkeypatch.setattr(bench, "ensure_models", lambda client=None: None)
@@ -105,3 +106,43 @@ def test_bench_completes_and_writes_report(tmp_path, monkeypatch):
     assert payload["batch"]["jobs_submitted"] == 2
     assert payload["batch"]["jobs_completed"] == 2
     assert "jobs_per_hour" in payload["batch"]
+
+
+def test_bench_output_dir_sets_worker_output_dir(tmp_path, monkeypatch):
+    report_path = tmp_path / "report.json"
+    output_dir = tmp_path / "annotations"
+
+    monkeypatch.setattr(bench, "ensure_worker_env", lambda **_kw: None)
+    monkeypatch.setattr(bench, "ensure_fleet_config", lambda **_kw: FleetConfig(1, 1, 2))
+    monkeypatch.setattr(bench, "probe_system", _spec)
+    monkeypatch.setattr(bench, "reset_ollama_fleet", lambda cfg, spec: [])
+    monkeypatch.setattr(bench, "ensure_models", lambda client=None: None)
+    monkeypatch.setattr(bench, "required_model_names", lambda: ["gemma3:1b"])
+    monkeypatch.setattr(bench.ollama, "Client", lambda host: {"host": host})
+    monkeypatch.setattr(bench, "start_router_server", lambda *a, **k: _FakeRouterThread())
+    monkeypatch.setattr(bench, "load_config", lambda: SimpleNamespace(max_slots=2, heartbeat_seconds=1))
+    captured = {}
+
+    def fake_run(request, *, job_id=None):
+        captured["output_dir"] = os.environ.get("WORKER_OUTPUT_DIR")
+        return {"job_id": job_id}
+
+    monkeypatch.setattr(bench.executor, "run_annotation_job", fake_run)
+
+    jobs = Path("tests/fixtures/bench_jobs_2.jsonl")
+    bench.main(
+        [
+            "--jobs",
+            str(jobs),
+            "--slots",
+            "2",
+            "--cache",
+            "cold",
+            "--report",
+            str(report_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+    assert captured["output_dir"] == str(output_dir.resolve())
+    assert output_dir.is_dir()

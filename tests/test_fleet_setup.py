@@ -106,3 +106,43 @@ def test_ensure_fleet_config_loads_from_env(tmp_path, monkeypatch):
     assert cfg.parallel == 3
     assert cfg.max_slots == 5
     assert cfg.w_all_bytes == 2147483648
+
+
+def test_kill_all_ollama_servers_sends_sigterm(monkeypatch):
+    calls = {"count": 0}
+
+    def fake_find():
+        calls["count"] += 1
+        return [100, 200] if calls["count"] == 1 else []
+
+    monkeypatch.setattr(setup, "_find_ollama_serve_pids", fake_find)
+    killed = []
+    monkeypatch.setattr(setup.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    setup.kill_all_ollama_servers(timeout_sec=0.2)
+    assert (100, setup.signal.SIGTERM) in killed
+    assert (200, setup.signal.SIGTERM) in killed
+
+
+def test_reset_ollama_fleet_kills_before_start(monkeypatch):
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=31 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    cfg = FleetConfig(
+        num_servers=1,
+        parallel=1,
+        max_slots=1,
+        w_all_bytes=2 * 1024**3,
+        c_slot_bytes=int(0.4 * 1024**3),
+    )
+    calls: list[str] = []
+
+    monkeypatch.setattr(setup, "kill_all_ollama_servers", lambda **kw: calls.append("kill"))
+    monkeypatch.setattr(setup, "_wait_for_ports_free", lambda ports, **kw: calls.append("wait"))
+    monkeypatch.setattr(setup, "start_fleet", lambda c, s: calls.extend(["start"]) or ["proc"])
+    procs = setup.reset_ollama_fleet(cfg, spec)
+    assert calls == ["kill", "wait", "start"]
+    assert procs == ["proc"]

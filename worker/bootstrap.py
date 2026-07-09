@@ -8,6 +8,10 @@ from shared.env_persist import load_env_file, resolve_value, save_env_file
 from worker.fleet import setup as fleet_setup
 
 
+VALID_MODEL_MODES = ("performance", "lite", "nano")
+DEFAULT_MODEL_MODE = "performance"
+
+
 def default_env_path() -> Path:
     return Path(os.getenv("WORKER_ENV_FILE", "worker.env"))
 
@@ -65,6 +69,50 @@ def _prompt_token() -> str:
     ).strip()
 
 
+def prompt_model_mode(*, recommended: str = DEFAULT_MODEL_MODE) -> str:
+    options = ", ".join(VALID_MODEL_MODES)
+    while True:
+        raw = _read_line(
+            f"Annotation model mode [recommended: {recommended}] ({options}): "
+        ).strip().lower()
+        if not raw:
+            return recommended
+        if raw in VALID_MODEL_MODES:
+            return raw
+        print(f"Enter one of: {options}", flush=True)
+
+
+def _reload_annotation_models() -> None:
+    import importlib
+
+    from autoannotation import models as ann_models
+    from worker import ollama_bootstrap
+
+    importlib.reload(ann_models)
+    importlib.reload(ollama_bootstrap)
+
+
+def ensure_model_mode(*, env_path: Path, interactive: bool = True) -> str:
+    prompt_fn = None
+    if interactive and sys.stdin.isatty():
+        prompt_fn = lambda _key, default: prompt_model_mode(recommended=default or DEFAULT_MODEL_MODE)
+    mode, _ = resolve_value(
+        "AUTOANNOTATION_MODEL_MODE",
+        env_file=env_path,
+        cli_value=None,
+        prompt_fn=prompt_fn,
+        default=DEFAULT_MODEL_MODE,
+    )
+    normalized = mode.strip().lower()
+    if normalized not in VALID_MODEL_MODES:
+        raise ValueError(
+            f"AUTOANNOTATION_MODEL_MODE must be one of {', '.join(VALID_MODEL_MODES)}"
+        )
+    os.environ["AUTOANNOTATION_MODEL_MODE"] = normalized
+    _reload_annotation_models()
+    return normalized
+
+
 def ensure_worker_env(*, cli_overrides: dict | None = None) -> None:
     cli_overrides = cli_overrides or {}
     path = default_env_path()
@@ -100,4 +148,5 @@ def ensure_worker_env(*, cli_overrides: dict | None = None) -> None:
     os.environ.setdefault("WORKER_API_TOKEN", token)
     os.environ.setdefault("ANNOTATION_MEMORY_BUDGET_GB", mem_str)
 
+    ensure_model_mode(env_path=path, interactive=sys.stdin.isatty())
     fleet_setup.ensure_fleet_config(interactive=sys.stdin.isatty(), env_path=path)

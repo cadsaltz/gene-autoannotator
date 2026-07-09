@@ -1,3 +1,5 @@
+import os
+
 from worker import bootstrap
 
 
@@ -12,6 +14,30 @@ def test_prompt_memory_budget_parses_gb(monkeypatch):
     assert bootstrap.prompt_memory_budget_gb() == 24.0
 
 
+def test_prompt_model_mode_defaults_on_empty(monkeypatch):
+    monkeypatch.setattr(bootstrap, "_read_line", lambda _p: "")
+    assert bootstrap.prompt_model_mode(recommended="nano") == "nano"
+
+
+def test_prompt_model_mode_rejects_invalid(monkeypatch):
+    responses = iter(["invalid", "lite"])
+    monkeypatch.setattr(bootstrap, "_read_line", lambda _p: next(responses))
+    assert bootstrap.prompt_model_mode() == "lite"
+
+
+def test_ensure_model_mode_persists_to_env_file(tmp_path, monkeypatch):
+    env_path = tmp_path / "worker.env"
+    monkeypatch.setattr(bootstrap, "default_env_path", lambda: env_path)
+    monkeypatch.setattr(bootstrap, "_reload_annotation_models", lambda: None)
+    mode = bootstrap.ensure_model_mode(env_path=env_path, interactive=False)
+    assert mode == "performance"
+    from shared.env_persist import load_env_file
+
+    saved = load_env_file(env_path)
+    assert saved["AUTOANNOTATION_MODEL_MODE"] == "performance"
+    assert os.environ["AUTOANNOTATION_MODEL_MODE"] == "performance"
+
+
 def test_bootstrap_writes_env_file(tmp_path, monkeypatch):
     env_path = tmp_path / "worker.env"
     monkeypatch.setattr(bootstrap, "default_env_path", lambda: env_path)
@@ -22,6 +48,7 @@ def test_bootstrap_writes_env_file(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(bootstrap, "_prompt_token", lambda: "dev-token")
     monkeypatch.setattr(bootstrap, "prompt_memory_budget_gb", lambda: 24.0)
+    monkeypatch.setattr(bootstrap, "ensure_model_mode", lambda **kwargs: "nano")
     monkeypatch.setattr(
         bootstrap.fleet_setup,
         "ensure_fleet_config",

@@ -18,7 +18,7 @@ from worker import executor
 from worker.bootstrap import ensure_worker_env
 from worker.config import load_config
 from worker.fleet.models import required_model_names
-from worker.fleet.setup import ensure_fleet_config, start_fleet
+from worker.fleet.setup import ensure_fleet_config, reset_ollama_fleet, shutdown_fleet
 from worker.ollama_bootstrap import ensure_models
 from worker.probe import probe_system
 from worker.router import Backend, ModelRouter
@@ -51,26 +51,24 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--slots", type=int, default=None, help="Override concurrent worker slots")
     parser.add_argument("--cache", choices=("cold", "warm"), default="cold")
     parser.add_argument("--report", default=None, help="Report path (default: reports/<timestamp>.json)")
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Directory for annotation JSON outputs (sets WORKER_OUTPUT_DIR; local disk only)",
+    )
     return parser.parse_args(argv)
 
 
 def _shutdown_fleet(procs: list[Any]) -> None:
-    for proc in procs:
-        terminate = getattr(proc, "terminate", None)
-        wait = getattr(proc, "wait", None)
-        kill = getattr(proc, "kill", None)
-        if not callable(terminate):
-            continue
-        try:
-            terminate()
-            if callable(wait):
-                wait(timeout=5)
-        except Exception:
-            if callable(kill):
-                try:
-                    kill()
-                except Exception:
-                    pass
+    shutdown_fleet(procs)
+
+
+def _apply_output_dir(output_dir: str | None) -> None:
+    if not output_dir:
+        return
+    path = Path(output_dir).expanduser().resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    os.environ["WORKER_OUTPUT_DIR"] = str(path)
 
 
 def main(argv=None):
@@ -83,7 +81,9 @@ def main(argv=None):
     ensure_worker_env()
     fleet = ensure_fleet_config(interactive=False)
     spec = probe_system()
-    procs = start_fleet(fleet, spec)
+    if getattr(args, "output_dir", None):
+        _apply_output_dir(args.output_dir)
+    procs = reset_ollama_fleet(fleet, spec)
 
     if args.cache == "cold":
         _purge_llm_cache()

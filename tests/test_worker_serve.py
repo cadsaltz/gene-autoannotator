@@ -64,7 +64,7 @@ def test_main_wires_runtime_router_and_heartbeat(monkeypatch):
     monkeypatch.setattr(serve, "probe_system", _spec)
     monkeypatch.setattr(
         serve,
-        "start_fleet",
+        "reset_ollama_fleet",
         lambda cfg, spec: calls["start_fleet"].append((cfg, spec)) or [],
     )
     monkeypatch.setattr(serve.ollama, "Client", lambda host: {"host": host})

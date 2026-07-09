@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
+import signal
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from shared.env_persist import load_env_file, save_env_file
@@ -10,6 +14,8 @@ from worker.fleet import models, sizing
 from worker.fleet.config import FleetConfig
 from worker.fleet.sizing import DEFAULT_C_SLOT_BYTES, FleetRecommendation
 from worker.probe import SystemSpec, probe_system
+
+log = logging.getLogger(__name__)
 
 FLEET_ENV_KEYS = (
     "OLLAMA_FLEET_SERVERS",
@@ -90,6 +96,85 @@ def start_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
             )
         )
     return procs
+
+
+def _find_ollama_serve_pids() -> list[int]:
+    if shutil.which("pgrep") is None:
+        return []
+    result = subprocess.run(
+        ["pgrep", "-f", "ollama serve"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return []
+    pids: list[int] = []
+    for line in result.stdout.splitlines():
+        token = line.strip()
+        if token.isdigit():
+            pids.append(int(token))
+    return pids
+
+
+def kill_all_ollama_servers(*, timeout_sec: float = 10.0) -> None:
+    """Stop every running ``ollama serve`` process before starting a fresh fleet."""
+    pids = _find_ollama_serve_pids()
+    if not pids:
+        return
+    log.info("Stopping %s existing Ollama server process(es)", len(pids))
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            continue
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        if not _find_ollama_serve_pids():
+            return
+        time.sleep(0.1)
+    for pid in _find_ollama_serve_pids():
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            continue
+
+
+def _wait_for_ports_free(ports: list[int], *, timeout_sec: float = 5.0) -> None:
+    import socket
+
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        busy = False
+        for port in ports:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.1)
+                if sock.connect_ex(("127.0.0.1", port)) == 0:
+                    busy = True
+                    break
+        if not busy:
+            return
+        time.sleep(0.1)
+
+
+def shutdown_fleet(procs: list[subprocess.Popen]) -> None:
+    for proc in procs:
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
+def reset_ollama_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
+    """Kill any existing Ollama servers, then start a fresh fleet from config."""
+    kill_all_ollama_servers()
+    ports = [cfg.base_port + i for i in range(cfg.num_servers)]
+    _wait_for_ports_free(ports)
+    return start_fleet(cfg, spec)
 
 
 def _env_value(key: str, *, env_path: Path) -> str | None:

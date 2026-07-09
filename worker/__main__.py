@@ -21,6 +21,11 @@ def main():
     bench_parser.add_argument("--slots", type=int, default=None, help="Override concurrent worker slots")
     bench_parser.add_argument("--cache", choices=["cold", "warm"], default="cold")
     bench_parser.add_argument("--report", default=None, help="Report path (default: reports/<timestamp>.json)")
+    bench_parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Directory for annotation JSON outputs (local disk only)",
+    )
 
     args = parser.parse_args()
     command = args.command or "serve"
