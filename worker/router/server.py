@@ -13,6 +13,7 @@ import ollama
 
 from worker.router.metrics import MetricsCollector
 from worker.router.router import ModelNotFoundError, ModelRouter
+from worker.router.timeouts import ollama_chat_timeout
 
 log = logging.getLogger(__name__)
 
@@ -67,20 +68,12 @@ def _total_ms_from_result(result: dict, *, queue_wait_ms: int, inference_ms: int
     return queue_wait_ms + inference_ms
 
 
-def _router_http_timeout() -> float:
-    raw = os.getenv("OLLAMA_ROUTER_HTTP_TIMEOUT_SEC", "180")
+def _ollama_client(host: str):
+    timeout = ollama_chat_timeout()
     try:
-        return float(raw)
-    except ValueError:
-        return 180.0
-
-
-def _ollama_chat_timeout() -> float:
-    raw = os.getenv("OLLAMA_CHAT_TIMEOUT_SEC", "180")
-    try:
-        return float(raw)
-    except ValueError:
-        return 180.0
+        return ollama.Client(host=host, timeout=timeout)
+    except TypeError:
+        return ollama.Client(host=host)
 
 
 def _parse_keep_alive(value) -> int | str | None:
@@ -102,14 +95,6 @@ def _keep_alive_from_env() -> int | str | None:
     if raw is None or not str(raw).strip():
         return None
     return _parse_keep_alive(raw)
-
-
-def _ollama_client(host: str):
-    timeout = _ollama_chat_timeout()
-    try:
-        return ollama.Client(host=host, timeout=timeout)
-    except TypeError:
-        return ollama.Client(host=host)
 
 
 def _make_handler(

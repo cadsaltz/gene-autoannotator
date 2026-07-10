@@ -58,6 +58,7 @@ def _subprocess_env(*, job_id: str | None) -> dict[str, str]:
     if job_id is not None:
         env["ANNOTATION_JOB_ID"] = job_id
     env["WORKER_JOB_EXECUTION"] = "inprocess"
+    env.setdefault("PYTHONUNBUFFERED", "1")
     return env
 
 
