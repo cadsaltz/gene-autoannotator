@@ -223,6 +223,14 @@ def _make_handler(
                 payload["queue_wait_ms"] = queue_wait_ms
                 _json_response(self, HTTPStatus.OK, payload)
             except Exception as exc:
+                log.error(
+                    "router chat failed job=%s model=%s role=%s backend=%s: %s",
+                    job_id or "-",
+                    model,
+                    role,
+                    backend.host,
+                    exc,
+                )
                 if self.metrics is not None:
                     self.metrics.record_call(
                         model=model,

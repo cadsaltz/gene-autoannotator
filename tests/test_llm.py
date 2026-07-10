@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from autoannotation import llms
 from compareannotations.scoring import llm_similarity
 
@@ -375,6 +377,26 @@ def test_ollama_chat_uses_router_when_configured(monkeypatch):
 		role="gene_aggregation",
 	)
 	assert calls[0]["model"] == "gemma3:1b"
+
+
+def test_ollama_chat_wraps_router_http_errors_as_runtime_error(monkeypatch):
+	import httpx
+
+	monkeypatch.setenv("OLLAMA_ROUTER_URL", "http://127.0.0.1:11499")
+
+	class FakeRouter:
+		def chat(self, **kwargs):
+			request = httpx.Request("POST", "http://127.0.0.1:11499/v1/chat")
+			response = httpx.Response(500, json={"error": "model runner crashed"}, request=request)
+			raise httpx.HTTPStatusError("error", request=request, response=response)
+
+	monkeypatch.setattr(llms, "_router_client", lambda: FakeRouter())
+	with pytest.raises(RuntimeError, match="model runner crashed"):
+		llms.ollama_chat(
+			model="gemma3:270m",
+			messages=[{"role": "user", "content": "hi"}],
+			role="section_consensus",
+		)
 
 
 def test_ollama_chat_passes_keep_alive_zero_by_default(monkeypatch):

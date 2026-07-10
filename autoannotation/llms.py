@@ -191,6 +191,22 @@ def _router_client():
     return RouterClient(url)
 
 
+def _router_chat_error_detail(exc) -> str:
+    import httpx
+
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return str(exc)
+    try:
+        body = exc.response.json()
+        if isinstance(body, dict) and body.get('error'):
+            return str(body['error'])
+    except Exception:
+        pass
+    if exc.response is not None:
+        return exc.response.text.strip() or str(exc)
+    return str(exc)
+
+
 def ollama_chat(
     *,
     model: str,
@@ -211,7 +227,19 @@ def ollama_chat(
         }
         if json_schema is not None:
             chat_kwargs['format'] = json_schema
-        return router.chat(**chat_kwargs)
+        try:
+            return router.chat(**chat_kwargs)
+        except Exception as exc:
+            import httpx
+
+            if isinstance(exc, httpx.HTTPStatusError):
+                detail = _router_chat_error_detail(exc)
+                raise RuntimeError(
+                    f'Router {role} request failed ({exc.response.status_code}): {detail}'
+                ) from exc
+            if isinstance(exc, httpx.RequestError):
+                raise RuntimeError(f'Router {role} request failed: {exc}') from exc
+            raise
     kwargs = {
         'model': model,
         'messages': messages,
