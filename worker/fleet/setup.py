@@ -552,6 +552,37 @@ def _normalize_fleet_config(cfg: FleetConfig, spec: SystemSpec) -> FleetConfig:
     )
 
 
+def refresh_fleet_footprints(
+    cfg: FleetConfig,
+    spec: SystemSpec,
+    *,
+    host: str,
+    measure_runtime_peak: bool = True,
+    env_path: Path | None = None,
+) -> FleetConfig:
+    """Re-measure W_all/W_peak after Ollama is running and models are present."""
+    w_all, w_peak, source = models.resolve_footprints(
+        host=host,
+        measure_runtime_peak=measure_runtime_peak,
+    )
+    updated = replace(
+        cfg,
+        w_all_bytes=w_all,
+        w_peak_bytes=w_peak,
+    )
+    updated = _normalize_fleet_config(updated, spec)
+    path = env_path or _default_env_path()
+    _persist_fleet_config(path, updated)
+    _apply_fleet_to_environ(updated)
+    log.info(
+        "Fleet footprints refreshed from %s: tier=%s keep_alive=%s",
+        source,
+        updated.memory_tier,
+        updated.keep_alive,
+    )
+    return updated
+
+
 def ensure_fleet_config(
     *,
     spec: SystemSpec | None = None,

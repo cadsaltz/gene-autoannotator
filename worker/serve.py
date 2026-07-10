@@ -15,7 +15,7 @@ from worker.bootstrap import ensure_worker_env
 from worker.client import CoordinatorClient
 from worker.config import load_config
 from worker.fleet.models import required_model_names
-from worker.fleet.setup import ensure_fleet_config, reset_ollama_fleet
+from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet
 from worker.ollama_bootstrap import ensure_models
 from worker.probe import probe_system
 from worker.router import Backend, ModelRouter
@@ -125,6 +125,7 @@ def main(args=None):
         reset_ollama_fleet(fleet, spec)
         primary_host = fleet.backend_hosts()[0]
         ensure_models(client=ollama.Client(host=primary_host))
+        fleet = refresh_fleet_footprints(fleet, spec, host=primary_host)
 
     required = set(required_model_names())
     backends = [

@@ -96,12 +96,46 @@ def _size_from_ollama_list_text(model_name: str, listing: str) -> int | None:
     return None
 
 
-def _size_from_ollama_list(model_name: str) -> int | None:
+def _host_to_ollama_env(host: str) -> str:
+    return host.removeprefix("http://").removeprefix("https://").rstrip("/")
+
+
+def _size_from_show_text(model_name: str, *, host: str | None = None) -> int | None:
+    env = os.environ.copy()
+    if host:
+        env["OLLAMA_HOST"] = _host_to_ollama_env(host)
+    result = subprocess.run(
+        ["ollama", "show", model_name],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        lower = stripped.lower()
+        if lower.startswith("size") and "\t" in stripped:
+            _, raw = stripped.split("\t", 1)
+            parsed = _parse_size_token(raw.strip())
+            if parsed:
+                return parsed
+        if "parameter size" in lower or lower.startswith("parameters"):
+            continue
+    return None
+
+
+def _size_from_ollama_list(model_name: str, *, host: str | None = None) -> int | None:
+    env = os.environ.copy()
+    if host:
+        env["OLLAMA_HOST"] = _host_to_ollama_env(host)
     result = subprocess.run(
         ["ollama", "list"],
         check=False,
         capture_output=True,
         text=True,
+        env=env,
     )
     if result.returncode != 0:
         return None
@@ -135,14 +169,16 @@ def _mode_stack_estimate_bytes() -> int:
     return _MODE_W_ALL_ESTIMATE_BYTES.get(mode, _MODE_W_ALL_ESTIMATE_BYTES["performance"])
 
 
-def _per_model_fallback_bytes(model_names: list[str]) -> int:
-    if not model_names:
-        return _mode_stack_estimate_bytes()
-    return max(1, _mode_stack_estimate_bytes() // len(model_names))
+def _per_model_fallback_bytes() -> int:
+    count = max(1, len(required_model_names()))
+    return max(1, _mode_stack_estimate_bytes() // count)
 
 
-def _model_size_bytes(model_name: str) -> int:
+def _probe_model_size_bytes(model_name: str, *, host: str | None = None) -> int | None:
     for probe in (
+        lambda: _size_from_show_api(model_name, host=host) if host else _size_from_show_api(model_name),
+        lambda: _size_from_ollama_list(model_name, host=host),
+        lambda: _size_from_show_text(model_name, host=host),
         lambda: _size_from_ollama_list(model_name),
         lambda: _size_from_show_json(model_name),
         lambda: _size_from_show_api(model_name),
@@ -154,13 +190,106 @@ def _model_size_bytes(model_name: str) -> int:
             size = None
         if size and size > 0:
             return size
-    fallback = _per_model_fallback_bytes([model_name])
-    log.warning(
-        "Could not probe size for %s; using mode fallback %.2f GB",
-        model_name,
-        fallback / (1024**3),
-    )
+    return None
+
+
+def _model_size_bytes(model_name: str, *, host: str | None = None, warn: bool = False) -> int:
+    size = _probe_model_size_bytes(model_name, host=host)
+    if size:
+        return size
+    fallback = _per_model_fallback_bytes()
+    if warn:
+        log.warning(
+            "Could not probe size for %s; using mode fallback %.2f GB",
+            model_name,
+            fallback / (1024**3),
+        )
+    else:
+        log.debug(
+            "Could not probe size for %s; using mode fallback %.2f GB",
+            model_name,
+            fallback / (1024**3),
+        )
     return fallback
+
+
+def manifest_model_sizes(*, host: str) -> dict[str, int]:
+    """Read on-disk / manifest sizes from a running Ollama host."""
+    sizes: dict[str, int] = {}
+    for name in required_model_names():
+        size = _probe_model_size_bytes(name, host=host)
+        if size:
+            sizes[name] = size
+    return sizes
+
+
+def measure_w_peak_runtime(host: str) -> int:
+    """Load each model in turn (keep_alive=0) and return max VRAM from `ollama ps`."""
+    import ollama
+
+    client = ollama.Client(host=host)
+    peak = 0
+    for name in required_model_names():
+        client.chat(
+            model=name,
+            messages=[{"role": "user", "content": "ping"}],
+            keep_alive=0,
+        )
+        ps = client.ps()
+        entries = ps.get("models", []) if isinstance(ps, dict) else getattr(ps, "models", [])
+        for entry in entries:
+            if isinstance(entry, dict):
+                value = int(entry.get("size_vram") or entry.get("size") or 0)
+            else:
+                value = int(
+                    getattr(entry, "size_vram", 0) or getattr(entry, "size", 0) or 0
+                )
+            peak = max(peak, value)
+    log.info("Measured W_peak runtime on %s: %.2f GB", host, peak / (1024**3))
+    return peak
+
+
+def resolve_footprints(
+    *,
+    host: str | None = None,
+    measure_runtime_peak: bool = False,
+) -> tuple[int, int, str]:
+    """Return (w_all_bytes, w_peak_bytes, source).
+
+    source is one of: manifest, runtime, estimate
+    """
+    names = required_model_names()
+    if host:
+        manifest = manifest_model_sizes(host=host)
+        if len(manifest) == len(names):
+            w_all = sum(manifest.values())
+            w_peak = max(manifest.values())
+            source = "manifest"
+            if measure_runtime_peak:
+                try:
+                    runtime_peak = measure_w_peak_runtime(host)
+                    if runtime_peak > 0:
+                        w_peak = runtime_peak
+                        source = "runtime"
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("Runtime W_peak measurement failed on %s: %s", host, exc)
+            log.info(
+                "Resolved footprints from %s on %s: W_all=%.2f GB W_peak=%.2f GB",
+                source,
+                host,
+                w_all / (1024**3),
+                w_peak / (1024**3),
+            )
+            return w_all, w_peak, source
+
+    w_all = estimate_w_all_bytes()
+    w_peak = estimate_w_peak_bytes()
+    log.info(
+        "Using mode footprint estimates (Ollama not ready): W_all=%.2f GB W_peak=%.2f GB",
+        w_all / (1024**3),
+        w_peak / (1024**3),
+    )
+    return w_all, w_peak, "estimate"
 
 
 def _mode_peak_estimate_bytes() -> int:
@@ -173,11 +302,11 @@ def estimate_w_peak_bytes(model_names: Iterable[str] | None = None) -> int:
     names = list(model_names or required_model_names())
     if not names:
         return _mode_peak_estimate_bytes()
-    sizes = [_model_size_bytes(name) for name in names]
+    sizes = [_model_size_bytes(name, warn=False) for name in names]
     peak = max(sizes) if sizes else 0
     if peak <= 0:
         peak = _mode_peak_estimate_bytes()
-        log.warning(
+        log.debug(
             "Using mode peak estimate for W_peak: %.2f GB (mode=%s)",
             peak / (1024**3),
             os.getenv("AUTOANNOTATION_MODEL_MODE", "performance"),
@@ -189,11 +318,11 @@ def estimate_w_all_bytes(model_names: Iterable[str] | None = None) -> int:
     names = list(model_names or required_model_names())
     if not names:
         return _mode_stack_estimate_bytes()
-    sizes = [_model_size_bytes(name) for name in names]
+    sizes = [_model_size_bytes(name, warn=False) for name in names]
     total = sum(sizes)
     if total <= 0:
         total = _mode_stack_estimate_bytes()
-        log.warning(
+        log.debug(
             "Using mode stack estimate for W_all: %.2f GB (mode=%s)",
             total / (1024**3),
             os.getenv("AUTOANNOTATION_MODEL_MODE", "performance"),

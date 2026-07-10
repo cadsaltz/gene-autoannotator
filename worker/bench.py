@@ -19,7 +19,7 @@ from worker import executor
 from worker.bootstrap import ensure_worker_env
 from worker.config import load_config
 from worker.fleet.models import required_model_names
-from worker.fleet.setup import ensure_fleet_config, reset_ollama_fleet, shutdown_fleet
+from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet, shutdown_fleet
 from worker.ollama_bootstrap import ensure_models
 from worker.probe import probe_system
 from worker.router import Backend, ModelRouter
@@ -144,6 +144,14 @@ def main(argv=None):
             _progress(f"Pulled {len(pulled)} model(s): {', '.join(pulled)}")
         else:
             _progress("All required models already present")
+        fleet = refresh_fleet_footprints(fleet, spec, host=primary_host)
+        runtime_fleet = replace(fleet, max_slots=selected_slots)
+        os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = fleet.keep_alive
+        _progress(
+            f"Model footprints: W_all={fleet.w_all_bytes / (1024**3):.2f} GB, "
+            f"W_peak={fleet.w_peak_bytes / (1024**3):.2f} GB, "
+            f"tier={fleet.memory_tier}, keep_alive={fleet.keep_alive}"
+        )
         router_thread = start_router_server(
             router,
             "127.0.0.1",
