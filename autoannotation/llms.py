@@ -207,6 +207,7 @@ def ollama_chat(
             'messages': messages,
             'role': role,
             'job_id': job_id,
+            'keep_alive': _ollama_keep_alive(),
         }
         if json_schema is not None:
             chat_kwargs['format'] = json_schema

@@ -144,13 +144,18 @@ def main(argv=None):
             _progress(f"Pulled {len(pulled)} model(s): {', '.join(pulled)}")
         else:
             _progress("All required models already present")
-        fleet = refresh_fleet_footprints(fleet, spec, host=primary_host)
+        fleet = refresh_fleet_footprints(
+            fleet, spec, host=primary_host, measure_runtime_peak=False,
+        )
         runtime_fleet = replace(fleet, max_slots=selected_slots)
-        os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = fleet.keep_alive
+        # Bench cold runs keep models warm within a job (protocol); memory tier
+        # keep_alive=0 is for serve-mode memory pressure, not throughput measurement.
+        job_keep_alive = "5m" if args.cache == "cold" else fleet.keep_alive
+        os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = job_keep_alive
         _progress(
             f"Model footprints: W_all={fleet.w_all_bytes / (1024**3):.2f} GB, "
             f"W_peak={fleet.w_peak_bytes / (1024**3):.2f} GB, "
-            f"tier={fleet.memory_tier}, keep_alive={fleet.keep_alive}"
+            f"tier={fleet.memory_tier}, job_keep_alive={job_keep_alive}"
         )
         router_thread = start_router_server(
             router,

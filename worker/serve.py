@@ -125,7 +125,9 @@ def main(args=None):
         reset_ollama_fleet(fleet, spec)
         primary_host = fleet.backend_hosts()[0]
         ensure_models(client=ollama.Client(host=primary_host))
-        fleet = refresh_fleet_footprints(fleet, spec, host=primary_host)
+        fleet = refresh_fleet_footprints(
+            fleet, spec, host=primary_host, measure_runtime_peak=False,
+        )
 
     required = set(required_model_names())
     backends = [

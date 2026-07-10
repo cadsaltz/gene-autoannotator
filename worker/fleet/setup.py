@@ -557,10 +557,14 @@ def refresh_fleet_footprints(
     spec: SystemSpec,
     *,
     host: str,
-    measure_runtime_peak: bool = True,
+    measure_runtime_peak: bool = False,
     env_path: Path | None = None,
 ) -> FleetConfig:
-    """Re-measure W_all/W_peak after Ollama is running and models are present."""
+    """Re-measure W_all/W_peak after Ollama is running and models are present.
+
+    Uses manifest sizes (list/show API) by default. Set measure_runtime_peak=True
+    to load every model for ``ollama ps`` VRAM measurement (slow; startup only).
+    """
     w_all, w_peak, source = models.resolve_footprints(
         host=host,
         measure_runtime_peak=measure_runtime_peak,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from http import HTTPStatus
@@ -64,6 +65,51 @@ def _total_ms_from_result(result: dict, *, queue_wait_ms: int, inference_ms: int
     if total_ms is not None:
         return total_ms
     return queue_wait_ms + inference_ms
+
+
+def _router_http_timeout() -> float:
+    raw = os.getenv("OLLAMA_ROUTER_HTTP_TIMEOUT_SEC", "180")
+    try:
+        return float(raw)
+    except ValueError:
+        return 180.0
+
+
+def _ollama_chat_timeout() -> float:
+    raw = os.getenv("OLLAMA_CHAT_TIMEOUT_SEC", "180")
+    try:
+        return float(raw)
+    except ValueError:
+        return 180.0
+
+
+def _parse_keep_alive(value) -> int | str | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
+
+
+def _keep_alive_from_env() -> int | str | None:
+    raw = os.getenv("AUTOANNOTATION_OLLAMA_KEEP_ALIVE")
+    if raw is None or not str(raw).strip():
+        return None
+    return _parse_keep_alive(raw)
+
+
+def _ollama_client(host: str):
+    timeout = _ollama_chat_timeout()
+    try:
+        return ollama.Client(host=host, timeout=timeout)
+    except TypeError:
+        return ollama.Client(host=host)
 
 
 def _make_handler(
@@ -149,9 +195,14 @@ def _make_handler(
             chat_kwargs: dict = {"model": model, "messages": messages}
             if format_ is not None:
                 chat_kwargs["format"] = format_
+            keep_alive = _parse_keep_alive(body.get("keep_alive"))
+            if keep_alive is None:
+                keep_alive = _keep_alive_from_env()
+            if keep_alive is not None:
+                chat_kwargs["keep_alive"] = keep_alive
 
             try:
-                client = ollama.Client(host=backend.host)
+                client = _ollama_client(backend.host)
                 result = client.chat(**chat_kwargs)
                 payload = _chat_response_payload(result)
                 inference_ms = _inference_ms_from_result(payload)
