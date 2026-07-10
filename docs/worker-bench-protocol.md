@@ -180,10 +180,19 @@ Per-job wall time and router stall time. Keys are job IDs (`bench-001`, …).
 | --- | --- |
 | `wall_ms` | Total job duration (subprocess wall time) |
 | `stall_ms` | Sum of `queue_wait_ms` across all LLM calls in the job |
+| `inference_ms` | Sum of model inference time for the job |
+| `non_llm_ms` | Remaining wall time (paper fetch, Python, etc.) |
+
+### `per_backend`
+
+Per Ollama server plus a `_fleet` summary. See `busy_lane_sec`, `idle_lane_sec`,
+`lane_utilization`, and `_fleet.peak_lane_usage` (burst concurrency).
 
 ### `efficiency`
 
-Reserved for future composite scoring. Currently `{"score": 0.0, "components": {}}`.
+Composite score (0–100) from lane utilization, throughput per lane, memory tier
+fit, job success rate, and queue responsiveness. See `components` and `derived`
+in the report JSON.
 
 ## Recording results
 
