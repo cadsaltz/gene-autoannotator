@@ -564,7 +564,7 @@ def ensure_fleet_config(
     system_spec = spec or probe_system()
     if cfg is not None:
         cfg = _normalize_fleet_config(cfg, system_spec)
-        errors, warnings = validate_fleet(system_spec, cfg)
+        errors, warnings = validate_or_warn(system_spec, cfg)
         for warning in warnings:
             log.warning(warning)
         if errors:
