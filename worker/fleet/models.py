@@ -25,6 +25,12 @@ _MODE_W_ALL_ESTIMATE_BYTES = {
     "performance": int(52 * 1024**3),
 }
 
+_MODE_W_PEAK_ESTIMATE_BYTES = {
+    "nano": int(1.2 * 1024**3),
+    "lite": int(1.7 * 1024**3),
+    "performance": int(16 * 1024**3),
+}
+
 _SIZE_MULTIPLIERS = {
     "B": 1,
     "KB": 1024,
@@ -155,6 +161,28 @@ def _model_size_bytes(model_name: str) -> int:
         fallback / (1024**3),
     )
     return fallback
+
+
+def _mode_peak_estimate_bytes() -> int:
+    mode = os.getenv("AUTOANNOTATION_MODEL_MODE", "performance").strip().lower()
+    return _MODE_W_PEAK_ESTIMATE_BYTES.get(mode, _MODE_W_PEAK_ESTIMATE_BYTES["performance"])
+
+
+def estimate_w_peak_bytes(model_names: Iterable[str] | None = None) -> int:
+    """Largest single model footprint (bytes) for request-based / swap sizing."""
+    names = list(model_names or required_model_names())
+    if not names:
+        return _mode_peak_estimate_bytes()
+    sizes = [_model_size_bytes(name) for name in names]
+    peak = max(sizes) if sizes else 0
+    if peak <= 0:
+        peak = _mode_peak_estimate_bytes()
+        log.warning(
+            "Using mode peak estimate for W_peak: %.2f GB (mode=%s)",
+            peak / (1024**3),
+            os.getenv("AUTOANNOTATION_MODEL_MODE", "performance"),
+        )
+    return peak
 
 
 def estimate_w_all_bytes(model_names: Iterable[str] | None = None) -> int:

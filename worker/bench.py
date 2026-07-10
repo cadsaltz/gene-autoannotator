@@ -106,7 +106,8 @@ def main(argv=None):
     model_mode = os.getenv("AUTOANNOTATION_MODEL_MODE", "performance")
     _progress(
         f"Bench setup: model_mode={model_mode}, fleet={fleet.num_servers}x"
-        f"parallel={fleet.parallel}, slots={args.slots if args.slots is not None else fleet.max_slots}"
+        f"parallel={fleet.parallel}, slots={args.slots if args.slots is not None else fleet.max_slots}, "
+        f"memory_tier={fleet.memory_tier}, keep_alive={fleet.keep_alive}"
     )
     _progress("Resetting Ollama fleet (stop existing servers, start fresh)...")
     procs = reset_ollama_fleet(fleet, spec)
@@ -116,8 +117,14 @@ def main(argv=None):
 
     if args.cache == "cold":
         _purge_llm_cache()
-        os.environ.setdefault("AUTOANNOTATION_OLLAMA_KEEP_ALIVE", "5m")
-        _progress("LLM cache cleared (cold start)")
+        os.environ.setdefault("AUTOANNOTATION_OLLAMA_KEEP_ALIVE", fleet.keep_alive)
+        if fleet.memory_tier == "warm_stack":
+            _progress("LLM cache cleared (cold start; warm model stack)")
+        else:
+            _progress(
+                f"LLM cache cleared (cold start; {fleet.memory_tier}, "
+                f"keep_alive={fleet.keep_alive})"
+            )
 
     source = BatchJobSource(args.jobs)
     selected_slots = args.slots if args.slots is not None else fleet.max_slots

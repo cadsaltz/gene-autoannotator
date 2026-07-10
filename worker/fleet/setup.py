@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from shared.env_persist import load_env_file, save_env_file
@@ -150,16 +151,38 @@ def validate_or_warn(spec: SystemSpec, cfg: FleetConfig) -> tuple[list[str], lis
 
 
 def prompt_fleet(spec: SystemSpec, recommendation: FleetRecommendation) -> FleetConfig:
+    for warning in recommendation.warnings:
+        print(f"WARNING: {warning}", flush=True)
+    print(
+        f"Recommended memory tier: {recommendation.memory_tier} "
+        f"(keep_alive={recommendation.keep_alive})",
+        flush=True,
+    )
     while True:
         n = _prompt_int("servers", recommended=recommendation.num_servers)
         p = _prompt_int("parallel per server", recommended=recommendation.parallel)
         slots = _prompt_int("max job slots", recommended=recommendation.max_slots)
+        try:
+            tier = sizing.classify_memory_tier(
+                spec,
+                w_all_bytes=recommendation.w_all_bytes,
+                w_peak_bytes=recommendation.w_peak_bytes,
+                c_slot_bytes=recommendation.c_slot_bytes,
+                num_servers=n,
+                parallel=p,
+            )
+        except RuntimeError as exc:
+            print(f"ERROR: {exc}", flush=True)
+            continue
         cfg = FleetConfig(
             num_servers=n,
             parallel=p,
             max_slots=slots,
+            keep_alive=sizing.TIER_KEEP_ALIVE[tier],
             w_all_bytes=recommendation.w_all_bytes,
+            w_peak_bytes=recommendation.w_peak_bytes,
             c_slot_bytes=recommendation.c_slot_bytes,
+            memory_tier=tier,
         )
         errors, warnings = validate_or_warn(spec, cfg)
         for warning in warnings:
@@ -435,13 +458,27 @@ def _fleet_from_env(*, env_path: Path) -> FleetConfig | None:
     if not _fleet_env_complete(env_path=env_path):
         return None
     w_all_raw = _env_value("OLLAMA_FLEET_W_ALL_BYTES", env_path=env_path)
+    w_peak_raw = _env_value("OLLAMA_FLEET_W_PEAK_BYTES", env_path=env_path)
     c_slot_raw = _env_value("OLLAMA_FLEET_C_SLOT_BYTES", env_path=env_path)
+    w_all = int(w_all_raw) if w_all_raw else models.estimate_w_all_bytes()
+    w_peak = int(w_peak_raw) if w_peak_raw else models.estimate_w_peak_bytes()
+    tier_raw = _env_value("OLLAMA_FLEET_MEMORY_TIER", env_path=env_path)
+    memory_tier: sizing.MemoryTier = "warm_stack"
+    if tier_raw in sizing.TIER_KEEP_ALIVE:
+        memory_tier = tier_raw  # type: ignore[assignment]
+    keep_alive = (
+        _env_value("OLLAMA_FLEET_KEEP_ALIVE", env_path=env_path)
+        or sizing.TIER_KEEP_ALIVE[memory_tier]
+    )
     return FleetConfig(
         num_servers=int(_env_value("OLLAMA_FLEET_SERVERS", env_path=env_path)),
         parallel=int(_env_value("OLLAMA_FLEET_PARALLEL", env_path=env_path)),
         max_slots=int(_env_value("WORKER_MAX_SLOTS", env_path=env_path)),
-        w_all_bytes=int(w_all_raw) if w_all_raw else models.estimate_w_all_bytes(),
+        keep_alive=keep_alive,
+        w_all_bytes=w_all,
+        w_peak_bytes=w_peak,
         c_slot_bytes=int(c_slot_raw) if c_slot_raw else DEFAULT_C_SLOT_BYTES,
+        memory_tier=memory_tier,
     )
 
 
@@ -451,7 +488,10 @@ def _persist_fleet_config(env_path: Path, cfg: FleetConfig) -> None:
     saved["OLLAMA_FLEET_PARALLEL"] = str(cfg.parallel)
     saved["WORKER_MAX_SLOTS"] = str(cfg.max_slots)
     saved["OLLAMA_FLEET_W_ALL_BYTES"] = str(cfg.w_all_bytes)
+    saved["OLLAMA_FLEET_W_PEAK_BYTES"] = str(cfg.w_peak_bytes or models.estimate_w_peak_bytes())
     saved["OLLAMA_FLEET_C_SLOT_BYTES"] = str(cfg.c_slot_bytes)
+    saved["OLLAMA_FLEET_MEMORY_TIER"] = cfg.memory_tier
+    saved["OLLAMA_FLEET_KEEP_ALIVE"] = cfg.keep_alive
     save_env_file(env_path, saved)
 
 
@@ -460,7 +500,56 @@ def _apply_fleet_to_environ(cfg: FleetConfig) -> None:
     os.environ["OLLAMA_FLEET_PARALLEL"] = str(cfg.parallel)
     os.environ["WORKER_MAX_SLOTS"] = str(cfg.max_slots)
     os.environ["OLLAMA_FLEET_W_ALL_BYTES"] = str(cfg.w_all_bytes)
+    os.environ["OLLAMA_FLEET_W_PEAK_BYTES"] = str(cfg.w_peak_bytes or models.estimate_w_peak_bytes())
     os.environ["OLLAMA_FLEET_C_SLOT_BYTES"] = str(cfg.c_slot_bytes)
+    os.environ["OLLAMA_FLEET_MEMORY_TIER"] = cfg.memory_tier
+    os.environ["OLLAMA_FLEET_KEEP_ALIVE"] = cfg.keep_alive
+    if not os.environ.get("AUTOANNOTATION_OLLAMA_KEEP_ALIVE"):
+        os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = cfg.keep_alive
+
+
+def _normalize_fleet_config(cfg: FleetConfig, spec: SystemSpec) -> FleetConfig:
+    w_peak = cfg.w_peak_bytes or models.estimate_w_peak_bytes()
+    w_all = cfg.w_all_bytes or models.estimate_w_all_bytes()
+    c_slot = cfg.c_slot_bytes or DEFAULT_C_SLOT_BYTES
+    try:
+        tier = sizing.classify_memory_tier(
+            spec,
+            w_all_bytes=w_all,
+            w_peak_bytes=w_peak,
+            c_slot_bytes=c_slot,
+            num_servers=cfg.num_servers,
+            parallel=cfg.parallel,
+        )
+    except RuntimeError as exc:
+        log.warning(
+            "Saved fleet config is infeasible (%s); applying fresh recommendation.",
+            exc,
+        )
+        rec = sizing.recommend(
+            spec,
+            w_all_bytes=w_all,
+            w_peak_bytes=w_peak,
+            c_slot_bytes=c_slot,
+        )
+        return FleetConfig(
+            num_servers=rec.num_servers,
+            parallel=rec.parallel,
+            max_slots=rec.max_slots,
+            keep_alive=rec.keep_alive,
+            w_all_bytes=rec.w_all_bytes,
+            w_peak_bytes=rec.w_peak_bytes,
+            c_slot_bytes=rec.c_slot_bytes,
+            memory_tier=rec.memory_tier,
+        )
+    return replace(
+        cfg,
+        w_all_bytes=w_all,
+        w_peak_bytes=w_peak,
+        c_slot_bytes=c_slot,
+        memory_tier=tier,
+        keep_alive=sizing.TIER_KEEP_ALIVE[tier],
+    )
 
 
 def ensure_fleet_config(
@@ -472,18 +561,30 @@ def ensure_fleet_config(
     path = env_path or _default_env_path()
 
     cfg = _fleet_from_env(env_path=path)
+    system_spec = spec or probe_system()
     if cfg is not None:
+        cfg = _normalize_fleet_config(cfg, system_spec)
+        errors, warnings = validate_fleet(system_spec, cfg)
+        for warning in warnings:
+            log.warning(warning)
+        if errors:
+            raise RuntimeError("; ".join(errors))
         _apply_fleet_to_environ(cfg)
         return cfg
 
-    system_spec = spec or probe_system()
     c_slot = DEFAULT_C_SLOT_BYTES
     w_all = models.estimate_w_all_bytes()
+    w_peak = models.estimate_w_peak_bytes()
     recommendation = sizing.recommend(
         system_spec,
         w_all_bytes=w_all,
+        w_peak_bytes=w_peak,
         c_slot_bytes=c_slot,
     )
+    for warning in recommendation.warnings:
+        log.warning(warning)
+        if interactive:
+            print(f"WARNING: {warning}", flush=True)
 
     if interactive:
         cfg = prompt_fleet(system_spec, recommendation)
@@ -492,8 +593,11 @@ def ensure_fleet_config(
             num_servers=recommendation.num_servers,
             parallel=recommendation.parallel,
             max_slots=recommendation.max_slots,
+            keep_alive=recommendation.keep_alive,
             w_all_bytes=recommendation.w_all_bytes,
+            w_peak_bytes=recommendation.w_peak_bytes,
             c_slot_bytes=recommendation.c_slot_bytes,
+            memory_tier=recommendation.memory_tier,
         )
 
     _persist_fleet_config(path, cfg)

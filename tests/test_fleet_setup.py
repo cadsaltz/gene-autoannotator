@@ -105,16 +105,20 @@ def test_ensure_fleet_config_loads_from_env(tmp_path, monkeypatch):
         + "\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(
-        setup,
-        "probe_system",
-        lambda: (_ for _ in ()).throw(AssertionError("probe should not run")),
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=31 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
     )
-    cfg = setup.ensure_fleet_config(interactive=False, env_path=env_path)
+    monkeypatch.setattr(setup.models, "estimate_w_peak_bytes", lambda: 1_200_000_000)
+    cfg = setup.ensure_fleet_config(interactive=False, env_path=env_path, spec=spec)
     assert cfg.num_servers == 2
     assert cfg.parallel == 3
     assert cfg.max_slots == 5
     assert cfg.w_all_bytes == 2147483648
+    assert cfg.memory_tier == "warm_stack"
 
 
 def test_kill_all_ollama_servers_sends_sigterm(monkeypatch):

@@ -29,6 +29,15 @@ def test_estimate_w_all_sums_manifest_sizes(monkeypatch):
     assert models.estimate_w_all_bytes(["a", "b"]) == 1_500_000_000
 
 
+def test_estimate_w_peak_uses_largest_model(monkeypatch):
+    monkeypatch.setattr(
+        models,
+        "_model_size_bytes",
+        lambda name: {"a": 1_000_000_000, "b": 500_000_000}[name],
+    )
+    assert models.estimate_w_peak_bytes(["a", "b"]) == 1_000_000_000
+
+
 def test_parse_size_token():
     assert models._parse_size_token("815 MB") == 815 * 1024**2
     assert models._parse_size_token("7.3 GB") == int(7.3 * 1024**3)

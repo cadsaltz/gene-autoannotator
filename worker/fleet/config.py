@@ -1,4 +1,8 @@
 from dataclasses import dataclass
+from typing import Literal
+
+
+MemoryTier = Literal["warm_stack", "swap", "vram_overflow"]
 
 
 @dataclass(frozen=True)
@@ -9,7 +13,9 @@ class FleetConfig:
     base_port: int = 11434
     keep_alive: str = "5m"
     w_all_bytes: int = 0
+    w_peak_bytes: int = 0
     c_slot_bytes: int = 0
+    memory_tier: MemoryTier = "warm_stack"
 
     @property
     def agg_lanes(self) -> int:
