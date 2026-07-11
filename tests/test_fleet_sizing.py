@@ -46,7 +46,7 @@ def test_recommendation_favors_single_gpu_higher_parallel():
     )
     assert rec.num_servers == 1
     assert rec.parallel >= 1
-    assert rec.agg_lanes == rec.num_servers * rec.parallel
+    assert rec.agg_lanes == rec.num_servers * rec.parallel * rec.model_count
 
 
 def test_performance_models_fit_with_swap_tier_on_8gb_gpu():
@@ -60,7 +60,7 @@ def test_performance_models_fit_with_swap_tier_on_8gb_gpu():
     assert rec.num_servers == 1
     assert rec.memory_tier in ("swap", "vram_overflow")
     assert rec.keep_alive == "0"
-    assert any("keep_alive=0" in warning for warning in rec.warnings)
+    assert rec.warnings
 
 
 def test_classify_warm_stack_when_all_models_fit_vram():

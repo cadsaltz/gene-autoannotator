@@ -136,14 +136,17 @@ VRAM per server is estimated as `W_all + parallel × C_slot`:
   estimated from `AUTOANNOTATION_MODEL_MODE`).
 - **C_slot** — per-lane context overhead (~0.4 GB default).
 
-`max_slots` is capped by aggregation lanes (`servers × parallel`), available
-RAM (subprocess overhead), and physical CPU count. Setting `max_slots` above
-`agg_lanes` is allowed but may cause end-of-batch queue stalls.
+`max_slots` is capped by router lanes (`servers × parallel × model_count`),
+available RAM (subprocess overhead), and physical CPU count. Setting `max_slots`
+above `agg_lanes` is allowed but may cause queue stalls when many jobs contend
+for the same model.
 
 ## Model router sidecar
 
 The worker parent starts a localhost HTTP router before any jobs run. It tracks
-in-flight requests per backend lane and queues callers when all lanes are busy.
+in-flight requests **per model per backend** (`parallel` concurrent calls per
+model) and queues callers only when that model's lanes are busy. Different
+models on the same Ollama server can run concurrently.
 
 `autoannotation.llms.ollama_chat()` is the single integration point: when
 `OLLAMA_ROUTER_URL` is set, calls go to `POST /v1/chat` on the sidecar instead

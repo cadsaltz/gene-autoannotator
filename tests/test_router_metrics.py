@@ -94,7 +94,7 @@ def test_per_model_peak_in_flight():
         ),
     ]
     collector._batch_start = base
-    collector.end_batch()
+    collector._batch_end = base + 2.0
     report = collector.build_report(
         fleet_cfg=fleet_cfg,
         jobs_submitted=2,

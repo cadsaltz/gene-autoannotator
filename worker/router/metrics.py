@@ -299,6 +299,8 @@ class MetricsCollector:
             "fleet": {
                 "num_servers": fleet_cfg.num_servers,
                 "parallel": fleet_cfg.parallel,
+                "model_count": fleet_cfg.model_count,
+                "lanes_per_server": fleet_cfg.lanes_per_server,
                 "lanes": fleet_cfg.agg_lanes,
                 "model_mode": model_mode,
                 "memory_tier": fleet_cfg.memory_tier,
@@ -338,10 +340,10 @@ class MetricsCollector:
         hosts = fleet_cfg.backend_hosts()
         calls_by_backend = self._calls_by_backend()
         parallel_by_backend = {
-            host: fleet_cfg.parallel for host in hosts
+            host: fleet_cfg.lanes_per_server for host in hosts
         }
         for backend in calls_by_backend:
-            parallel_by_backend.setdefault(backend, fleet_cfg.parallel)
+            parallel_by_backend.setdefault(backend, fleet_cfg.lanes_per_server)
 
         stats: dict[str, dict] = {}
         total_busy = 0.0
@@ -349,18 +351,21 @@ class MetricsCollector:
         total_capacity = 0.0
         for host in hosts:
             calls = calls_by_backend.get(host, [])
+            lane_capacity = fleet_cfg.lanes_per_server
             busy_sec, idle_sec, peak = _integrate_lane_occupancy(
                 calls,
-                parallel=fleet_cfg.parallel,
+                parallel=lane_capacity,
                 window_start=window_start,
                 window_end=window_end,
             )
-            capacity_sec = fleet_cfg.parallel * makespan_sec
+            capacity_sec = lane_capacity * makespan_sec
             utilization = (busy_sec / capacity_sec) if capacity_sec > 0 else 0.0
             inference_ms = sum(call.inference_ms for call in calls)
             queue_wait_ms = sum(call.queue_wait_ms for call in calls)
             stats[host] = {
                 "parallel": fleet_cfg.parallel,
+                "model_count": fleet_cfg.model_count,
+                "lane_capacity": lane_capacity,
                 "calls": len(calls),
                 "busy_lane_sec": round(busy_sec, 3),
                 "idle_lane_sec": round(idle_sec, 3),

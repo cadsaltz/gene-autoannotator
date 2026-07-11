@@ -254,7 +254,7 @@ def _make_handler(
                     {"error": str(exc)},
                 )
             finally:
-                router.release(backend)
+                router.release(backend, model)
 
     RouterHTTPHandler.collect_metrics = collect_metrics
     RouterHTTPHandler.log_requests = log_requests

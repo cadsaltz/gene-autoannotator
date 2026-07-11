@@ -179,7 +179,7 @@ Router bench logging (when `log_requests=True`):
 | `router dispatch` | Lane acquired; Ollama call starting. `queue=Nms` is time already spent waiting for a free lane (blocking happened before this line). |
 | `router chat` | LLM call completed |
 
-Timeline for one request: **wait for lane (silent)** → **`router dispatch`** → Ollama inference → **`router chat`**. With 1 lane and 2 slots, the second job's dispatch line may appear only after the first job's `router chat`, with a large `queue=` value reflecting that wait.
+Timeline for one request: **wait for that model's lane (silent)** → **`router dispatch`** → Ollama inference → **`router chat`**. With 1 server, `parallel=1`, and 4 models, up to 4 different models can be in flight at once; a second call to the same model waits.
 
 A long gap after `router dispatch` with no matching `router chat` means an
 in-flight inference call. A gap with neither line is non-LLM work inside the
@@ -191,9 +191,9 @@ Press **Ctrl+C** again to force exit immediately.
 ### Oversubscription (`slots > lanes`)
 
 Worker slots control how many annotation **jobs** run in parallel. Router
-**lanes** control how many Ollama calls run at once. When `slots > lanes`,
-extra jobs queue at the router; that queue wait is silent until `router
-dispatch`.
+**lanes** are `servers × parallel × model_count`: each loaded model gets up to
+`parallel` concurrent calls per server. Jobs queue only when **their model** is
+busy, not when a different model is in use.
 
 LLM HTTP read timeouts are **unlimited by default** (only connect timeout
 applies). Inference may take many minutes on large models or CPU/RAM overflow;

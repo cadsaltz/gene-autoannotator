@@ -172,7 +172,7 @@ def main(argv=None):
         fleet = refresh_fleet_footprints(
             fleet, spec, host=primary_host, measure_runtime_peak=False,
         )
-        runtime_fleet = replace(fleet, max_slots=selected_slots)
+        runtime_fleet = replace(fleet, max_slots=selected_slots, model_count=len(required))
         # Bench cold runs keep models warm within a job (protocol); memory tier
         # keep_alive=0 is for serve-mode memory pressure, not throughput measurement.
         job_keep_alive = "5m" if args.cache == "cold" else fleet.keep_alive
@@ -193,7 +193,7 @@ def main(argv=None):
             model_mode=model_mode,
         )
         os.environ["OLLAMA_ROUTER_URL"] = f"http://127.0.0.1:{router_thread._port}"
-        lanes = runtime_fleet.num_servers * runtime_fleet.parallel
+        lanes = runtime_fleet.agg_lanes
         read_timeout = ensure_router_read_timeout_for_load(
             slots=selected_slots,
             lanes=lanes,

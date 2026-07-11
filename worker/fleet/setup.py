@@ -479,6 +479,7 @@ def _fleet_from_env(*, env_path: Path) -> FleetConfig | None:
         w_peak_bytes=w_peak,
         c_slot_bytes=int(c_slot_raw) if c_slot_raw else DEFAULT_C_SLOT_BYTES,
         memory_tier=memory_tier,
+        model_count=len(models.required_model_names()),
     )
 
 

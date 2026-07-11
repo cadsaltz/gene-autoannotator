@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from worker.fleet.config import FleetConfig
+from worker.fleet.models import required_model_names
 from worker.probe import SystemSpec
 
 VRAM_HEADROOM_RATIO = 0.15
@@ -171,6 +172,7 @@ def enumerate_feasible(
                     continue
 
             max_slots = recommend_max_slots(spec, n, p)
+            model_count = len(required_model_names())
             options.append(
                 (
                     FleetConfig(
@@ -182,6 +184,7 @@ def enumerate_feasible(
                         w_peak_bytes=w_peak_bytes,
                         c_slot_bytes=c_slot_bytes,
                         memory_tier=tier,
+                        model_count=model_count,
                     ),
                     tier,
                 )
@@ -190,7 +193,8 @@ def enumerate_feasible(
 
 
 def recommend_max_slots(spec: SystemSpec, num_servers: int, parallel: int) -> int:
-    agg_lanes = num_servers * parallel
+    model_count = len(required_model_names())
+    agg_lanes = num_servers * parallel * model_count
     burst_slots = max(1, math.floor(agg_lanes * 0.85))
     ram_slots = max(
         1,
@@ -251,6 +255,7 @@ def recommend(
         w_peak_bytes=w_peak_bytes,
         c_slot_bytes=c_slot_bytes,
         memory_tier=best_tier,
+        model_count=best_cfg.model_count,
         warnings=tuple(warnings),
     )
 

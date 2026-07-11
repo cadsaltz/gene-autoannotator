@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import sys
+from dataclasses import replace
 from dataclasses import dataclass
 from typing import Any
 
@@ -120,6 +121,7 @@ def main(args=None):
 
     fleet = ensure_fleet_config(interactive=interactive)
     spec = probe_system()
+    required = set(required_model_names())
 
     if not discover_only:
         reset_ollama_fleet(fleet, spec)
@@ -128,8 +130,8 @@ def main(args=None):
         fleet = refresh_fleet_footprints(
             fleet, spec, host=primary_host, measure_runtime_peak=False,
         )
+        fleet = replace(fleet, model_count=len(required))
 
-    required = set(required_model_names())
     backends = [
         Backend(host=host, models=required, parallel=fleet.parallel)
         for host in fleet.backend_hosts()
