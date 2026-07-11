@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 from shared.job_contract import AnnotationJobRequest
 
@@ -89,6 +90,24 @@ def _run_inprocess(request: AnnotationJobRequest, annotation_main=None):
     )
 
 
+def _capture_subprocess_stderr() -> bool:
+    raw = os.getenv("WORKER_JOB_CAPTURE_STDERR", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _job_wall_timeout_sec() -> float | None:
+    raw = os.getenv("WORKER_JOB_WALL_TIMEOUT_SEC", "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    if value <= 0:
+        return None
+    return value
+
+
 def _subprocess_env(*, job_id: str | None) -> dict[str, str]:
     env = os.environ.copy()
     for key in _SUBPROCESS_ENV_KEYS:
@@ -102,9 +121,34 @@ def _subprocess_env(*, job_id: str | None) -> dict[str, str]:
     return env
 
 
+def _communicate_with_optional_timeout(
+    proc: subprocess.Popen,
+    *,
+    timeout_sec: float | None,
+) -> tuple[str, str | None]:
+    if timeout_sec is None:
+        return proc.communicate()
+
+    deadline = time.monotonic() + timeout_sec
+    while True:
+        try:
+            return proc.communicate(timeout=max(0.1, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            if time.monotonic() >= deadline:
+                proc.kill()
+                stdout, stderr = proc.communicate()
+                detail = (stderr or "").strip()
+                raise RuntimeError(
+                    f"annotation subprocess exceeded WORKER_JOB_WALL_TIMEOUT_SEC="
+                    f"{timeout_sec:g}s"
+                    + (f": {detail}" if detail else "")
+                ) from None
+
+
 def _run_subprocess(request: AnnotationJobRequest, *, job_id: str | None):
     request_path = None
     proc: subprocess.Popen | None = None
+    capture_stderr = _capture_subprocess_stderr()
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -124,16 +168,23 @@ def _run_subprocess(request: AnnotationJobRequest, *, job_id: str | None):
             ],
             env=_subprocess_env(job_id=job_id),
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.PIPE if capture_stderr else None,
             text=True,
         )
         _register_job_process(job_id, proc)
-        stdout, stderr = proc.communicate()
+        stdout, stderr = _communicate_with_optional_timeout(
+            proc,
+            timeout_sec=_job_wall_timeout_sec(),
+        )
         if proc.returncode != 0:
-            stderr = stderr.strip()
+            stderr_text = (stderr or "").strip()
+            if not stderr_text and not capture_stderr:
+                stderr_text = (
+                    "subprocess stderr is inherited; scroll up for annotation logs"
+                )
             raise RuntimeError(
                 f"annotation subprocess failed with exit code {proc.returncode}"
-                + (f": {stderr}" if stderr else "")
+                + (f": {stderr_text}" if stderr_text else "")
             )
         stdout = stdout.strip()
         if not stdout:

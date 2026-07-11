@@ -90,6 +90,29 @@ def test_run_annotation_job_subprocess_sets_job_env(monkeypatch):
     assert result["output_path"] == "gen_json/gen_Rv0001.json"
 
 
+def test_run_annotation_job_subprocess_inherits_stderr_by_default(monkeypatch):
+    monkeypatch.setenv("WORKER_JOB_EXECUTION", "subprocess")
+    monkeypatch.delenv("WORKER_JOB_CAPTURE_STDERR", raising=False)
+
+    captured = {}
+
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            captured["stderr"] = kwargs.get("stderr")
+
+        def communicate(self):
+            return (json.dumps({"ok": True}), None)
+
+        returncode = 0
+
+    monkeypatch.setattr(executor.subprocess, "Popen", FakePopen)
+
+    request = AnnotationJobRequest(profile="mtb-h37rv", locus="Rv0001")
+    executor.run_annotation_job(request, job_id="job-123")
+
+    assert captured["stderr"] is None
+
+
 def test_terminate_active_jobs_kills_running_subprocess(monkeypatch):
     import threading
     import time

@@ -185,6 +185,20 @@ A long gap after `router dispatch` with no matching `router chat` means an
 in-flight inference call. A gap with neither line is non-LLM work inside the
 annotation subprocess (paper fetch, parse, etc.).
 
+Annotation subprocess logs (PMC fetch, throttling, etc.) print on **stderr** and
+appear in the bench terminal. If router logs go quiet for many minutes while
+jobs are still active, check:
+
+- **`Still waiting on N job(s)`** warnings from the runtime (every ~60s after
+  2 minutes) — lists active job IDs and elapsed time.
+- **`ollama ps`** — models stuck in `Stopping...` for a long time indicate a wedged
+  Ollama unload; restart Ollama (`Ctrl+C` the bench, or `sudo systemctl restart ollama`).
+- **Subprocess stderr capture** — by default stderr is inherited (not piped) so
+  verbose DEBUG logs cannot deadlock the job. Set `WORKER_JOB_CAPTURE_STDERR=1` only
+  if you need captured stderr on failure (not recommended for long bench runs).
+- **Optional wall timeout** — `WORKER_JOB_WALL_TIMEOUT_SEC=7200` kills a job
+  subprocess after N seconds with a clear error.
+
 Press **Ctrl+C** once to stop jobs and shut down the Ollama fleet cleanly.
 Press **Ctrl+C** again to force exit immediately.
 

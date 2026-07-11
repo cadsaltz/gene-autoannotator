@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import os
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -13,6 +14,19 @@ from worker import executor
 PERMANENT_ERROR_MARKERS = ("locus_schema_mismatch", "profile or organism", "name or locus")
 
 log = logging.getLogger(__name__)
+
+STALL_WARN_AFTER_SEC = 120.0
+STALL_WARN_INTERVAL_SEC = 60.0
+
+
+def _float_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
 
 
 @dataclass(frozen=True)
@@ -95,6 +109,16 @@ class WorkerRuntime:
 
         self._execute_supports_job_id = _supports_job_id(execute_fn)
 
+        self._stall_warn_after_sec = _float_env(
+            "WORKER_STALL_WARN_AFTER_SEC",
+            STALL_WARN_AFTER_SEC,
+        )
+        self._stall_warn_interval_sec = _float_env(
+            "WORKER_STALL_WARN_INTERVAL_SEC",
+            STALL_WARN_INTERVAL_SEC,
+        )
+        self._last_stall_warn_at = 0.0
+
     @property
     def active_jobs(self) -> dict[str, ActiveJob]:
         return self._active_jobs
@@ -122,6 +146,7 @@ class WorkerRuntime:
                 self._reap_finished()
                 if not self._shutdown_requested.is_set():
                     self._claim_to_capacity()
+                self._maybe_warn_stalled_jobs()
                 if self._done():
                     break
                 self._job_source.wait_or_sleep(timeout=0.1)
@@ -188,6 +213,33 @@ class WorkerRuntime:
                 log.info("Completed job %s in %dms", job_id, wall_ms)
                 self._job_source.on_complete(job_id, result)
                 self._metrics_record_job_done(job_id, wall_ms=wall_ms, failed=False)
+
+    def _maybe_warn_stalled_jobs(self) -> None:
+        if not self._active_jobs:
+            return
+        now = time.monotonic()
+        if now - self._last_stall_warn_at < self._stall_warn_interval_sec:
+            return
+
+        stalled: list[tuple[str, int]] = []
+        for job_id, active in self._active_jobs.items():
+            elapsed_sec = max(0, int(now - active.started_at))
+            if elapsed_sec >= self._stall_warn_after_sec:
+                stalled.append((job_id, elapsed_sec))
+
+        if not stalled:
+            return
+
+        self._last_stall_warn_at = now
+        summary = ", ".join(f"{job_id} ({elapsed}s)" for job_id, elapsed in stalled)
+        log.warning(
+            "Still waiting on %d job(s): %s. "
+            "If router logs are idle, jobs are in subprocess work (paper fetch/parse) "
+            "or may be blocked — annotation logs print on stderr; "
+            "check `ollama ps` for models stuck in Stopping...",
+            len(stalled),
+            summary,
+        )
 
     def _start_heartbeat_thread(self) -> None:
         if self._heartbeat_fn is None:

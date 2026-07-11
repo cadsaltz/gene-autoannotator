@@ -104,3 +104,44 @@ def test_runtime_request_shutdown_stops_in_flight_jobs():
     assert not thread.is_alive()
     assert runtime.shutdown_requested
     assert source.failed or not source.completed
+
+
+def test_runtime_warns_on_long_running_jobs(monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.WARNING)
+
+    class SlowSource(FakeJobSource):
+        def __init__(self):
+            super().__init__(
+                [JobSpec(job_id="j1", request={"profile": "mtb-h37rv", "locus": "Rv0001"})]
+            )
+
+        def is_exhausted(self):
+            return False
+
+    source = SlowSource()
+
+    def fake_execute(request, *, job_id=None):
+        time.sleep(2.0)
+        return {"job_id": job_id}
+
+    monkeypatch.setenv("WORKER_STALL_WARN_AFTER_SEC", "0.05")
+    monkeypatch.setenv("WORKER_STALL_WARN_INTERVAL_SEC", "0.05")
+
+    config = SimpleNamespace(max_slots=1, heartbeat_seconds=1)
+    fleet_config = SimpleNamespace(max_slots=1)
+    runtime = WorkerRuntime(
+        config=config,
+        fleet_config=fleet_config,
+        job_source=source,
+        execute_fn=fake_execute,
+    )
+
+    thread = threading.Thread(target=runtime.run)
+    thread.start()
+    time.sleep(0.25)
+    runtime.request_shutdown()
+    thread.join(timeout=5)
+
+    assert any("Still waiting on" in record.message for record in caplog.records)
