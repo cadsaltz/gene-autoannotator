@@ -192,7 +192,18 @@ Per Ollama server plus a `_fleet` summary. See `busy_lane_sec`, `idle_lane_sec`,
 
 Composite score (0–100) from lane utilization, throughput per lane, memory tier
 fit, job success rate, and queue responsiveness. See `components` and `derived`
-in the report JSON.
+in the report JSON. Token usage is excluded.
+
+### `token_usage`
+
+Informational LLM token counts from Ollama (`prompt_eval_count` / `eval_count`).
+Not used in `efficiency` or `jobs_per_hour`.
+
+| Field | Meaning |
+| --- | --- |
+| `total` | Batch-wide sums across successful router calls |
+| `per_model` | Same fields keyed by model name |
+| `calls_with_tokens` | Calls where Ollama returned token counts |
 
 ## Recording results
 

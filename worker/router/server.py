@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import ollama
 
-from worker.router.metrics import MetricsCollector
+from worker.router.metrics import MetricsCollector, tokens_from_ollama_result
 from worker.router.router import ModelNotFoundError, ModelRouter
 from worker.router.timeouts import ollama_chat_timeout
 
@@ -196,6 +196,7 @@ def _make_handler(
                     queue_wait_ms=queue_wait_ms,
                     inference_ms=inference_ms,
                 )
+                input_tokens, output_tokens, total_tokens = tokens_from_ollama_result(payload)
                 if self.metrics is not None:
                     self.metrics.record_call(
                         model=model,
@@ -206,6 +207,9 @@ def _make_handler(
                         total_ms=total_ms,
                         job_id=job_id,
                         success=True,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        total_tokens=total_tokens,
                     )
                 if self.log_requests:
                     log.info(

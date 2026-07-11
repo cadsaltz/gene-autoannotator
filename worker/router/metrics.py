@@ -35,6 +35,9 @@ class CallRecord:
     inference_ms: int
     total_ms: int
     success: bool
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 @dataclass
@@ -162,6 +165,49 @@ def _queue_responsiveness_score(calls: list[CallRecord]) -> float:
     return 1.0 / (1.0 + (p95 / 5000.0))
 
 
+def tokens_from_ollama_result(result: dict) -> tuple[int | None, int | None, int | None]:
+    """Extract prompt/output token counts from an Ollama chat response."""
+
+    def _int_value(key: str) -> int | None:
+        value = result.get(key)
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    input_tokens = _int_value("prompt_eval_count")
+    output_tokens = _int_value("eval_count")
+    total_tokens = None
+    if input_tokens is not None and output_tokens is not None:
+        total_tokens = input_tokens + output_tokens
+    return input_tokens, output_tokens, total_tokens
+
+
+def _empty_token_bucket() -> dict:
+    return {
+        "calls": 0,
+        "calls_with_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+    }
+
+
+def _add_tokens_to_bucket(bucket: dict, call: CallRecord) -> None:
+    bucket["calls"] += 1
+    if call.input_tokens is None and call.output_tokens is None:
+        return
+    bucket["calls_with_tokens"] += 1
+    bucket["input_tokens"] += call.input_tokens or 0
+    bucket["output_tokens"] += call.output_tokens or 0
+    if call.total_tokens is not None:
+        bucket["total_tokens"] += call.total_tokens
+    elif call.input_tokens is not None and call.output_tokens is not None:
+        bucket["total_tokens"] += call.input_tokens + call.output_tokens
+
+
 class MetricsCollector:
     def __init__(self) -> None:
         self._batch_start: float | None = None
@@ -186,6 +232,9 @@ class MetricsCollector:
         total_ms: int,
         job_id: str | None,
         success: bool,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        total_tokens: int | None = None,
     ) -> None:
         now = time.monotonic()
         call_start = now - (total_ms / 1000.0)
@@ -200,6 +249,9 @@ class MetricsCollector:
                 inference_ms=inference_ms,
                 total_ms=total_ms,
                 success=success,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
             )
         )
 
@@ -233,6 +285,7 @@ class MetricsCollector:
             jobs_per_hour=jobs_per_hour,
             per_backend=per_backend,
         )
+        token_usage = self._token_usage_stats()
 
         return {
             "primary_kpi": "jobs_per_hour",
@@ -259,6 +312,7 @@ class MetricsCollector:
             "per_backend": per_backend,
             "per_model": per_model,
             "per_job": per_job,
+            "token_usage": token_usage,
             "efficiency": efficiency,
         }
 
@@ -390,6 +444,26 @@ class MetricsCollector:
                 "non_llm_ms": max(0, job.wall_ms - inference_ms - stall_ms),
             }
         return stats
+
+    def _token_usage_stats(self) -> dict:
+        total = _empty_token_bucket()
+        per_model: dict[str, dict] = {}
+
+        for call in self._calls:
+            if not call.success:
+                continue
+            _add_tokens_to_bucket(total, call)
+            bucket = per_model.setdefault(call.model, _empty_token_bucket())
+            _add_tokens_to_bucket(bucket, call)
+
+        return {
+            "total": total,
+            "per_model": dict(sorted(per_model.items())),
+            "notes": [
+                "Informational only; token counts depend on papers/sections analyzed.",
+                "Not used in efficiency score or jobs_per_hour.",
+            ],
+        }
 
     def _efficiency_stats(
         self,
