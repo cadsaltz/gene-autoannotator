@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 
 from shared.job_contract import AnnotationJobRequest
 
@@ -14,11 +15,50 @@ _SUBPROCESS_ENV_KEYS = (
     "WORKER_OUTPUT_DIR",
 )
 
+_active_lock = threading.Lock()
+_active_processes: dict[str, subprocess.Popen] = {}
+
 
 def _load_annotation_main():
     from autoannotation import __main__ as annotation_cli
 
     return annotation_cli.main
+
+
+def _register_job_process(job_id: str | None, proc: subprocess.Popen) -> None:
+    if not job_id:
+        return
+    with _active_lock:
+        _active_processes[job_id] = proc
+
+
+def _unregister_job_process(job_id: str | None, proc: subprocess.Popen) -> None:
+    if not job_id:
+        return
+    with _active_lock:
+        if _active_processes.get(job_id) is proc:
+            _active_processes.pop(job_id, None)
+
+
+def terminate_active_jobs() -> None:
+    """Send SIGTERM to in-flight annotation subprocesses (bench Ctrl+C)."""
+    with _active_lock:
+        procs = list(_active_processes.values())
+    for proc in procs:
+        try:
+            proc.terminate()
+        except (ProcessLookupError, OSError):
+            pass
+    for proc in procs:
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+            except (ProcessLookupError, OSError):
+                pass
+        except (ProcessLookupError, OSError):
+            pass
 
 
 def _run_inprocess(request: AnnotationJobRequest, annotation_main=None):
@@ -64,6 +104,7 @@ def _subprocess_env(*, job_id: str | None) -> dict[str, str]:
 
 def _run_subprocess(request: AnnotationJobRequest, *, job_id: str | None):
     request_path = None
+    proc: subprocess.Popen | None = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -73,7 +114,7 @@ def _run_subprocess(request: AnnotationJobRequest, *, job_id: str | None):
             json.dump(request.model_dump(mode="json"), request_file)
             request_path = request_file.name
 
-        completed = subprocess.run(
+        proc = subprocess.Popen(
             [
                 sys.executable,
                 "-m",
@@ -82,17 +123,19 @@ def _run_subprocess(request: AnnotationJobRequest, *, job_id: str | None):
                 request_path,
             ],
             env=_subprocess_env(job_id=job_id),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            check=False,
         )
-        if completed.returncode != 0:
-            stderr = completed.stderr.strip()
+        _register_job_process(job_id, proc)
+        stdout, stderr = proc.communicate()
+        if proc.returncode != 0:
+            stderr = stderr.strip()
             raise RuntimeError(
-                f"annotation subprocess failed with exit code {completed.returncode}"
+                f"annotation subprocess failed with exit code {proc.returncode}"
                 + (f": {stderr}" if stderr else "")
             )
-        stdout = completed.stdout.strip()
+        stdout = stdout.strip()
         if not stdout:
             raise RuntimeError("annotation subprocess produced no stdout")
         try:
@@ -104,6 +147,8 @@ def _run_subprocess(request: AnnotationJobRequest, *, job_id: str | None):
                 f"preview={preview!r}"
             ) from exc
     finally:
+        if proc is not None:
+            _unregister_job_process(job_id, proc)
         if request_path is not None:
             os.unlink(request_path)
 

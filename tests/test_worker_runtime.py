@@ -67,3 +67,40 @@ def test_runtime_runs_up_to_max_slots_concurrently():
     assert peak == 2
     assert len(source.completed) == 4
     assert source.failed == []
+
+
+def test_runtime_request_shutdown_stops_in_flight_jobs():
+    started = threading.Event()
+    jobs = [
+        JobSpec(job_id="j1", request={"profile": "mtb-h37rv", "locus": "Rv0001"}),
+    ]
+    source = FakeJobSource(jobs)
+
+    def fake_execute(request, *, job_id=None):
+        started.set()
+        for _ in range(200):
+            if runtime.shutdown_requested:
+                raise RuntimeError("shutdown")
+            time.sleep(0.01)
+        return {"job_id": job_id}
+
+    config = SimpleNamespace(max_slots=1, heartbeat_seconds=1)
+    fleet_config = SimpleNamespace(max_slots=1)
+    runtime = WorkerRuntime(
+        config=config,
+        fleet_config=fleet_config,
+        job_source=source,
+        execute_fn=fake_execute,
+    )
+
+    def run_runtime():
+        runtime.run()
+
+    thread = threading.Thread(target=run_runtime)
+    thread.start()
+    assert started.wait(timeout=2)
+    runtime.request_shutdown()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert runtime.shutdown_requested
+    assert source.failed or not source.completed

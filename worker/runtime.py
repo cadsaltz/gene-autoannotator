@@ -8,6 +8,8 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from worker import executor
+
 PERMANENT_ERROR_MARKERS = ("locus_schema_mismatch", "profile or organism", "name or locus")
 
 log = logging.getLogger(__name__)
@@ -89,6 +91,7 @@ class WorkerRuntime:
 
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
+        self._shutdown_requested = threading.Event()
 
         self._execute_supports_job_id = _supports_job_id(execute_fn)
 
@@ -96,8 +99,16 @@ class WorkerRuntime:
     def active_jobs(self) -> dict[str, ActiveJob]:
         return self._active_jobs
 
+    @property
+    def shutdown_requested(self) -> bool:
+        return self._shutdown_requested.is_set()
+
     def free_slots(self) -> int:
         return max(0, self._max_slots - len(self._active_jobs))
+
+    def request_shutdown(self) -> None:
+        self._shutdown_requested.set()
+        executor.terminate_active_jobs()
 
     def run(self) -> dict[str, Any] | None:
         self._start_heartbeat_thread()
@@ -106,8 +117,11 @@ class WorkerRuntime:
             self._metrics_begin()
         try:
             while not self._done():
+                if self._shutdown_requested.is_set():
+                    executor.terminate_active_jobs()
                 self._reap_finished()
-                self._claim_to_capacity()
+                if not self._shutdown_requested.is_set():
+                    self._claim_to_capacity()
                 if self._done():
                     break
                 self._job_source.wait_or_sleep(timeout=0.1)
@@ -117,11 +131,17 @@ class WorkerRuntime:
             if self._collect_metrics:
                 self._metrics_end()
             self._stop_heartbeat_thread()
-            self._pool.shutdown(wait=True)
+            if self._shutdown_requested.is_set():
+                executor.terminate_active_jobs()
+                self._pool.shutdown(wait=False, cancel_futures=True)
+            else:
+                self._pool.shutdown(wait=True)
 
     def _done(self) -> bool:
         if self._active_jobs:
             return False
+        if self._shutdown_requested.is_set():
+            return True
         return self._job_source.is_exhausted()
 
     def _claim_to_capacity(self) -> None:

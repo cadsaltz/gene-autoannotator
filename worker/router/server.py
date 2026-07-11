@@ -186,6 +186,16 @@ def _make_handler(
             if keep_alive is not None:
                 chat_kwargs["keep_alive"] = keep_alive
 
+            if self.log_requests:
+                log.info(
+                    "router dispatch job=%s model=%s role=%s backend=%s queue=%dms",
+                    job_id or "-",
+                    model,
+                    role,
+                    backend.host,
+                    queue_wait_ms,
+                )
+
             try:
                 client = _ollama_client(backend.host)
                 result = client.chat(**chat_kwargs)

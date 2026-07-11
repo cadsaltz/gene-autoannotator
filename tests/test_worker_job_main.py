@@ -81,15 +81,13 @@ def test_subprocess_executor_rejects_polluted_stdout(monkeypatch):
         '{"annotation": {"gene_id": "Rv2612c"}, "output_path": "gen_json/gen_Rv2612c.json"}\n'
     )
 
-    def fake_run(cmd, **kwargs):
-        return executor.subprocess.CompletedProcess(
-            args=cmd,
-            returncode=0,
-            stdout=polluted_stdout,
-            stderr="",
-        )
+    class FakePopen:
+        def communicate(self):
+            return (polluted_stdout, "")
 
-    monkeypatch.setattr(executor.subprocess, "run", fake_run)
+        returncode = 0
+
+    monkeypatch.setattr(executor.subprocess, "Popen", lambda *a, **k: FakePopen())
 
     request = AnnotationJobRequest(profile="mtb-h37rv", locus="Rv2612c")
     with pytest.raises(RuntimeError, match="stdout is not valid JSON"):
@@ -103,15 +101,13 @@ def test_subprocess_executor_accepts_clean_stdout(monkeypatch):
         {"annotation": {"gene_id": "Rv2612c"}, "output_path": "gen_json/gen_Rv2612c.json"}
     )
 
-    def fake_run(cmd, **kwargs):
-        return executor.subprocess.CompletedProcess(
-            args=cmd,
-            returncode=0,
-            stdout=clean_stdout,
-            stderr="",
-        )
+    class FakePopen:
+        def communicate(self):
+            return (clean_stdout, "")
 
-    monkeypatch.setattr(executor.subprocess, "run", fake_run)
+        returncode = 0
+
+    monkeypatch.setattr(executor.subprocess, "Popen", lambda *a, **k: FakePopen())
 
     request = AnnotationJobRequest(profile="mtb-h37rv", locus="Rv2612c")
     result = executor.run_annotation_job(request, job_id="bench-002")

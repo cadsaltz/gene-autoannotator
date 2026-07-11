@@ -1,6 +1,8 @@
 import argparse
 import sys
 
+from worker import executor
+
 
 def _add_serve_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--coordinator-url", dest="coordinator_url")
@@ -40,7 +42,12 @@ def main():
     elif command == "bench":
         from worker.bench import main as bench_main
 
-        sys.exit(bench_main(args))
+        try:
+            sys.exit(bench_main(args))
+        except KeyboardInterrupt:
+            print("Bench stopped.", flush=True)
+            executor.terminate_active_jobs()
+            sys.exit(130)
 
 
 if __name__ == "__main__":

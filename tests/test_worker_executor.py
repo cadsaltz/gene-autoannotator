@@ -54,17 +54,25 @@ def test_run_annotation_job_subprocess_sets_job_env(monkeypatch):
 
     captured = {}
 
-    def fake_run(cmd, **kwargs):
-        captured["cmd"] = cmd
-        captured["env"] = kwargs["env"]
-        return executor.subprocess.CompletedProcess(
-            args=cmd,
-            returncode=0,
-            stdout=json.dumps({"annotation": {"gene_id": "Rv0001"}, "output_path": "gen_json/gen_Rv0001.json"}),
-            stderr="",
-        )
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["env"] = kwargs["env"]
 
-    monkeypatch.setattr(executor.subprocess, "run", fake_run)
+        def communicate(self):
+            return (
+                json.dumps(
+                    {
+                        "annotation": {"gene_id": "Rv0001"},
+                        "output_path": "gen_json/gen_Rv0001.json",
+                    }
+                ),
+                "",
+            )
+
+        returncode = 0
+
+    monkeypatch.setattr(executor.subprocess, "Popen", FakePopen)
 
     request = AnnotationJobRequest(profile="mtb-h37rv", locus="Rv0001")
     result = executor.run_annotation_job(request, job_id="job-123")
@@ -80,3 +88,48 @@ def test_run_annotation_job_subprocess_sets_job_env(monkeypatch):
     assert captured["env"]["WORKER_OUTPUT_DIR"] == "/worker/out"
     assert captured["env"]["WORKER_JOB_EXECUTION"] == "inprocess"
     assert result["output_path"] == "gen_json/gen_Rv0001.json"
+
+
+def test_terminate_active_jobs_kills_running_subprocess(monkeypatch):
+    import threading
+    import time
+
+    monkeypatch.setenv("WORKER_JOB_EXECUTION", "subprocess")
+
+    class BlockingPopen:
+        def __init__(self, cmd, **kwargs):
+            self._terminated = False
+
+        def communicate(self):
+            while not self._terminated:
+                time.sleep(0.01)
+            return ("", "stopped")
+
+        def terminate(self):
+            self._terminated = True
+
+        def wait(self, timeout=None):
+            return 0
+
+        returncode = -15
+
+    monkeypatch.setattr(executor.subprocess, "Popen", BlockingPopen)
+
+    request = AnnotationJobRequest(profile="mtb-h37rv", locus="Rv0001")
+
+    def run_job():
+        try:
+            executor.run_annotation_job(request, job_id="job-stop")
+        except RuntimeError:
+            pass
+
+    thread = threading.Thread(target=run_job)
+    thread.start()
+    for _ in range(100):
+        if executor._active_processes:
+            break
+        time.sleep(0.01)
+    assert "job-stop" in executor._active_processes
+    executor.terminate_active_jobs()
+    thread.join(timeout=2)
+    assert "job-stop" not in executor._active_processes

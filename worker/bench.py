@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import sys
 from dataclasses import replace
 from datetime import datetime
@@ -28,6 +29,9 @@ from worker.runtime import WorkerRuntime
 from worker.sources.batch import BatchJobSource
 
 log = logging.getLogger(__name__)
+
+_interrupt_count = 0
+_runtime_for_shutdown: WorkerRuntime | None = None
 
 
 def _configure_logging() -> None:
@@ -86,6 +90,26 @@ def _apply_output_dir(output_dir: str | None) -> None:
     path = Path(output_dir).expanduser().resolve()
     path.mkdir(parents=True, exist_ok=True)
     os.environ["WORKER_OUTPUT_DIR"] = str(path)
+
+
+def _install_shutdown_handlers(runtime: WorkerRuntime) -> None:
+    global _runtime_for_shutdown
+    _runtime_for_shutdown = runtime
+
+    def _handle_shutdown(signum, frame) -> None:
+        global _interrupt_count
+        _interrupt_count += 1
+        if _interrupt_count == 1:
+            _progress("Shutdown requested (Ctrl+C); stopping jobs and cleaning up...")
+            if _runtime_for_shutdown is not None:
+                _runtime_for_shutdown.request_shutdown()
+            return
+        _progress("Force shutdown.")
+        executor.terminate_active_jobs()
+        os._exit(130)
+
+    signal.signal(signal.SIGINT, _handle_shutdown)
+    signal.signal(signal.SIGTERM, _handle_shutdown)
 
 
 def main(argv=None):
@@ -186,7 +210,11 @@ def main(argv=None):
             collect_metrics=True,
             metrics_collector=getattr(router_thread, "_metrics", None),
         )
+        _install_shutdown_handlers(runtime)
         report = runtime.run()
+        if runtime.shutdown_requested:
+            _progress("Bench interrupted.")
+            return 130
         if report is None:
             metrics = getattr(router_thread, "_metrics", None)
             if metrics is None:

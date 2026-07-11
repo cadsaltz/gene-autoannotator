@@ -172,6 +172,20 @@ Per-model LLM call statistics. Keys are model names (e.g. `gemma3:1b`).
 High `p99_queue_wait_ms` with `slots > lanes` indicates oversubscription
 stalls. Compare across scenarios to see where adding lanes helps.
 
+Router bench logging (when `log_requests=True`):
+
+| Line prefix | Meaning |
+| --- | --- |
+| `router dispatch` | LLM call dispatched to Ollama (in flight) |
+| `router chat` | LLM call completed |
+
+A long gap after `router dispatch` with no matching `router chat` means an
+in-flight inference call. A gap with neither line is non-LLM work inside the
+annotation subprocess (paper fetch, parse, etc.).
+
+Press **Ctrl+C** once to stop jobs and shut down the Ollama fleet cleanly.
+Press **Ctrl+C** again to force exit immediately.
+
 ### `per_job`
 
 Per-job wall time and router stall time. Keys are job IDs (`bench-001`, …).
