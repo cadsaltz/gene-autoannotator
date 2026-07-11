@@ -25,6 +25,7 @@ from worker.ollama_bootstrap import ensure_models
 from worker.probe import probe_system
 from worker.router import Backend, ModelRouter
 from worker.router.server import start_router_server
+from worker.router.timeouts import ensure_router_read_timeout_for_load
 from worker.runtime import WorkerRuntime
 from worker.sources.batch import BatchJobSource
 
@@ -192,6 +193,16 @@ def main(argv=None):
             model_mode=model_mode,
         )
         os.environ["OLLAMA_ROUTER_URL"] = f"http://127.0.0.1:{router_thread._port}"
+        lanes = runtime_fleet.num_servers * runtime_fleet.parallel
+        read_timeout = ensure_router_read_timeout_for_load(
+            slots=selected_slots,
+            lanes=lanes,
+        )
+        if read_timeout is not None and selected_slots > lanes:
+            _progress(
+                f"Router client read timeout: {read_timeout:.0f}s "
+                f"(slots={selected_slots} > lanes={lanes})"
+            )
         _progress(f"Model router ready at {os.environ['OLLAMA_ROUTER_URL']}")
 
         config = load_config()

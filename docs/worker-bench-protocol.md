@@ -176,8 +176,10 @@ Router bench logging (when `log_requests=True`):
 
 | Line prefix | Meaning |
 | --- | --- |
-| `router dispatch` | LLM call dispatched to Ollama (in flight) |
+| `router dispatch` | Lane acquired; Ollama call starting. `queue=Nms` is time already spent waiting for a free lane (blocking happened before this line). |
 | `router chat` | LLM call completed |
+
+Timeline for one request: **wait for lane (silent)** → **`router dispatch`** → Ollama inference → **`router chat`**. With 1 lane and 2 slots, the second job's dispatch line may appear only after the first job's `router chat`, with a large `queue=` value reflecting that wait.
 
 A long gap after `router dispatch` with no matching `router chat` means an
 in-flight inference call. A gap with neither line is non-LLM work inside the
@@ -185,6 +187,18 @@ annotation subprocess (paper fetch, parse, etc.).
 
 Press **Ctrl+C** once to stop jobs and shut down the Ollama fleet cleanly.
 Press **Ctrl+C** again to force exit immediately.
+
+### Oversubscription (`slots > lanes`)
+
+Worker slots control how many annotation **jobs** run in parallel. Router
+**lanes** control how many Ollama calls run at once. When `slots > lanes`,
+extra jobs queue at the router; that queue wait is silent until `router
+dispatch`.
+
+LLM HTTP read timeouts are **unlimited by default** (only connect timeout
+applies). Inference may take many minutes on large models or CPU/RAM overflow;
+Ctrl+C stops the bench. To cap a run, set a finite
+`OLLAMA_ROUTER_READ_TIMEOUT_SEC` (seconds); `0` means unlimited.
 
 ### `per_job`
 

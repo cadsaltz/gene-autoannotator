@@ -238,7 +238,13 @@ def ollama_chat(
                     f'Router {role} request failed ({exc.response.status_code}): {detail}'
                 ) from exc
             if isinstance(exc, httpx.RequestError):
-                raise RuntimeError(f'Router {role} request failed: {exc}') from exc
+                detail = str(exc)
+                if 'timed out' in detail.lower() or exc.__class__.__name__ == 'ReadTimeout':
+                    detail += (
+                        '; set OLLAMA_ROUTER_READ_TIMEOUT_SEC=0 for unlimited, '
+                        'or raise the limit'
+                    )
+                raise RuntimeError(f'Router {role} request failed: {detail}') from exc
             raise
     kwargs = {
         'model': model,

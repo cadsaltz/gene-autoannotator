@@ -168,14 +168,6 @@ def _make_handler(
                 return
 
             queue_wait_ms = int((time.monotonic() - queue_start) * 1000)
-            if self.log_requests and queue_wait_ms >= 500:
-                log.info(
-                    "router wait job=%s model=%s role=%s queue=%dms",
-                    job_id or "-",
-                    model,
-                    role,
-                    queue_wait_ms,
-                )
 
             chat_kwargs: dict = {"model": model, "messages": messages}
             if format_ is not None:
