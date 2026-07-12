@@ -48,6 +48,53 @@ def ensure_models(*, client=None, required=None):
     return missing
 
 
+def _ps_model_names(ps_result) -> set[str]:
+    if isinstance(ps_result, dict):
+        entries = ps_result.get("models", [])
+    else:
+        entries = getattr(ps_result, "models", []) or []
+    names: set[str] = set()
+    for entry in entries:
+        if isinstance(entry, dict):
+            name = entry.get("name") or entry.get("model")
+        else:
+            name = getattr(entry, "name", None) or getattr(entry, "model", None)
+        if name:
+            names.add(str(name))
+            if ":" in str(name):
+                names.add(str(name).split(":", 1)[0])
+    return names
+
+
+def models_loaded(*, client=None, host: str | None = None, required=None) -> list[str]:
+    """Return required model names not currently resident according to ``ollama ps``."""
+    if client is None:
+        import ollama
+
+        client = ollama.Client(host=host) if host else ollama
+    required = sorted(required if required is not None else required_models())
+    loaded = _ps_model_names(client.ps())
+    missing: list[str] = []
+    for name in required:
+        base = name.split(":", 1)[0]
+        if name not in loaded and base not in loaded:
+            missing.append(name)
+    return missing
+
+
+def _warm_order(names: list[str], *, host: str | None = None) -> list[str]:
+    """Warm smaller models first; load largest (usually aggregation) last."""
+    if not host:
+        return sorted(names)
+    try:
+        from worker.fleet.models import manifest_model_sizes
+
+        sizes = manifest_model_sizes(host=host)
+    except Exception:
+        sizes = {}
+    return sorted(names, key=lambda n: sizes.get(n, 0))
+
+
 def warm_all_models(
     *,
     client=None,
@@ -72,8 +119,9 @@ def warm_all_models(
         parsed_keep_alive = -1
 
     required = sorted(required if required is not None else required_models())
+    warm_order = _warm_order(required, host=host)
     warmed: list[str] = []
-    for name in required:
+    for name in warm_order:
         log.info("Warming Ollama model %s (keep_alive=%s)", name, parsed_keep_alive)
         print(
             f"Warming Ollama model {name} (keep_alive={parsed_keep_alive})...",

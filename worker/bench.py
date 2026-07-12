@@ -21,7 +21,7 @@ from worker.bootstrap import ensure_worker_env
 from worker.config import load_config
 from worker.fleet.models import required_model_names
 from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet, shutdown_fleet
-from worker.ollama_bootstrap import ensure_models, warm_all_models
+from worker.ollama_bootstrap import ensure_models, models_loaded, warm_all_models
 from worker.probe import probe_system
 from worker.router import Backend, ModelRouter
 from worker.router.server import start_router_server, stop_router_server
@@ -142,10 +142,13 @@ def main(argv=None):
         _progress(f"Annotation output directory: {os.environ['WORKER_OUTPUT_DIR']}")
 
     model_mode = os.getenv("AUTOANNOTATION_MODEL_MODE", "performance")
+    required = set(required_model_names())
+    fleet = replace(fleet, model_count=len(required))
     _progress(
         f"Bench setup: model_mode={model_mode}, fleet={fleet.num_servers}x"
         f"parallel={fleet.parallel}, slots={args.slots if args.slots is not None else fleet.max_slots}, "
-        f"memory_tier={fleet.memory_tier}, keep_alive={fleet.keep_alive}"
+        f"memory_tier={fleet.memory_tier}, models={len(required)}, "
+        f"ollama_max_in_flight={fleet.parallel}/server"
     )
     _progress("Resetting Ollama fleet (stop existing servers, start fresh)...")
     procs = reset_ollama_fleet(fleet, spec)
@@ -163,9 +166,13 @@ def main(argv=None):
     source = BatchJobSource(args.jobs)
     selected_slots = args.slots if args.slots is not None else fleet.max_slots
     runtime_fleet = replace(fleet, max_slots=selected_slots)
-    required = set(required_model_names())
     backends = [
-        Backend(host=host, models=required, parallel=runtime_fleet.parallel)
+        Backend(
+            host=host,
+            models=required,
+            parallel=runtime_fleet.parallel,
+            max_in_flight=runtime_fleet.parallel,
+        )
         for host in runtime_fleet.backend_hosts()
     ]
     router = ModelRouter(backends)
@@ -184,10 +191,18 @@ def main(argv=None):
             )
             warm_all_models(
                 client=ollama.Client(host=primary_host),
+                host=primary_host,
                 keep_alive=job_keep_alive,
                 required=sorted(required),
             )
-            _progress("All models loaded and pinned (keep_alive active)")
+            missing = models_loaded(client=ollama.Client(host=primary_host), required=sorted(required))
+            if missing:
+                _progress(
+                    f"Warning: after pre-warm, not all models resident in Ollama: "
+                    f"{', '.join(missing)} (VRAM may be insufficient; they load on first use)"
+                )
+            else:
+                _progress("All models loaded and pinned (keep_alive active)")
         fleet = refresh_fleet_footprints(
             fleet, spec, host=primary_host, measure_runtime_peak=False,
         )

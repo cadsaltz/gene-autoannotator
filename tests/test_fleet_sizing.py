@@ -46,7 +46,7 @@ def test_recommendation_favors_single_gpu_higher_parallel():
     )
     assert rec.num_servers == 1
     assert rec.parallel >= 1
-    assert rec.agg_lanes == rec.num_servers * rec.parallel * rec.model_count
+    assert rec.agg_lanes == rec.num_servers * rec.parallel
 
 
 def test_performance_models_fit_with_swap_tier_on_8gb_gpu():

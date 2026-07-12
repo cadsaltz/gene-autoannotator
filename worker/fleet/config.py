@@ -20,7 +20,12 @@ class FleetConfig:
 
     @property
     def lanes_per_server(self) -> int:
-        """Concurrent router lanes per Ollama server (parallel × model lanes)."""
+        """Max concurrent Ollama requests per server (``OLLAMA_NUM_PARALLEL``)."""
+        return max(1, self.parallel)
+
+    @property
+    def model_lane_capacity_per_server(self) -> int:
+        """Theoretical per-model lane slots (parallel × model count)."""
         models = self.model_count if self.model_count > 0 else 1
         return self.parallel * models
 

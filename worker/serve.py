@@ -122,6 +122,7 @@ def main(args=None):
     fleet = ensure_fleet_config(interactive=interactive)
     spec = probe_system()
     required = set(required_model_names())
+    fleet = replace(fleet, model_count=len(required))
 
     if not discover_only:
         reset_ollama_fleet(fleet, spec)
@@ -145,7 +146,12 @@ def main(args=None):
         fleet = replace(fleet, model_count=len(required))
 
     backends = [
-        Backend(host=host, models=required, parallel=fleet.parallel)
+        Backend(
+            host=host,
+            models=required,
+            parallel=fleet.parallel,
+            max_in_flight=fleet.parallel,
+        )
         for host in fleet.backend_hosts()
     ]
     router = ModelRouter(backends)

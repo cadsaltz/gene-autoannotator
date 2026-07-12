@@ -85,6 +85,7 @@ def _build_ollama_server_env(
     port: int,
     parallel: int,
     gpu_index: int | None,
+    max_loaded_models: int | None = None,
 ) -> dict[str, str]:
     # Do not inherit OLLAMA_HOST from the parent shell/worker.env; each fleet
     # member must bind its own port explicitly.
@@ -95,6 +96,8 @@ def _build_ollama_server_env(
             env[key] = value
     env["OLLAMA_HOST"] = f"127.0.0.1:{port}"
     env["OLLAMA_NUM_PARALLEL"] = str(parallel)
+    if max_loaded_models is not None and max_loaded_models > 0:
+        env["OLLAMA_MAX_LOADED_MODELS"] = str(max_loaded_models)
     if gpu_index is not None:
         env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
     return env
@@ -199,8 +202,14 @@ def start_ollama_server(
     port: int,
     parallel: int,
     gpu_index: int | None,
+    max_loaded_models: int | None = None,
 ) -> subprocess.Popen:
-    env = _build_ollama_server_env(port=port, parallel=parallel, gpu_index=gpu_index)
+    env = _build_ollama_server_env(
+        port=port,
+        parallel=parallel,
+        gpu_index=gpu_index,
+        max_loaded_models=max_loaded_models,
+    )
     binary = _ollama_serve_binary()
     log.info(
         "Starting Ollama server on 127.0.0.1:%s (binary=%s, OLLAMA_HOST=%s, parallel=%s, gpu=%s)",
@@ -223,6 +232,7 @@ def start_ollama_server(
 
 def start_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
     procs: list[subprocess.Popen] = []
+    max_loaded = cfg.model_count if cfg.model_count > 0 else None
     for i in range(cfg.num_servers):
         gpu = i % spec.gpu_count if spec.gpu_count else None
         port = cfg.base_port + i
@@ -233,6 +243,7 @@ def start_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
                 port=port,
                 parallel=cfg.parallel,
                 gpu_index=gpu,
+                max_loaded_models=max_loaded,
             )
         )
     return procs

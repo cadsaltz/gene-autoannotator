@@ -221,7 +221,12 @@ Router bench logging (when `log_requests=True`):
 | `router dispatch` | Lane acquired; Ollama call starting. `queue=Nms` is time already spent waiting for a free lane (blocking happened before this line). |
 | `router chat` | LLM call completed |
 
-Timeline for one request: **wait for that model's lane (silent)** → **`router dispatch`** → Ollama inference → **`router chat`**. With 1 server, `parallel=1`, and 4 models, up to 4 different models can be in flight at once; a second call to the same model waits.
+With 1 server, `parallel=1`, and 4 models, up to 4 different models can be
+**queued** on separate per-model lanes, but only **`parallel` concurrent HTTP
+requests** are sent to each Ollama server (matching `OLLAMA_NUM_PARALLEL`).
+With the default `parallel=1`, Ollama sees one request at a time — stable on
+single-GPU hosts. Raise `OLLAMA_FLEET_PARALLEL` to allow more simultaneous
+Ollama inference (only if VRAM and Ollama stay healthy).
 
 A long gap after `router dispatch` with no matching `router chat` means an
 in-flight inference call. A gap with neither line is non-LLM work inside the
