@@ -143,16 +143,16 @@ def _ollama_keep_alive():
     """Unload policy for Ollama models after each API call.
 
     Default ``0`` unloads the model immediately so only one model tends to stay
-    in RAM between pipeline steps. Set ``AUTOANNOTATION_OLLAMA_KEEP_ALIVE=5m``
-    (or another duration) to keep models warm for repeated calls.
+    in RAM between pipeline steps. Set ``AUTOANNOTATION_OLLAMA_KEEP_ALIVE=-1``
+    (or ``forever``) to never unload; ``5m`` keeps models warm for five minutes.
     """
-    raw = os.getenv('AUTOANNOTATION_OLLAMA_KEEP_ALIVE', '0').strip()
-    if not raw:
+    from worker.ollama_keep_alive import parse_ollama_keep_alive
+
+    raw = os.getenv('AUTOANNOTATION_OLLAMA_KEEP_ALIVE', '0')
+    parsed = parse_ollama_keep_alive(raw)
+    if parsed is None:
         return 0
-    try:
-        return int(raw)
-    except ValueError:
-        return raw
+    return parsed
 
 
 def chat_response_content(response, *, role: str, model: str) -> str:

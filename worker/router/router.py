@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from dataclasses import dataclass
+
+log = logging.getLogger(__name__)
+
+LANE_WAIT_LOG_INTERVAL_SEC = 30.0
 
 
 class ModelNotFoundError(LookupError):
@@ -34,12 +39,22 @@ class ModelRouter:
     def _in_flight_for(self, backend: Backend, model: str) -> int:
         return self._in_flight.get((id(backend), model), 0)
 
-    def acquire(self, model: str, *, timeout: float | None = None) -> Backend:
+    def acquire(
+        self,
+        model: str,
+        *,
+        timeout: float | None = None,
+        job_id: str | None = None,
+        role: str | None = None,
+        log_waits: bool = False,
+    ) -> Backend:
         if model not in self._known_models:
             raise ModelNotFoundError(model, self._known_models)
 
         candidates = self._backends_by_model[model]
         deadline = None if timeout is None else time.monotonic() + timeout
+        wait_started = time.monotonic()
+        last_wait_log = wait_started
 
         with self._cond:
             while True:
@@ -52,6 +67,16 @@ class ModelRouter:
                     backend = min(available, key=lambda b: self._in_flight_for(b, model))
                     key = (id(backend), model)
                     self._in_flight[key] = self._in_flight.get(key, 0) + 1
+                    waited_ms = int((time.monotonic() - wait_started) * 1000)
+                    if log_waits and waited_ms >= int(LANE_WAIT_LOG_INTERVAL_SEC * 1000):
+                        log.info(
+                            "router acquired lane job=%s model=%s role=%s backend=%s wait=%dms",
+                            job_id or "-",
+                            model,
+                            role or "-",
+                            backend.host,
+                            waited_ms,
+                        )
                     return backend
 
                 if timeout is not None:
@@ -60,12 +85,35 @@ class ModelRouter:
                         raise TimeoutError(
                             f"No capacity for model {model!r} within {timeout}s"
                         )
-                    if not self._cond.wait(timeout=remaining):
-                        raise TimeoutError(
-                            f"No capacity for model {model!r} within {timeout}s"
-                        )
+                    wait_for = min(LANE_WAIT_LOG_INTERVAL_SEC, remaining)
                 else:
-                    self._cond.wait()
+                    wait_for = LANE_WAIT_LOG_INTERVAL_SEC
+
+                if log_waits:
+                    elapsed = time.monotonic() - wait_started
+                    if (
+                        elapsed >= LANE_WAIT_LOG_INTERVAL_SEC
+                        and time.monotonic() - last_wait_log >= LANE_WAIT_LOG_INTERVAL_SEC
+                    ):
+                        log.warning(
+                            "router waiting for lane job=%s model=%s role=%s elapsed=%ds "
+                            "(another call may be stuck in Ollama; check `ollama ps`)",
+                            job_id or "-",
+                            model,
+                            role or "-",
+                            int(elapsed),
+                        )
+                        last_wait_log = time.monotonic()
+
+                if timeout is not None:
+                    if not self._cond.wait(timeout=wait_for):
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError(
+                                f"No capacity for model {model!r} within {timeout}s"
+                            )
+                else:
+                    self._cond.wait(timeout=wait_for)
 
     def release(self, backend: Backend, model: str) -> None:
         key = (id(backend), model)

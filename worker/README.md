@@ -223,7 +223,8 @@ setups should use the fleet configuration flow.
 | --- | --- | --- |
 | `OLLAMA_ROUTER_URL` | set by worker | Router sidecar URL; propagated to job subprocesses. |
 | `AUTOANNOTATION_MODEL_MODE` | `performance` | Model stack: `performance`, `lite`, or `nano`. |
-| `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` | `0` (serve) / `5m` (bench cold) | Ollama model unload policy. `0` unloads after each call (memory-friendly serve). Bench cold runs default to `5m`. |
+| `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` | `0` (serve) / `-1` (bench) | Ollama unload policy. `-1` or `forever` never unloads; `0` unloads after each call; `5m` timed. Bench defaults to `-1` and pre-warms all models. |
+| `AUTOANNOTATION_OLLAMA_WARM_ALL` | unset | Set to `1` in serve mode to pre-load all required models at startup. |
 | `WORKER_JOB_EXECUTION` | `subprocess` | Parent execution mode: `subprocess` or `inprocess`. |
 
 ### Paths and legacy budget

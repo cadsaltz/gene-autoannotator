@@ -17,7 +17,7 @@ from worker.client import CoordinatorClient
 from worker.config import load_config
 from worker.fleet.models import required_model_names
 from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet
-from worker.ollama_bootstrap import ensure_models
+from worker.ollama_bootstrap import ensure_models, warm_all_models
 from worker.probe import probe_system
 from worker.router import Backend, ModelRouter
 from worker.router.server import start_router_server
@@ -127,6 +127,18 @@ def main(args=None):
         reset_ollama_fleet(fleet, spec)
         primary_host = fleet.backend_hosts()[0]
         ensure_models(client=ollama.Client(host=primary_host))
+        if os.getenv("AUTOANNOTATION_OLLAMA_WARM_ALL", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            keep_alive = os.getenv("AUTOANNOTATION_OLLAMA_KEEP_ALIVE", "-1")
+            warm_all_models(
+                client=ollama.Client(host=primary_host),
+                keep_alive=keep_alive,
+                required=sorted(required),
+            )
         fleet = refresh_fleet_footprints(
             fleet, spec, host=primary_host, measure_runtime_peak=False,
         )

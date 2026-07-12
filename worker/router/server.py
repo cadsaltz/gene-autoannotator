@@ -11,11 +11,16 @@ from typing import TYPE_CHECKING
 
 import ollama
 
+from worker.ollama_keep_alive import parse_ollama_keep_alive
+from worker.router.inflight import InflightTracker
 from worker.router.metrics import MetricsCollector, tokens_from_ollama_result
 from worker.router.router import ModelNotFoundError, ModelRouter
 from worker.router.timeouts import ollama_chat_timeout
 
 log = logging.getLogger(__name__)
+
+_inflight_tracker: InflightTracker | None = None
+_inflight_watchdog_stop: threading.Event | None = None
 
 if TYPE_CHECKING:
     from worker.fleet.config import FleetConfig
@@ -77,17 +82,7 @@ def _ollama_client(host: str):
 
 
 def _parse_keep_alive(value) -> int | str | None:
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return int(value)
-    raw = str(value).strip()
-    if not raw:
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        return raw
+    return parse_ollama_keep_alive(value)
 
 
 def _keep_alive_from_env() -> int | str | None:
@@ -95,6 +90,33 @@ def _keep_alive_from_env() -> int | str | None:
     if raw is None or not str(raw).strip():
         return None
     return _parse_keep_alive(raw)
+
+
+def _inflight_snapshot() -> list[dict[str, object]]:
+    if _inflight_tracker is None:
+        return []
+    return _inflight_tracker.snapshot()
+
+
+def _start_inflight_watchdog() -> None:
+    global _inflight_watchdog_stop
+    if _inflight_tracker is None:
+        return
+    stop = threading.Event()
+    _inflight_watchdog_stop = stop
+
+    def _loop() -> None:
+        while not stop.wait(30.0):
+            _inflight_tracker.maybe_warn_stuck()
+
+    threading.Thread(target=_loop, name="router-inflight-watchdog", daemon=True).start()
+
+
+def _stop_inflight_watchdog() -> None:
+    global _inflight_watchdog_stop
+    if _inflight_watchdog_stop is not None:
+        _inflight_watchdog_stop.set()
+        _inflight_watchdog_stop = None
 
 
 def _make_handler(
@@ -114,6 +136,13 @@ def _make_handler(
         def do_GET(self) -> None:
             if self.path == "/health":
                 _json_response(self, HTTPStatus.OK, {"status": "ok"})
+                return
+            if self.path == "/inflight":
+                _json_response(
+                    self,
+                    HTTPStatus.OK,
+                    {"inflight": _inflight_snapshot()},
+                )
                 return
             if self.path == "/metrics":
                 if self.metrics is None:
@@ -158,7 +187,12 @@ def _make_handler(
 
             queue_start = time.monotonic()
             try:
-                backend = router.acquire(model)
+                backend = router.acquire(
+                    model,
+                    job_id=job_id,
+                    role=role,
+                    log_waits=self.log_requests,
+                )
             except ModelNotFoundError as exc:
                 _json_response(
                     self,
@@ -188,8 +222,16 @@ def _make_handler(
                     queue_wait_ms,
                 )
 
+            inflight_id: int | None = None
             try:
                 client = _ollama_client(backend.host)
+                if _inflight_tracker is not None:
+                    inflight_id = _inflight_tracker.start(
+                        job_id=job_id,
+                        model=model,
+                        role=role,
+                        backend=backend.host,
+                    )
                 result = client.chat(**chat_kwargs)
                 payload = _chat_response_payload(result)
                 inference_ms = _inference_ms_from_result(payload)
@@ -254,6 +296,8 @@ def _make_handler(
                     {"error": str(exc)},
                 )
             finally:
+                if inflight_id is not None and _inflight_tracker is not None:
+                    _inflight_tracker.finish(inflight_id)
                 router.release(backend, model)
 
     RouterHTTPHandler.collect_metrics = collect_metrics
@@ -276,10 +320,17 @@ def start_router_server(
     jobs_submitted: int = 0,
     model_mode: str = "nano",
 ) -> threading.Thread:
+    global _inflight_tracker
     metrics: MetricsCollector | None = None
     if collect_metrics:
         metrics = MetricsCollector()
         metrics.begin_batch()
+
+    if log_requests or collect_metrics:
+        _inflight_tracker = InflightTracker()
+        _start_inflight_watchdog()
+    else:
+        _inflight_tracker = None
 
     handler = _make_handler(
         router,
@@ -297,3 +348,12 @@ def start_router_server(
     thread._metrics = metrics  # type: ignore[attr-defined]
     thread.start()
     return thread
+
+
+def stop_router_server(thread: threading.Thread) -> None:
+    _stop_inflight_watchdog()
+    server = getattr(thread, "_server", None)
+    if server is not None:
+        server.shutdown()
+        server.server_close()
+    thread.join(timeout=2.0)

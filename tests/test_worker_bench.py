@@ -76,6 +76,8 @@ def test_bench_completes_and_writes_report(tmp_path, monkeypatch):
         lambda cfg, spec: calls["start_fleet"].append((cfg, spec)) or [],
     )
     monkeypatch.setattr(bench, "ensure_models", lambda client=None: None)
+    monkeypatch.setattr(bench, "warm_all_models", lambda **kw: [])
+    monkeypatch.setattr(bench, "refresh_fleet_footprints", lambda fleet, spec, **kw: fleet)
     monkeypatch.setattr(bench, "required_model_names", lambda: ["gemma3:1b"])
     monkeypatch.setattr(bench.ollama, "Client", lambda host: {"host": host})
     monkeypatch.setattr(bench, "start_router_server", lambda *a, **k: _FakeRouterThread())
@@ -117,6 +119,8 @@ def test_bench_output_dir_sets_worker_output_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(bench, "probe_system", _spec)
     monkeypatch.setattr(bench, "reset_ollama_fleet", lambda cfg, spec: [])
     monkeypatch.setattr(bench, "ensure_models", lambda client=None: None)
+    monkeypatch.setattr(bench, "warm_all_models", lambda **kw: [])
+    monkeypatch.setattr(bench, "refresh_fleet_footprints", lambda fleet, spec, **kw: fleet)
     monkeypatch.setattr(bench, "required_model_names", lambda: ["gemma3:1b"])
     monkeypatch.setattr(bench.ollama, "Client", lambda host: {"host": host})
     monkeypatch.setattr(bench, "start_router_server", lambda *a, **k: _FakeRouterThread())

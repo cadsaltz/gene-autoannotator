@@ -28,11 +28,53 @@ Cold cache:
 
 1. Deletes `WORKER_CACHE_DIR/llm_cache` and `WORKER_CACHE_DIR/llm_responses`
    before the batch starts.
-2. Sets `AUTOANNOTATION_OLLAMA_KEEP_ALIVE=5m` (unless already overridden) so
-   models stay loaded across calls within a job but the LLM response cache is empty.
+2. Pre-loads **all required models** with `keep_alive=-1` (never unload) unless
+   you pass `--no-warm-models`.
+3. Sets `AUTOANNOTATION_OLLAMA_KEEP_ALIVE=-1` on every LLM call (bench default).
 
 Warm cache (`--cache warm`) reuses prior caches and is useful for debugging, not
 for cross-configuration comparisons.
+
+### Keep all models loaded (recommended for multi-slot benches)
+
+Ollama’s `keep_alive` controls how long a model stays in memory after each API
+call. Values like `5m` or `30m` show up in `ollama ps` as an **UNTIL** countdown;
+when the timer hits zero, Ollama unloads the model (**Stopping...**). With
+multiple concurrent jobs switching between four models, that unload/reload cycle
+can wedge Ollama.
+
+**Bench defaults (since 2026-07):**
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `--keep-alive` | `-1` | Never unload models during the batch |
+| Pre-warm | on | Loads every required model before jobs start |
+
+```bash
+python -m worker bench --jobs jobs.jsonl --slots 4 --cache cold
+# equivalent explicit flags:
+python -m worker bench --jobs jobs.jsonl --keep-alive -1
+```
+
+Other accepted forever aliases: `forever`, `infinite`, `never`.
+
+To restore timed unload (not recommended for multi-slot runs):
+
+```bash
+python -m worker bench --jobs jobs.jsonl --keep-alive 5m --no-warm-models
+```
+
+For **serve** mode, set in `worker.env`:
+
+```bash
+AUTOANNOTATION_OLLAMA_KEEP_ALIVE=-1
+AUTOANNOTATION_OLLAMA_WARM_ALL=1
+```
+
+After pre-warm, `ollama ps` should list all four models with no UNTIL countdown
+(or a “forever” indicator depending on Ollama version). If VRAM is insufficient
+for all models at once, Ollama may spill to RAM or evict — that is slower but
+still avoids the Stopping… wedge from timed unload.
 
 ## Scenario matrix
 
@@ -189,13 +231,22 @@ Annotation subprocess logs (PMC fetch, throttling, etc.) print on **stderr** and
 appear in the bench terminal. If router logs go quiet for many minutes while
 jobs are still active, check:
 
-- **`Still waiting on N job(s)`** warnings from the runtime (every ~60s after
-  2 minutes) — lists active job IDs and elapsed time.
-- **`ollama ps`** — models stuck in `Stopping...` for a long time indicate a wedged
-  Ollama unload; restart Ollama (`Ctrl+C` the bench, or `sudo systemctl restart ollama`).
+- **`Submitting ... to LLM`** with no matching **`router dispatch`** — jobs are
+  blocked waiting for a model lane; another call may be stuck in Ollama. Look for
+  **`router waiting for lane`** warnings every ~30s.
+- **`router dispatch`** with no matching **`router chat`** — Ollama inference is
+  hung; check **`Router Ollama call(s) still in flight`** warnings and `ollama ps`.
+- **`Still waiting on N job(s)`** warnings — include router `/inflight` status when
+  available.
+- **`ollama ps`** — an **UNTIL** countdown means timed `keep_alive` is expiring;
+  use `--keep-alive -1` (bench default) to pin models. Models stuck in
+  `Stopping...` for a long time indicate a wedged unload; restart Ollama
+  (`Ctrl+C` the bench, or `sudo systemctl restart ollama`).
 - **Subprocess stderr capture** — by default stderr is inherited (not piped) so
   verbose DEBUG logs cannot deadlock the job. Set `WORKER_JOB_CAPTURE_STDERR=1` only
   if you need captured stderr on failure (not recommended for long bench runs).
+- **Bench defaults** — `OLLAMA_CHAT_TIMEOUT_SEC=1800` (30 min) on router→Ollama
+  calls so wedged Ollama fails instead of hanging forever; set `0` for unlimited.
 - **Optional wall timeout** — `WORKER_JOB_WALL_TIMEOUT_SEC=7200` kills a job
   subprocess after N seconds with a clear error.
 

@@ -21,10 +21,10 @@ from worker.bootstrap import ensure_worker_env
 from worker.config import load_config
 from worker.fleet.models import required_model_names
 from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet, shutdown_fleet
-from worker.ollama_bootstrap import ensure_models
+from worker.ollama_bootstrap import ensure_models, warm_all_models
 from worker.probe import probe_system
 from worker.router import Backend, ModelRouter
-from worker.router.server import start_router_server
+from worker.router.server import start_router_server, stop_router_server
 from worker.router.timeouts import ensure_router_read_timeout_for_load
 from worker.runtime import WorkerRuntime
 from worker.sources.batch import BatchJobSource
@@ -77,6 +77,19 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--output-dir",
         default=None,
         help="Directory for annotation JSON outputs (sets WORKER_OUTPUT_DIR; local disk only)",
+    )
+    parser.add_argument(
+        "--keep-alive",
+        default="-1",
+        help=(
+            "Ollama keep_alive for all LLM calls. Default -1 (never unload). "
+            "Use 5m, 30m, or 0 for timed/immediate unload."
+        ),
+    )
+    parser.add_argument(
+        "--no-warm-models",
+        action="store_true",
+        help="Skip pre-loading all required models before the batch.",
     )
     return parser.parse_args(argv)
 
@@ -142,14 +155,10 @@ def main(argv=None):
 
     if args.cache == "cold":
         _purge_llm_cache()
-        os.environ.setdefault("AUTOANNOTATION_OLLAMA_KEEP_ALIVE", fleet.keep_alive)
-        if fleet.memory_tier == "warm_stack":
-            _progress("LLM cache cleared (cold start; warm model stack)")
-        else:
-            _progress(
-                f"LLM cache cleared (cold start; {fleet.memory_tier}, "
-                f"keep_alive={fleet.keep_alive})"
-            )
+        _progress("LLM cache cleared (cold start)")
+
+    job_keep_alive = args.keep_alive
+    os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = str(job_keep_alive)
 
     source = BatchJobSource(args.jobs)
     selected_slots = args.slots if args.slots is not None else fleet.max_slots
@@ -169,18 +178,26 @@ def main(argv=None):
             _progress(f"Pulled {len(pulled)} model(s): {', '.join(pulled)}")
         else:
             _progress("All required models already present")
+        if not args.no_warm_models:
+            _progress(
+                f"Pre-warming all {len(required)} model(s) with keep_alive={job_keep_alive}..."
+            )
+            warm_all_models(
+                client=ollama.Client(host=primary_host),
+                keep_alive=job_keep_alive,
+                required=sorted(required),
+            )
+            _progress("All models loaded and pinned (keep_alive active)")
         fleet = refresh_fleet_footprints(
             fleet, spec, host=primary_host, measure_runtime_peak=False,
         )
         runtime_fleet = replace(fleet, max_slots=selected_slots, model_count=len(required))
-        # Bench cold runs keep models warm within a job (protocol); memory tier
-        # keep_alive=0 is for serve-mode memory pressure, not throughput measurement.
-        job_keep_alive = "5m" if args.cache == "cold" else fleet.keep_alive
-        os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = job_keep_alive
+        chat_timeout = os.environ.setdefault("OLLAMA_CHAT_TIMEOUT_SEC", "1800")
         _progress(
             f"Model footprints: W_all={fleet.w_all_bytes / (1024**3):.2f} GB, "
             f"W_peak={fleet.w_peak_bytes / (1024**3):.2f} GB, "
-            f"tier={fleet.memory_tier}, job_keep_alive={job_keep_alive}"
+            f"tier={fleet.memory_tier}, job_keep_alive={job_keep_alive}, "
+            f"router_ollama_timeout={chat_timeout}s"
         )
         router_thread = start_router_server(
             router,
@@ -258,9 +275,7 @@ def main(argv=None):
     finally:
         if router_thread is not None:
             try:
-                router_thread._server.shutdown()
-                router_thread._server.server_close()
-                router_thread.join(timeout=2.0)
+                stop_router_server(router_thread)
             except Exception:
                 pass
         _shutdown_fleet(procs)

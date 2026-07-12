@@ -28,6 +28,16 @@ def main():
         default=None,
         help="Directory for annotation JSON outputs (local disk only)",
     )
+    bench_parser.add_argument(
+        "--keep-alive",
+        default="-1",
+        help="Ollama keep_alive for all LLM calls (default -1 = never unload)",
+    )
+    bench_parser.add_argument(
+        "--no-warm-models",
+        action="store_true",
+        help="Skip pre-loading all required models before the batch",
+    )
 
     args = parser.parse_args()
     command = args.command or "serve"

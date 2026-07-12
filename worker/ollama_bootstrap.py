@@ -46,3 +46,44 @@ def ensure_models(*, client=None, required=None):
         client.pull(name)
         print(f"Pulled Ollama model {name}", flush=True)
     return missing
+
+
+def warm_all_models(
+    *,
+    client=None,
+    host: str | None = None,
+    required=None,
+    keep_alive: int | str = -1,
+) -> list[str]:
+    """Load each required model and pin it in memory (default keep_alive=-1).
+
+    Issues a minimal chat per model so Ollama loads weights before batch work.
+    With keep_alive=-1, models stay loaded until Ollama restarts or they are
+    explicitly unloaded.
+    """
+    if client is None:
+        import ollama
+
+        client = ollama.Client(host=host) if host else ollama
+    from worker.ollama_keep_alive import parse_ollama_keep_alive
+
+    parsed_keep_alive = parse_ollama_keep_alive(keep_alive)
+    if parsed_keep_alive is None:
+        parsed_keep_alive = -1
+
+    required = sorted(required if required is not None else required_models())
+    warmed: list[str] = []
+    for name in required:
+        log.info("Warming Ollama model %s (keep_alive=%s)", name, parsed_keep_alive)
+        print(
+            f"Warming Ollama model {name} (keep_alive={parsed_keep_alive})...",
+            flush=True,
+        )
+        client.chat(
+            model=name,
+            messages=[{"role": "user", "content": "ping"}],
+            keep_alive=parsed_keep_alive,
+        )
+        warmed.append(name)
+        print(f"Warmed Ollama model {name}", flush=True)
+    return warmed
