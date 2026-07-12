@@ -150,7 +150,6 @@ def main(args=None):
             host=host,
             models=required,
             parallel=fleet.parallel,
-            max_in_flight=fleet.parallel,
         )
         for host in fleet.backend_hosts()
     ]

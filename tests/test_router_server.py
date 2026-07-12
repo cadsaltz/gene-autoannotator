@@ -13,18 +13,14 @@ def router_server(monkeypatch):
         [Backend(host="http://127.0.0.1:11434", models={"gemma3:1b"}, parallel=1)]
     )
 
-    class FakeClient:
-        def __init__(self, host: str) -> None:
-            self.host = host
+    def fake_chat(host, *, model, messages, format=None, keep_alive=None, timeout_sec):
+        return {
+            "model": model,
+            "message": {"role": "assistant", "content": "{}"},
+            "done": True,
+        }
 
-        def chat(self, **kwargs):
-            return {
-                "model": kwargs["model"],
-                "message": {"role": "assistant", "content": "{}"},
-                "done": True,
-            }
-
-    monkeypatch.setattr("worker.router.server.ollama.Client", FakeClient)
+    monkeypatch.setattr("worker.router.server.ollama_chat_http", fake_chat)
 
     thread = start_router_server(router, "127.0.0.1", 0)
     base_url = f"http://127.0.0.1:{thread._port}"
@@ -55,26 +51,52 @@ def test_chat_proxies_to_ollama_and_strips_routing_metadata(router_server):
     assert result["message"]["content"] == "{}"
 
 
+def test_chat_timeout_returns_504(monkeypatch):
+    router = ModelRouter(
+        [Backend(host="http://127.0.0.1:11434", models={"gemma3:1b"}, parallel=1)]
+    )
+
+    def slow_chat(*args, **kwargs):
+        raise httpx.ReadTimeout("timed out", request=httpx.Request("POST", "http://test"))
+
+    monkeypatch.setattr("worker.router.server.ollama_chat_http", slow_chat)
+
+    thread = start_router_server(router, "127.0.0.1", 0, log_requests=True)
+    base_url = f"http://127.0.0.1:{thread._port}"
+    try:
+        response = httpx.post(
+            f"{base_url}/v1/chat",
+            json={
+                "model": "gemma3:1b",
+                "messages": [{"role": "user", "content": "hi"}],
+                "role": "section_summary",
+            },
+            timeout=30.0,
+        )
+        assert response.status_code == 504
+        assert "timed out" in response.json()["error"].lower()
+    finally:
+        thread._server.shutdown()
+        thread._server.server_close()
+        thread.join(timeout=2.0)
+
+
 def test_metrics_records_chat_calls_when_enabled(monkeypatch):
     router = ModelRouter(
         [Backend(host="http://127.0.0.1:11434", models={"gemma3:1b"}, parallel=1)]
     )
     fleet_cfg = FleetConfig(num_servers=1, parallel=1, max_slots=1)
 
-    class FakeClient:
-        def __init__(self, host: str) -> None:
-            self.host = host
+    def fake_chat(host, *, model, messages, format=None, keep_alive=None, timeout_sec):
+        return {
+            "model": model,
+            "message": {"role": "assistant", "content": "{}"},
+            "done": True,
+            "eval_duration": 2_000_000_000,
+            "total_duration": 2_500_000_000,
+        }
 
-        def chat(self, **kwargs):
-            return {
-                "model": kwargs["model"],
-                "message": {"role": "assistant", "content": "{}"},
-                "done": True,
-                "eval_duration": 2_000_000_000,
-                "total_duration": 2_500_000_000,
-            }
-
-    monkeypatch.setattr("worker.router.server.ollama.Client", FakeClient)
+    monkeypatch.setattr("worker.router.server.ollama_chat_http", fake_chat)
 
     thread = start_router_server(
         router,

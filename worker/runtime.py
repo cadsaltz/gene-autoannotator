@@ -232,12 +232,11 @@ class WorkerRuntime:
 
         self._last_stall_warn_at = now
         summary = ", ".join(f"{job_id} ({elapsed}s)" for job_id, elapsed in stalled)
-        router_hint = _router_inflight_hint()
         log.warning(
-            "Still waiting on %d job(s): %s. %s",
+            "Still waiting on %d job(s): %s. Check router dispatch/chat logs; "
+            "Ollama timeouts fail jobs after role-based limits.",
             len(stalled),
             summary,
-            router_hint,
         )
 
     def _start_heartbeat_thread(self) -> None:
@@ -294,34 +293,3 @@ class WorkerRuntime:
             return build_report()
         return None
 
-
-def _router_inflight_hint() -> str:
-    url = os.getenv("OLLAMA_ROUTER_URL")
-    if not url:
-        return (
-            "If router logs are idle, jobs may be in paper fetch/parse or blocked "
-            "waiting for a model lane."
-        )
-    try:
-        import httpx
-
-        response = httpx.get(f"{url.rstrip('/')}/inflight", timeout=2.0)
-        response.raise_for_status()
-        inflight = response.json().get("inflight") or []
-    except Exception:
-        return (
-            "Could not query router /inflight. If router logs are idle after "
-            "'Submitting ... to LLM', jobs are waiting for a lane or Ollama is wedged "
-            "(check `ollama ps` for Stopping...)."
-        )
-
-    if not inflight:
-        return (
-            "Router has no in-flight Ollama calls — jobs likely blocked waiting for "
-            "a model lane (see `router waiting for lane`) or doing paper fetch."
-        )
-    stuck = ", ".join(
-        f"{row.get('job_id') or '-'} {row.get('model')} ({row.get('elapsed_sec')}s)"
-        for row in inflight
-    )
-    return f"Router in-flight Ollama call(s): {stuck}."

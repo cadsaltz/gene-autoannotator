@@ -21,7 +21,7 @@ def test_route_picks_least_loaded_backend():
     assert b3.host == b1.host
 
 
-def test_acquire_blocks_when_same_model_saturated():
+def test_acquire_blocks_when_server_gate_saturated():
     router = ModelRouter(
         [Backend(host="http://127.0.0.1:11434", models={"gemma3:1b"}, parallel=1)]
     )
@@ -45,14 +45,43 @@ def test_acquire_blocks_when_same_model_saturated():
     assert result[0].host == held.host
 
 
-def test_different_models_acquire_concurrently_when_backend_allows():
+def test_different_models_share_server_gate():
     router = ModelRouter(
         [
             Backend(
                 host="http://127.0.0.1:11434",
                 models={"gemma3:1b", "qwen3:0.6b"},
                 parallel=1,
-                max_in_flight=2,
+            )
+        ]
+    )
+    gemma = router.acquire("gemma3:1b")
+    acquired = threading.Event()
+    qwen_result: list[Backend] = []
+
+    def waiter() -> None:
+        qwen_result.append(router.acquire("qwen3:0.6b"))
+        acquired.set()
+
+    thread = threading.Thread(target=waiter)
+    thread.start()
+    time.sleep(0.05)
+    assert not acquired.is_set()
+
+    router.release(gemma, "gemma3:1b")
+    thread.join(timeout=1.0)
+    assert acquired.is_set()
+    assert len(qwen_result) == 1
+    router.release(qwen_result[0], "qwen3:0.6b")
+
+
+def test_parallel_two_allows_two_models_concurrently():
+    router = ModelRouter(
+        [
+            Backend(
+                host="http://127.0.0.1:11434",
+                models={"gemma3:1b", "qwen3:0.6b"},
+                parallel=2,
             )
         ]
     )
@@ -75,37 +104,6 @@ def test_different_models_acquire_concurrently_when_backend_allows():
     thread.join(timeout=1.0)
     assert blocked.is_set()
     router.release(qwen, "qwen3:0.6b")
-
-
-def test_backend_max_in_flight_serializes_different_models():
-    router = ModelRouter(
-        [
-            Backend(
-                host="http://127.0.0.1:11434",
-                models={"gemma3:1b", "qwen3:0.6b"},
-                parallel=1,
-                max_in_flight=1,
-            )
-        ]
-    )
-    gemma = router.acquire("gemma3:1b")
-    acquired = threading.Event()
-    qwen_result: list = []
-
-    def waiter() -> None:
-        qwen_result.append(router.acquire("qwen3:0.6b"))
-        acquired.set()
-
-    thread = threading.Thread(target=waiter)
-    thread.start()
-    time.sleep(0.05)
-    assert not acquired.is_set()
-
-    router.release(gemma, "gemma3:1b")
-    thread.join(timeout=1.0)
-    assert acquired.is_set()
-    assert len(qwen_result) == 1
-    router.release(qwen_result[0], "qwen3:0.6b")
 
 
 def test_unknown_model_raises():

@@ -25,7 +25,6 @@ from worker.ollama_bootstrap import ensure_models, models_loaded, warm_all_model
 from worker.probe import probe_system
 from worker.router import Backend, ModelRouter
 from worker.router.server import start_router_server, stop_router_server
-from worker.router.timeouts import ensure_router_read_timeout_for_load
 from worker.runtime import WorkerRuntime
 from worker.sources.batch import BatchJobSource
 
@@ -148,7 +147,7 @@ def main(argv=None):
         f"Bench setup: model_mode={model_mode}, fleet={fleet.num_servers}x"
         f"parallel={fleet.parallel}, slots={args.slots if args.slots is not None else fleet.max_slots}, "
         f"memory_tier={fleet.memory_tier}, models={len(required)}, "
-        f"ollama_max_in_flight={fleet.parallel}/server"
+        f"ollama_gate={fleet.parallel}/server"
     )
     _progress("Resetting Ollama fleet (stop existing servers, start fresh)...")
     procs = reset_ollama_fleet(fleet, spec)
@@ -171,7 +170,6 @@ def main(argv=None):
             host=host,
             models=required,
             parallel=runtime_fleet.parallel,
-            max_in_flight=runtime_fleet.parallel,
         )
         for host in runtime_fleet.backend_hosts()
     ]
@@ -207,12 +205,12 @@ def main(argv=None):
             fleet, spec, host=primary_host, measure_runtime_peak=False,
         )
         runtime_fleet = replace(fleet, max_slots=selected_slots, model_count=len(required))
-        chat_timeout = os.environ.setdefault("OLLAMA_CHAT_TIMEOUT_SEC", "1800")
+        chat_timeout = os.environ.setdefault("OLLAMA_CHAT_TIMEOUT_SEC", "600")
         _progress(
             f"Model footprints: W_all={fleet.w_all_bytes / (1024**3):.2f} GB, "
             f"W_peak={fleet.w_peak_bytes / (1024**3):.2f} GB, "
             f"tier={fleet.memory_tier}, job_keep_alive={job_keep_alive}, "
-            f"router_ollama_timeout={chat_timeout}s"
+            f"ollama_chat_timeout={chat_timeout}s (role defaults when unset per call)"
         )
         router_thread = start_router_server(
             router,
@@ -225,16 +223,6 @@ def main(argv=None):
             model_mode=model_mode,
         )
         os.environ["OLLAMA_ROUTER_URL"] = f"http://127.0.0.1:{router_thread._port}"
-        lanes = runtime_fleet.agg_lanes
-        read_timeout = ensure_router_read_timeout_for_load(
-            slots=selected_slots,
-            lanes=lanes,
-        )
-        if read_timeout is not None and selected_slots > lanes:
-            _progress(
-                f"Router client read timeout: {read_timeout:.0f}s "
-                f"(slots={selected_slots} > lanes={lanes})"
-            )
         _progress(f"Model router ready at {os.environ['OLLAMA_ROUTER_URL']}")
 
         config = load_config()

@@ -218,42 +218,33 @@ Router bench logging (when `log_requests=True`):
 
 | Line prefix | Meaning |
 | --- | --- |
-| `router dispatch` | Lane acquired; Ollama call starting. `queue=Nms` is time already spent waiting for a free lane (blocking happened before this line). |
+| `router dispatch` | Server gate acquired; Ollama call starting. `queue=Nms` is wait time for the gate. `timeout=N` is the role-based read cap. |
 | `router chat` | LLM call completed |
 
-With 1 server, `parallel=1`, and 4 models, up to 4 different models can be
-**queued** on separate per-model lanes, but only **`parallel` concurrent HTTP
-requests** are sent to each Ollama server (matching `OLLAMA_NUM_PARALLEL`).
-With the default `parallel=1`, Ollama sees one request at a time — stable on
-single-GPU hosts. Raise `OLLAMA_FLEET_PARALLEL` to allow more simultaneous
-Ollama inference (only if VRAM and Ollama stay healthy).
+With 1 server and `parallel=1`, only **one** Ollama HTTP request runs at a time
+across all models. Four slots still run jobs in parallel for paper fetch and
+Python; LLM calls queue at the router. Raise `OLLAMA_FLEET_PARALLEL` only when
+VRAM and Ollama stay healthy with more concurrent inference.
 
-A long gap after `router dispatch` with no matching `router chat` means an
-in-flight inference call. A gap with neither line is non-LLM work inside the
-annotation subprocess (paper fetch, parse, etc.).
+A long gap after `router dispatch` with no matching `router chat` should end with
+HTTP 504 once the role timeout fires (gate released, job fails). A gap with
+neither line is non-LLM work inside the annotation subprocess.
 
 Annotation subprocess logs (PMC fetch, throttling, etc.) print on **stderr** and
-appear in the bench terminal. If router logs go quiet for many minutes while
-jobs are still active, check:
+appear in the bench terminal. If jobs stall:
 
-- **`Submitting ... to LLM`** with no matching **`router dispatch`** — jobs are
-  blocked waiting for a model lane; another call may be stuck in Ollama. Look for
-  **`router waiting for lane`** warnings every ~30s.
-- **`router dispatch`** with no matching **`router chat`** — Ollama inference is
-  hung; check **`Router Ollama call(s) still in flight`** warnings and `ollama ps`.
-- **`Still waiting on N job(s)`** warnings — include router `/inflight` status when
-  available.
-- **`ollama ps`** — an **UNTIL** countdown means timed `keep_alive` is expiring;
-  use `--keep-alive -1` (bench default) to pin models. Models stuck in
-  `Stopping...` for a long time indicate a wedged unload; restart Ollama
-  (`Ctrl+C` the bench, or `sudo systemctl restart ollama`).
-- **Subprocess stderr capture** — by default stderr is inherited (not piped) so
-  verbose DEBUG logs cannot deadlock the job. Set `WORKER_JOB_CAPTURE_STDERR=1` only
-  if you need captured stderr on failure (not recommended for long bench runs).
-- **Bench defaults** — `OLLAMA_CHAT_TIMEOUT_SEC=1800` (30 min) on router→Ollama
-  calls so wedged Ollama fails instead of hanging forever; set `0` for unlimited.
-- **Optional wall timeout** — `WORKER_JOB_WALL_TIMEOUT_SEC=7200` kills a job
-  subprocess after N seconds with a clear error.
+- **`Submitting ... to LLM`** with no **`router dispatch`** — waiting for the
+  server gate; another call may still be in Ollama.
+- **`router dispatch`** with no **`router chat`** — inference in progress or
+  hung; should fail at role timeout (see `timeout=` on dispatch line).
+- **`Still waiting on N job(s)`** — job subprocess wall time; check router logs.
+- **`ollama ps`** — **UNTIL** countdown means timed `keep_alive`; use
+  `--keep-alive -1` (bench default). **Stopping...** for a long time → restart
+  Ollama (`Ctrl+C` the bench).
+- **Subprocess stderr** — inherited by default (not piped) to avoid deadlock.
+- **Bench defaults** — `OLLAMA_CHAT_TIMEOUT_SEC=600` global cap; per-role defaults
+  apply when lower. Set `0` for unlimited (not recommended).
+- **Optional wall timeout** — `WORKER_JOB_WALL_TIMEOUT_SEC` kills a job subprocess.
 
 Press **Ctrl+C** once to stop jobs and shut down the Ollama fleet cleanly.
 Press **Ctrl+C** again to force exit immediately.
@@ -261,14 +252,13 @@ Press **Ctrl+C** again to force exit immediately.
 ### Oversubscription (`slots > lanes`)
 
 Worker slots control how many annotation **jobs** run in parallel. Router
-**lanes** are `servers × parallel × model_count`: each loaded model gets up to
-`parallel` concurrent calls per server. Jobs queue only when **their model** is
-busy, not when a different model is in use.
+**lanes** are `servers × parallel` (server gates). All models on one server
+share one gate. Jobs queue when the gate is full.
 
-LLM HTTP read timeouts are **unlimited by default** (only connect timeout
-applies). Inference may take many minutes on large models or CPU/RAM overflow;
-Ctrl+C stops the bench. To cap a run, set a finite
-`OLLAMA_ROUTER_READ_TIMEOUT_SEC` (seconds); `0` means unlimited.
+LLM calls use role-based read timeouts on the router→Ollama path. The router
+client uses a finite read timeout by default so wedged calls fail instead of
+blocking subprocesses forever. Set `OLLAMA_ROUTER_READ_TIMEOUT_SEC=0` for
+unlimited client reads (not recommended for bench).
 
 ### `per_job`
 
