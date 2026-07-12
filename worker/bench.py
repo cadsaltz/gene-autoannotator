@@ -20,7 +20,8 @@ from worker import executor
 from worker.bootstrap import ensure_worker_env
 from worker.config import load_config
 from worker.fleet.models import required_model_names
-from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet, shutdown_fleet
+from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet
+from worker.fleet.supervisor import FleetSupervisor
 from worker.ollama_bootstrap import ensure_models, models_loaded, warm_all_models
 from worker.probe import probe_system
 from worker.router import Backend, ModelRouter
@@ -90,11 +91,20 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="Skip pre-loading all required models before the batch.",
     )
+    parser.add_argument(
+        "--configure-fleet",
+        action="store_true",
+        help=(
+            "Prompt for Ollama fleet settings (servers, parallel, slots) instead of "
+            "using saved or recommended values. Requires an interactive terminal."
+        ),
+    )
     return parser.parse_args(argv)
 
 
-def _shutdown_fleet(procs: list[Any]) -> None:
-    shutdown_fleet(procs)
+def _shutdown_fleet(supervisor: FleetSupervisor | None) -> None:
+    if supervisor is not None:
+        supervisor.shutdown()
 
 
 def _apply_output_dir(output_dir: str | None) -> None:
@@ -133,8 +143,16 @@ def main(argv=None):
         args = _parse_args(None)
     else:
         args = _parse_args(list(argv))
-    ensure_worker_env(interactive=False)
-    fleet = ensure_fleet_config(interactive=False)
+    configure_fleet = bool(getattr(args, "configure_fleet", False))
+    if configure_fleet and not sys.stdin.isatty():
+        print(
+            "Error: --configure-fleet requires an interactive terminal.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 2
+    ensure_worker_env(interactive=False, skip_fleet_config=configure_fleet)
+    fleet = ensure_fleet_config(interactive=configure_fleet)
     spec = probe_system()
     if getattr(args, "output_dir", None):
         _apply_output_dir(args.output_dir)
@@ -150,7 +168,8 @@ def main(argv=None):
         f"ollama_gate={fleet.parallel}/server"
     )
     _progress("Resetting Ollama fleet (stop existing servers, start fresh)...")
-    procs = reset_ollama_fleet(fleet, spec)
+    fleet_supervisor: FleetSupervisor | None = None
+    fleet_supervisor = reset_ollama_fleet(fleet, spec)
     _progress(
         f"Ollama fleet listening on {', '.join(fleet.backend_hosts())}"
     )
@@ -219,6 +238,7 @@ def main(argv=None):
             collect_metrics=True,
             log_requests=True,
             fleet_cfg=runtime_fleet,
+            fleet_supervisor=fleet_supervisor,
             jobs_submitted=source.jobs_submitted,
             model_mode=model_mode,
         )
@@ -281,7 +301,7 @@ def main(argv=None):
                 stop_router_server(router_thread)
             except Exception:
                 pass
-        _shutdown_fleet(procs)
+        _shutdown_fleet(fleet_supervisor)
 
 
 if __name__ == "__main__":

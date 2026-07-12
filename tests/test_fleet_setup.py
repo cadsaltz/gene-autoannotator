@@ -1,4 +1,5 @@
 from worker.fleet.config import FleetConfig
+from worker.fleet.supervisor import FleetSupervisor
 from worker.fleet import setup
 from worker.probe import SystemSpec
 
@@ -169,6 +170,7 @@ def test_reset_ollama_fleet_kills_before_start(monkeypatch):
     monkeypatch.setattr(setup, "kill_all_ollama_servers", lambda **kw: calls.append("kill"))
     monkeypatch.setattr(setup, "_ensure_ports_free", lambda ports, **kw: calls.append("wait"))
     monkeypatch.setattr(setup, "start_fleet", lambda c, s: calls.extend(["start"]) or ["proc"])
-    procs = setup.reset_ollama_fleet(cfg, spec)
+    supervisor = setup.reset_ollama_fleet(cfg, spec)
     assert calls == ["kill", "wait", "start"]
-    assert procs == ["proc"]
+    assert isinstance(supervisor, FleetSupervisor)
+    assert supervisor.processes == ["proc"]

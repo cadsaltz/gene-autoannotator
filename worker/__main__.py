@@ -38,6 +38,11 @@ def main():
         action="store_true",
         help="Skip pre-loading all required models before the batch",
     )
+    bench_parser.add_argument(
+        "--configure-fleet",
+        action="store_true",
+        help="Prompt for Ollama fleet settings (servers, parallel, slots)",
+    )
 
     args = parser.parse_args()
     command = args.command or "serve"

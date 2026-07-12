@@ -22,6 +22,24 @@ log = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from worker.fleet.config import FleetConfig
 
+from worker.fleet.supervisor import FleetSupervisor
+
+
+def _ollama_chat_with_recovery(
+    supervisor: FleetSupervisor | None,
+    host: str,
+    *,
+    timeout_sec: float,
+    chat_kwargs: dict,
+) -> dict:
+    try:
+        return ollama_chat_http(host, timeout_sec=timeout_sec, **chat_kwargs)
+    except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError):
+        if supervisor is None or not supervisor.restart_if_unhealthy(host):
+            raise
+        log.warning("Retrying Ollama chat on %s after restart", host)
+        return ollama_chat_http(host, timeout_sec=timeout_sec, **chat_kwargs)
+
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
     body = json.dumps(payload).encode("utf-8")
@@ -78,6 +96,7 @@ def _make_handler(
     log_requests: bool = False,
     metrics: MetricsCollector | None = None,
     fleet_cfg: FleetConfig | None = None,
+    fleet_supervisor: FleetSupervisor | None = None,
     jobs_submitted: int = 0,
     model_mode: str = "nano",
 ):
@@ -166,10 +185,11 @@ def _make_handler(
                 )
 
             try:
-                result = ollama_chat_http(
+                result = _ollama_chat_with_recovery(
+                    self.fleet_supervisor,
                     backend.host,
                     timeout_sec=timeout_sec,
-                    **chat_kwargs,
+                    chat_kwargs=chat_kwargs,
                 )
                 inference_ms = _inference_ms_from_result(result)
                 total_ms = _total_ms_from_result(
@@ -209,6 +229,8 @@ def _make_handler(
                 result["queue_wait_ms"] = queue_wait_ms
                 _json_response(self, HTTPStatus.OK, result)
             except httpx.TimeoutException as exc:
+                if self.fleet_supervisor is not None:
+                    self.fleet_supervisor.restart_if_unhealthy(backend.host)
                 log.error(
                     "router chat timed out job=%s model=%s role=%s backend=%s after %ds",
                     job_id or "-",
@@ -239,6 +261,10 @@ def _make_handler(
                     },
                 )
             except Exception as exc:
+                if self.fleet_supervisor is not None and isinstance(
+                    exc, (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError)
+                ):
+                    self.fleet_supervisor.restart_if_unhealthy(backend.host)
                 log.error(
                     "router chat failed job=%s model=%s role=%s backend=%s: %s",
                     job_id or "-",
@@ -270,6 +296,7 @@ def _make_handler(
     RouterHTTPHandler.log_requests = log_requests
     RouterHTTPHandler.metrics = metrics
     RouterHTTPHandler.fleet_cfg = fleet_cfg
+    RouterHTTPHandler.fleet_supervisor = fleet_supervisor
     RouterHTTPHandler.jobs_submitted = jobs_submitted
     RouterHTTPHandler.model_mode = model_mode
     return RouterHTTPHandler
@@ -283,6 +310,7 @@ def start_router_server(
     collect_metrics: bool = False,
     log_requests: bool = False,
     fleet_cfg: FleetConfig | None = None,
+    fleet_supervisor: FleetSupervisor | None = None,
     jobs_submitted: int = 0,
     model_mode: str = "nano",
 ) -> threading.Thread:
@@ -297,6 +325,7 @@ def start_router_server(
         log_requests=log_requests,
         metrics=metrics,
         fleet_cfg=fleet_cfg,
+        fleet_supervisor=fleet_supervisor,
         jobs_submitted=jobs_submitted,
         model_mode=model_mode,
     )

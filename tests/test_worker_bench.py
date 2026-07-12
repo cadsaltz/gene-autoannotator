@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from worker.fleet.config import FleetConfig
 from worker.probe import SystemSpec
 from worker.router.metrics import MetricsCollector
@@ -15,6 +17,11 @@ class _FakeRouterServer:
         return None
 
     def server_close(self):
+        return None
+
+
+class _FakeSupervisor:
+    def shutdown(self) -> None:
         return None
 
 
@@ -73,8 +80,9 @@ def test_bench_completes_and_writes_report(tmp_path, monkeypatch):
     monkeypatch.setattr(
         bench,
         "reset_ollama_fleet",
-        lambda cfg, spec: calls["start_fleet"].append((cfg, spec)) or [],
+        lambda cfg, spec: calls["start_fleet"].append((cfg, spec)) or _FakeSupervisor(),
     )
+    monkeypatch.setattr(bench, "models_loaded", lambda **kw: [])
     monkeypatch.setattr(bench, "ensure_models", lambda client=None: None)
     monkeypatch.setattr(bench, "warm_all_models", lambda **kw: [])
     monkeypatch.setattr(bench, "refresh_fleet_footprints", lambda fleet, spec, **kw: fleet)
@@ -110,6 +118,41 @@ def test_bench_completes_and_writes_report(tmp_path, monkeypatch):
     assert "jobs_per_hour" in payload["batch"]
 
 
+class _StopBench(Exception):
+    pass
+
+
+def test_bench_configure_fleet_prompts_interactively(monkeypatch):
+    captured: dict[str, dict] = {}
+
+    def fake_ensure_worker_env(**kwargs):
+        captured["ensure_worker_env"] = kwargs
+
+    def fake_ensure_fleet_config(**kwargs):
+        captured["ensure_fleet_config"] = kwargs
+        return FleetConfig(2, 2, 4)
+
+    monkeypatch.setattr(bench, "ensure_worker_env", fake_ensure_worker_env)
+    monkeypatch.setattr(bench, "ensure_fleet_config", fake_ensure_fleet_config)
+    monkeypatch.setattr(bench.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(bench, "probe_system", lambda: (_ for _ in ()).throw(_StopBench()))
+
+    with pytest.raises(_StopBench):
+        bench.main(["--jobs", "tests/fixtures/bench_jobs_2.jsonl", "--configure-fleet"])
+
+    assert captured["ensure_worker_env"] == {
+        "interactive": False,
+        "skip_fleet_config": True,
+    }
+    assert captured["ensure_fleet_config"] == {"interactive": True}
+
+
+def test_bench_configure_fleet_requires_tty(monkeypatch):
+    monkeypatch.setattr(bench.sys.stdin, "isatty", lambda: False)
+    rc = bench.main(["--jobs", "tests/fixtures/bench_jobs_2.jsonl", "--configure-fleet"])
+    assert rc == 2
+
+
 def test_bench_output_dir_sets_worker_output_dir(tmp_path, monkeypatch):
     report_path = tmp_path / "report.json"
     output_dir = tmp_path / "annotations"
@@ -117,7 +160,8 @@ def test_bench_output_dir_sets_worker_output_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(bench, "ensure_worker_env", lambda **_kw: None)
     monkeypatch.setattr(bench, "ensure_fleet_config", lambda **_kw: FleetConfig(1, 1, 2))
     monkeypatch.setattr(bench, "probe_system", _spec)
-    monkeypatch.setattr(bench, "reset_ollama_fleet", lambda cfg, spec: [])
+    monkeypatch.setattr(bench, "reset_ollama_fleet", lambda cfg, spec: _FakeSupervisor())
+    monkeypatch.setattr(bench, "models_loaded", lambda **kw: [])
     monkeypatch.setattr(bench, "ensure_models", lambda client=None: None)
     monkeypatch.setattr(bench, "warm_all_models", lambda **kw: [])
     monkeypatch.setattr(bench, "refresh_fleet_footprints", lambda fleet, spec, **kw: fleet)

@@ -438,8 +438,10 @@ def shutdown_fleet(procs: list[subprocess.Popen]) -> None:
                 pass
 
 
-def reset_ollama_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
-    """Kill any existing Ollama servers, then start a fresh fleet from config."""
+def reset_ollama_fleet(cfg: FleetConfig, spec: SystemSpec):
+    """Kill any existing Ollama servers, then start a fresh supervised fleet."""
+    from worker.fleet.supervisor import FleetSupervisor, attach_fleet_to_supervisor
+
     kill_all_ollama_servers()
     ports = [cfg.base_port + i for i in range(cfg.num_servers)]
     _ensure_ports_free(ports)
@@ -449,7 +451,10 @@ def reset_ollama_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Po
             "OLLAMA_FLEET_SERVERS=1 in worker.env or install the native Ollama package.",
             cfg.num_servers,
         )
-    return start_fleet(cfg, spec)
+    procs = start_fleet(cfg, spec)
+    supervisor = FleetSupervisor(cfg, spec)
+    attach_fleet_to_supervisor(supervisor, cfg, spec, procs)
+    return supervisor
 
 
 def _env_value(key: str, *, env_path: Path) -> str | None:

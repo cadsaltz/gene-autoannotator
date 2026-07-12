@@ -36,7 +36,39 @@ def test_feasible_pairs_exclude_vram_overflow_for_warm_stack():
     assert (1, 2) in hosts
 
 
-def test_recommendation_favors_single_gpu_higher_parallel():
+def test_recommend_max_slots_never_exceeds_ollama_gates():
+    spec = _laptop_spec()
+    assert sizing.recommend_max_slots(spec, 1, 1) == 1
+    assert sizing.recommend_max_slots(spec, 2, 2) == 4
+
+
+def test_conservative_max_parallel_single_gpu_defaults_to_one():
+    spec = _laptop_spec()
+    cap = sizing.conservative_max_parallel(
+        spec,
+        num_servers=1,
+        tier="warm_stack",
+        w_all_bytes=int(6 * 1024**3),
+        w_peak_bytes=int(1.2 * 1024**3),
+        c_slot_bytes=int(0.4 * 1024**3),
+    )
+    assert cap == 1
+
+
+def test_laptop_recommendation_is_conservative():
+    spec = _laptop_spec()
+    w_all = int(2.0 * 1024**3)
+    w_peak = int(1.2 * 1024**3)
+    c_slot = int(0.4 * 1024**3)
+    rec = sizing.recommend(
+        spec, w_all_bytes=w_all, w_peak_bytes=w_peak, c_slot_bytes=c_slot,
+    )
+    assert rec.num_servers == 1
+    assert rec.parallel == 1
+    assert rec.max_slots == rec.agg_lanes
+
+
+def test_recommendation_favors_single_server_on_one_gpu():
     spec = _laptop_spec()
     w_all = int(2.0 * 1024**3)
     w_peak = int(1.2 * 1024**3)

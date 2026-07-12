@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -143,7 +142,27 @@ def enumerate_feasible(
     options: list[tuple[FleetConfig, MemoryTier]] = []
 
     for n in range(1, max_servers + 1):
-        for p in range(1, MAX_PARALLEL + 1):
+        tier_for_cap: MemoryTier | None = None
+        try:
+            tier_for_cap = classify_memory_tier(
+                spec,
+                w_all_bytes=w_all_bytes,
+                w_peak_bytes=w_peak_bytes,
+                c_slot_bytes=c_slot_bytes,
+                num_servers=n,
+                parallel=1,
+            )
+        except RuntimeError:
+            continue
+        p_max = conservative_max_parallel(
+            spec,
+            num_servers=n,
+            tier=tier_for_cap,
+            w_all_bytes=w_all_bytes,
+            w_peak_bytes=w_peak_bytes,
+            c_slot_bytes=c_slot_bytes,
+        )
+        for p in range(1, p_max + 1):
             try:
                 tier = classify_memory_tier(
                     spec,
@@ -192,29 +211,72 @@ def enumerate_feasible(
     return options
 
 
+def conservative_max_parallel(
+    spec: SystemSpec,
+    *,
+    num_servers: int,
+    tier: MemoryTier,
+    w_all_bytes: int,
+    w_peak_bytes: int,
+    c_slot_bytes: int,
+) -> int:
+    """VRAM/RAM-aware cap on ``OLLAMA_NUM_PARALLEL`` per server."""
+    vram_per_server = vram_budget_for_fleet(spec, num_servers) // max(1, num_servers)
+    model_bytes = w_all_bytes if tier == "warm_stack" else w_peak_bytes
+
+    if spec.gpu_count <= 1 and num_servers == 1:
+        if not vram_per_server:
+            return 1
+        needed_for_two = model_bytes + 2 * c_slot_bytes
+        headroom_after_two = vram_per_server - needed_for_two
+        if (
+            tier == "warm_stack"
+            and needed_for_two <= vram_per_server
+            and headroom_after_two >= c_slot_bytes
+        ):
+            return min(2, MAX_PARALLEL)
+        return 1
+
+    if not vram_per_server:
+        return 1
+    extra = vram_per_server - model_bytes - c_slot_bytes
+    if extra < 0:
+        return 1
+    max_p = 1 + max(0, extra // c_slot_bytes)
+    return max(1, min(max_p, MAX_PARALLEL))
+
+
+def ollama_gates(num_servers: int, parallel: int) -> int:
+    """Concurrent Ollama HTTP requests the fleet can safely run."""
+    return max(1, num_servers) * max(1, parallel)
+
+
 def recommend_max_slots(spec: SystemSpec, num_servers: int, parallel: int) -> int:
-    model_count = len(required_model_names())
-    agg_lanes = num_servers * parallel * model_count
-    burst_slots = max(1, math.floor(agg_lanes * 0.85))
+    gate_slots = ollama_gates(num_servers, parallel)
     ram_slots = max(
         1,
         int((spec.system_ram_bytes * 0.75) // SUBPROCESS_OVERHEAD_BYTES),
     )
     cpu_slots = max(1, spec.cpu_physical)
-    return min(burst_slots, ram_slots, cpu_slots)
+    return min(gate_slots, ram_slots, cpu_slots)
 
 
 def _score(spec: SystemSpec, cfg: FleetConfig, tier: MemoryTier) -> float:
     score = float(cfg.agg_lanes)
-    score += 0.3 * cfg.parallel
     if spec.gpu_count == 1:
         if cfg.num_servers == 1:
             score += 3.0
         else:
             score -= 6.0 * cfg.num_servers
+        if cfg.parallel == 1:
+            score += 2.0
+        else:
+            score -= 1.5 * (cfg.parallel - 1)
     elif cfg.num_servers > max(1, spec.gpu_count):
         score -= 4.0 * (cfg.num_servers - spec.gpu_count)
     if tier == "warm_stack":
+        score += 1.0
+    if cfg.max_slots == cfg.agg_lanes:
         score += 1.0
     return score
 
@@ -244,7 +306,10 @@ def recommend(
         num_servers=best_cfg.num_servers,
     )
     if best_cfg.max_slots > best_cfg.agg_lanes:
-        warnings.append("max_slots exceeds aggregation lanes; expect end-of-batch stalls.")
+        warnings.append(
+            f"{best_cfg.max_slots} job slots exceeds {best_cfg.agg_lanes} Ollama gates; "
+            "expect LLM queue waits."
+        )
 
     return FleetRecommendation(
         num_servers=best_cfg.num_servers,
@@ -306,7 +371,9 @@ def validate_fleet(spec: SystemSpec, cfg: FleetConfig) -> tuple[list[str], list[
         if not any("servers on 1 GPU" in warning for warning in warnings):
             warnings.append("Multiple Ollama servers on one GPU duplicate weights.")
     if cfg.max_slots > cfg.agg_lanes:
-        warnings.append(f"{cfg.max_slots} slots > {cfg.agg_lanes} aggregation lanes.")
+        warnings.append(
+            f"{cfg.max_slots} slots > {cfg.agg_lanes} Ollama gates; jobs will queue at the router."
+        )
     if cfg.num_servers > MAX_SERVERS or cfg.parallel > MAX_PARALLEL:
         errors.append("Requested fleet exceeds policy maximum.")
     if spec.gpu_count > 0 and cfg.num_servers > spec.gpu_count:

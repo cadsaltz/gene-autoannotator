@@ -136,9 +136,9 @@ VRAM per server is estimated as `W_all + parallel × C_slot`:
   estimated from `AUTOANNOTATION_MODEL_MODE`).
 - **C_slot** — per-lane context overhead (~0.4 GB default).
 
-`max_slots` is capped by server gates (`servers × parallel`), available RAM
-(subprocess overhead), and physical CPU count. Setting `max_slots` above
-`agg_lanes` is allowed but causes LLM queue waits when many jobs call Ollama at once.
+`max_slots` is capped by Ollama gates (`servers × parallel`), available RAM
+(subprocess overhead), and physical CPU count. Recommended defaults keep
+`max_slots == agg_lanes` so job concurrency matches what Ollama can serve.
 
 ## Model router sidecar
 
