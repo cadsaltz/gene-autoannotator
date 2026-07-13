@@ -234,7 +234,7 @@ class WorkerRuntime:
         summary = ", ".join(f"{job_id} ({elapsed}s)" for job_id, elapsed in stalled)
         log.warning(
             "Still waiting on %d job(s): %s. Check router dispatch/chat logs; "
-            "Ollama timeouts fail jobs after role-based limits.",
+            "Ollama timeouts fail jobs only when OLLAMA_CHAT_TIMEOUT_SEC is set.",
             len(stalled),
             summary,
         )

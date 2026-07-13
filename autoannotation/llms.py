@@ -241,8 +241,8 @@ def ollama_chat(
                 detail = str(exc)
                 if 'timed out' in detail.lower() or exc.__class__.__name__ == 'ReadTimeout':
                     detail += (
-                        '; set OLLAMA_ROUTER_READ_TIMEOUT_SEC=0 for unlimited, '
-                        'or raise the limit'
+                        '; unset OLLAMA_CHAT_TIMEOUT_SEC and OLLAMA_ROUTER_READ_TIMEOUT_SEC '
+                        'for unlimited waits, or raise the limits'
                     )
                 raise RuntimeError(f'Router {role} request failed: {detail}') from exc
             raise

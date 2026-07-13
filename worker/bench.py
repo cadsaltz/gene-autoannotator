@@ -224,12 +224,17 @@ def main(argv=None):
             fleet, spec, host=primary_host, measure_runtime_peak=False,
         )
         runtime_fleet = replace(fleet, max_slots=selected_slots, model_count=len(required))
-        chat_timeout = os.environ.setdefault("OLLAMA_CHAT_TIMEOUT_SEC", "600")
+        chat_timeout = os.getenv("OLLAMA_CHAT_TIMEOUT_SEC")
+        timeout_note = (
+            f"{chat_timeout}s"
+            if chat_timeout and str(chat_timeout).strip() not in {"0", "none", "off"}
+            else "unlimited"
+        )
         _progress(
             f"Model footprints: W_all={fleet.w_all_bytes / (1024**3):.2f} GB, "
             f"W_peak={fleet.w_peak_bytes / (1024**3):.2f} GB, "
             f"tier={fleet.memory_tier}, job_keep_alive={job_keep_alive}, "
-            f"ollama_chat_timeout={chat_timeout}s (role defaults when unset per call)"
+            f"ollama_chat_timeout={timeout_note}"
         )
         router_thread = start_router_server(
             router,

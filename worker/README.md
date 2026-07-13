@@ -150,9 +150,9 @@ parallel.
 
 `autoannotation.llms.ollama_chat()` is the single integration point: when
 `OLLAMA_ROUTER_URL` is set, calls go to `POST /v1/chat` on the sidecar instead
-of Ollama directly. The sidecar forwards to the selected backend with a
-**role-based read timeout** (httpx to `/api/chat`) and strips routing metadata
-from responses.
+of Ollama directly. The sidecar forwards to the selected backend; read timeout is
+**unlimited by default** (performance models may run many minutes). Set
+`OLLAMA_CHAT_TIMEOUT_SEC` only for bench fail-fast.
 
 ### Concurrency (one story)
 
@@ -160,14 +160,13 @@ from responses.
 | --- | --- | --- |
 | **Slots** | `WORKER_MAX_SLOTS` / `--slots` | Concurrent annotation subprocesses |
 | **Server gate** | `OLLAMA_FLEET_PARALLEL` | Concurrent Ollama HTTP requests per server |
-| **Chat timeout** | `OLLAMA_CHAT_TIMEOUT_SEC` + role defaults | Max seconds one inference may run |
+| **Chat timeout** | `OLLAMA_CHAT_TIMEOUT_SEC` (optional) | Max seconds one inference may run; unset = unlimited |
 
 With `parallel=1` on a single GPU, Ollama processes one request at a time; four
 slots still overlap paper fetch and Python work while LLM calls queue at the router.
 
-Role timeout defaults: `section_summary` 120s, `section_consensus` 180s,
-`gene_aggregation` 600s. Hung calls return HTTP 504, release the gate, and fail
-the job with a clear error.
+When `OLLAMA_CHAT_TIMEOUT_SEC` is set, hung calls return HTTP 504, release the
+gate, and fail the job. Leave it unset for overnight serve runs with large models.
 
 Environment variables:
 

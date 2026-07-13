@@ -29,12 +29,12 @@ def _ollama_chat_with_recovery(
     supervisor: FleetSupervisor | None,
     host: str,
     *,
-    timeout_sec: float,
+    timeout_sec: float | None,
     chat_kwargs: dict,
 ) -> dict:
     try:
         return ollama_chat_http(host, timeout_sec=timeout_sec, **chat_kwargs)
-    except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError):
+    except (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError):
         if supervisor is None or not supervisor.restart_if_unhealthy(host):
             raise
         log.warning("Retrying Ollama chat on %s after restart", host)
@@ -172,16 +172,17 @@ def _make_handler(
                 chat_kwargs["keep_alive"] = keep_alive
 
             timeout_sec = ollama_chat_timeout_for_role(role)
+            timeout_label = "unlimited" if timeout_sec is None else f"{int(timeout_sec)}s"
 
             if self.log_requests:
                 log.info(
-                    "router dispatch job=%s model=%s role=%s backend=%s queue=%dms timeout=%ds",
+                    "router dispatch job=%s model=%s role=%s backend=%s queue=%dms timeout=%s",
                     job_id or "-",
                     model,
                     role,
                     backend.host,
                     queue_wait_ms,
-                    int(timeout_sec),
+                    timeout_label,
                 )
 
             try:
@@ -228,16 +229,16 @@ def _make_handler(
                 result["backend"] = backend.host
                 result["queue_wait_ms"] = queue_wait_ms
                 _json_response(self, HTTPStatus.OK, result)
-            except httpx.TimeoutException as exc:
+            except httpx.TimeoutException:
                 if self.fleet_supervisor is not None:
                     self.fleet_supervisor.restart_if_unhealthy(backend.host)
                 log.error(
-                    "router chat timed out job=%s model=%s role=%s backend=%s after %ds",
+                    "router chat timed out job=%s model=%s role=%s backend=%s after %s",
                     job_id or "-",
                     model,
                     role,
                     backend.host,
-                    int(timeout_sec),
+                    timeout_label,
                 )
                 if self.metrics is not None:
                     self.metrics.record_call(
@@ -255,8 +256,8 @@ def _make_handler(
                     HTTPStatus.GATEWAY_TIMEOUT,
                     {
                         "error": (
-                            f"Ollama chat timed out after {int(timeout_sec)}s "
-                            f"(role={role})"
+                            f"Ollama chat timed out ({timeout_label}, role={role}). "
+                            "Set OLLAMA_CHAT_TIMEOUT_SEC=0 for unlimited."
                         ),
                     },
                 )

@@ -235,15 +235,15 @@ appear in the bench terminal. If jobs stall:
 
 - **`Submitting ... to LLM`** with no **`router dispatch`** — waiting for the
   server gate; another call may still be in Ollama.
-- **`router dispatch`** with no **`router chat`** — inference in progress or
-  hung; should fail at role timeout (see `timeout=` on dispatch line).
+- **`router dispatch`** with no **`router chat`** — inference in progress (may take
+  many minutes on performance models) or hung Ollama.
 - **`Still waiting on N job(s)`** — job subprocess wall time; check router logs.
 - **`ollama ps`** — **UNTIL** countdown means timed `keep_alive`; use
   `--keep-alive -1` (bench default). **Stopping...** for a long time → restart
   Ollama (`Ctrl+C` the bench).
 - **Subprocess stderr** — inherited by default (not piped) to avoid deadlock.
-- **Bench defaults** — `OLLAMA_CHAT_TIMEOUT_SEC=600` global cap; per-role defaults
-  apply when lower. Set `0` for unlimited (not recommended).
+- **Chat timeout** — unset `OLLAMA_CHAT_TIMEOUT_SEC` for unlimited (serve default).
+  Set a positive value only for bench fail-fast.
 - **Optional wall timeout** — `WORKER_JOB_WALL_TIMEOUT_SEC` kills a job subprocess.
 
 Press **Ctrl+C** once to stop jobs and shut down the Ollama fleet cleanly.
@@ -255,10 +255,9 @@ Worker slots control how many annotation **jobs** run in parallel. Router
 **lanes** are `servers × parallel` (server gates). All models on one server
 share one gate. Jobs queue when the gate is full.
 
-LLM calls use role-based read timeouts on the router→Ollama path. The router
-client uses a finite read timeout by default so wedged calls fail instead of
-blocking subprocesses forever. Set `OLLAMA_ROUTER_READ_TIMEOUT_SEC=0` for
-unlimited client reads (not recommended for bench).
+LLM calls wait as long as needed on the router→Ollama path unless
+`OLLAMA_CHAT_TIMEOUT_SEC` is set. The router client read timeout is also unlimited
+by default (`OLLAMA_ROUTER_READ_TIMEOUT_SEC` unset).
 
 ### `per_job`
 
