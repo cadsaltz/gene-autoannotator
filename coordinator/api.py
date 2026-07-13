@@ -777,16 +777,22 @@ def create_app(
         _require_worker_token(authorization)
         if request.free_slots <= 0:
             return Response(status_code=204)
-        ready_workers = workers.list_ready_workers(offline_after_seconds=offline_after_seconds)
-        if not ready_workers:
-            return Response(status_code=204)
-        max_free = max(worker["free_slots"] for worker in ready_workers)
         worker = workers.get(worker_id, offline_after_seconds=offline_after_seconds)
-        if (
-            worker is None
-            or worker["state"] != "ready"
-            or worker["free_slots"] != max_free
-        ):
+        if worker is None or worker["state"] != "ready":
+            return Response(status_code=204)
+
+        # Use the live claim request for this worker so claims are not blocked by a
+        # stale heartbeat that still shows free_slots=0 between heartbeats.
+        ready_slots: list[int] = []
+        for peer in workers.list_workers(offline_after_seconds=offline_after_seconds):
+            if peer["state"] != "ready":
+                continue
+            slots = request.free_slots if peer["id"] == worker_id else peer["free_slots"]
+            if slots > 0:
+                ready_slots.append(slots)
+        if not ready_slots:
+            return Response(status_code=204)
+        if request.free_slots < max(ready_slots):
             return Response(status_code=204)
         job = store.assign_job_to_worker(worker_id, lease_seconds=lease_seconds)
         if job is None:

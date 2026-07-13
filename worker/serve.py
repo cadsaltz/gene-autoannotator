@@ -35,6 +35,8 @@ def _configure_logging() -> None:
         stream=sys.stdout,
         force=True,
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def _memory_available_bytes() -> int:
@@ -167,7 +169,13 @@ def main(args=None):
 
     config = load_config()
     client = CoordinatorClient(config)
-    client.register()
+    worker_id = client.register()
+    log.info(
+        "Registered worker %s (id=%s, max_slots=%s)",
+        config.worker_name,
+        worker_id,
+        config.max_slots,
+    )
 
     drain_signal = _DrainSignal()
     runtime_holder: dict[str, WorkerRuntime] = {}

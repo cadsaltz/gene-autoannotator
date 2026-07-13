@@ -49,6 +49,35 @@ def _queue_job(store, locus):
     )
 
 
+def test_claim_uses_request_free_slots_when_heartbeat_stale(tmp_path):
+    client, store = _make_client(tmp_path)
+    headers = {"Authorization": "Bearer test-token"}
+
+    worker_id = _register(client, headers, worker_name="solo", hostname="solo", max_slots=2)
+    _queue_job(store, "Rv0099")
+
+    # Simulate a stale heartbeat that still reports zero free slots.
+    registry = WorkerRegistry(tmp_path / "jobs.sqlite3")
+    registry.heartbeat(
+        worker_id,
+        {
+            "active_jobs": 2,
+            "free_slots": 0,
+            "memory_available_bytes": 1,
+            "cpu_percent": 0.0,
+            "state": "ready",
+        },
+    )
+
+    claim = client.post(
+        f"/workers/{worker_id}/claim",
+        json={"free_slots": 2},
+        headers=headers,
+    )
+    assert claim.status_code == 200
+    assert claim.json()["request"]["locus"] == "Rv0099"
+
+
 def test_assign_only_when_worker_has_max_free_slots(tmp_path):
     client, store = _make_client(tmp_path)
     headers = {"Authorization": "Bearer test-token"}
