@@ -186,7 +186,18 @@ def main(args=None):
             return config.max_slots
         return runtime.free_slots()
 
-    source = _DrainAwareCoordinatorSource(client, free_slots_fn=free_slots, drain_signal=drain_signal)
+    def active_jobs() -> int:
+        runtime = runtime_holder.get("runtime")
+        if runtime is None:
+            return 0
+        return len(runtime.active_jobs)
+
+    source = _DrainAwareCoordinatorSource(
+        client,
+        free_slots_fn=free_slots,
+        drain_signal=drain_signal,
+        active_jobs_fn=active_jobs,
+    )
 
     def heartbeat_fn(*, active_jobs: int, free_slots: int) -> None:
         if drain_signal.draining:

@@ -30,9 +30,11 @@ class CoordinatorJobSource(JobSource):
         free_slots_fn: Callable[[], int],
         *,
         poll_seconds: float | None = None,
+        active_jobs_fn: Callable[[], int] | None = None,
     ) -> None:
         self._client = client
         self._free_slots = free_slots_fn
+        self._active_jobs_fn = active_jobs_fn or (lambda: 0)
         self._poll_seconds = _claim_poll_seconds() if poll_seconds is None else poll_seconds
         self._last_empty_claim_log_at = 0.0
 
@@ -48,14 +50,17 @@ class CoordinatorJobSource(JobSource):
         return JobSpec(job_id=claim["job_id"], request=dict(claim["request"]))
 
     def _maybe_log_empty_claim(self, free_slots: int) -> None:
+        active_jobs = self._active_jobs_fn()
+        if active_jobs > 0:
+            # Expected while a job runs but spare slots remain — not an error.
+            return
         now = time.monotonic()
         if now - self._last_empty_claim_log_at < _EMPTY_CLAIM_LOG_INTERVAL_SEC:
             return
         self._last_empty_claim_log_at = now
         log.info(
-            "No job claimed (coordinator returned 204) with local free_slots=%s. "
-            "If jobs are queued, check coordinator GET /workers for stale workers "
-            "with higher free_slots, or confirm the job status is queued.",
+            "Idle: no job in coordinator queue (local free_slots=%s). "
+            "Submit jobs via POST /jobs or check GET /workers for stale workers.",
             free_slots,
         )
 
