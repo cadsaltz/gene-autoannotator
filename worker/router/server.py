@@ -230,8 +230,6 @@ def _make_handler(
                 result["queue_wait_ms"] = queue_wait_ms
                 _json_response(self, HTTPStatus.OK, result)
             except httpx.TimeoutException:
-                if self.fleet_supervisor is not None:
-                    self.fleet_supervisor.restart_if_unhealthy(backend.host)
                 log.error(
                     "router chat timed out job=%s model=%s role=%s backend=%s after %s",
                     job_id or "-",
@@ -262,10 +260,6 @@ def _make_handler(
                     },
                 )
             except Exception as exc:
-                if self.fleet_supervisor is not None and isinstance(
-                    exc, (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError)
-                ):
-                    self.fleet_supervisor.restart_if_unhealthy(backend.host)
                 log.error(
                     "router chat failed job=%s model=%s role=%s backend=%s: %s",
                     job_id or "-",

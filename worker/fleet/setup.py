@@ -80,6 +80,24 @@ def _ollama_serve_binary() -> str:
     return path
 
 
+def effective_max_loaded_models(cfg: FleetConfig) -> int:
+    """How many models Ollama may keep resident at once.
+
+    Default one-at-a-time (matches direct-Ollama behavior on limited VRAM).
+    ``warm_stack`` tier allows all required models when they fit together.
+    Explicit ``OLLAMA_MAX_LOADED_MODELS`` in the environment wins.
+    """
+    raw = os.environ.get("OLLAMA_MAX_LOADED_MODELS", "").strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass
+    if cfg.memory_tier == "warm_stack" and cfg.model_count > 0:
+        return cfg.model_count
+    return 1
+
+
 def _build_ollama_server_env(
     *,
     port: int,
@@ -223,8 +241,7 @@ def start_ollama_server(
         [binary, "serve"],
         env=env,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
+        stderr=subprocess.DEVNULL,
     )
     _wait_for_ollama_server(proc, port=port)
     return proc
@@ -232,7 +249,7 @@ def start_ollama_server(
 
 def start_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
     procs: list[subprocess.Popen] = []
-    max_loaded = cfg.model_count if cfg.model_count > 0 else None
+    max_loaded = effective_max_loaded_models(cfg)
     for i in range(cfg.num_servers):
         gpu = i % spec.gpu_count if spec.gpu_count else None
         port = cfg.base_port + i

@@ -83,6 +83,26 @@ def test_supervisor_skips_restart_when_healthy(monkeypatch):
     assert supervisor.restart_if_unhealthy("http://127.0.0.1:11434") is False
 
 
+def test_supervisor_does_not_restart_alive_process_when_api_slow(monkeypatch):
+    cfg = FleetConfig(num_servers=1, parallel=1, max_slots=1)
+    supervisor = FleetSupervisor(cfg, _spec())
+    alive = _FakeProc(returncode=None)
+    supervisor.attach_started(
+        host="http://127.0.0.1:11434",
+        port=11434,
+        parallel=1,
+        gpu_index=0,
+        max_loaded_models=None,
+        proc=alive,  # type: ignore[arg-type]
+    )
+    monkeypatch.setattr("worker.fleet.supervisor._api_reachable", lambda host: False)
+    monkeypatch.setattr(
+        "worker.fleet.setup.start_ollama_server",
+        lambda **kwargs: pytest.fail("should not restart a busy server"),
+    )
+    assert supervisor.restart_if_unhealthy("http://127.0.0.1:11434") is False
+
+
 def test_router_retries_after_supervisor_restart(monkeypatch):
     from worker.router import Backend, ModelRouter
     from worker.router.server import start_router_server

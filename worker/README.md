@@ -168,6 +168,13 @@ slots still overlap paper fetch and Python work while LLM calls queue at the rou
 When `OLLAMA_CHAT_TIMEOUT_SEC` is set, hung calls return HTTP 504, release the
 gate, and fail the job. Leave it unset for overnight serve runs with large models.
 
+**Ollama disappeared mid-job?** Serve mode starts a managed `ollama serve` child.
+Crashes are usually OOM (performance models exceed VRAM) or the Linux OOM killer,
+not the router HTTP layer itself. The fleet now keeps **one model resident at a
+time** by default (`OLLAMA_MAX_LOADED_MODELS=1` unless your tier is `warm_stack`),
+and the supervisor **no longer kills** a busy Ollama just because `/api/tags` is
+slow during inference. Watch for `Ollama server ... exited unexpectedly` in logs.
+
 Environment variables:
 
 | Variable | Default | Purpose |

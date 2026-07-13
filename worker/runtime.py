@@ -233,8 +233,8 @@ class WorkerRuntime:
         self._last_stall_warn_at = now
         summary = ", ".join(f"{job_id} ({elapsed}s)" for job_id, elapsed in stalled)
         log.warning(
-            "Still waiting on %d job(s): %s. Check router dispatch/chat logs; "
-            "Ollama timeouts fail jobs only when OLLAMA_CHAT_TIMEOUT_SEC is set.",
+            "Still waiting on %d job(s): %s. Check router dispatch/chat logs. "
+            "If Ollama vanished from top, look for 'Ollama server ... exited unexpectedly'.",
             len(stalled),
             summary,
         )

@@ -33,8 +33,30 @@ def _api_reachable(host: str, *, timeout_sec: float = HEALTH_CHECK_TIMEOUT_SEC) 
         return False
 
 
+def _spawn_exit_watcher(host: str, proc: subprocess.Popen) -> None:
+    """Log when a managed Ollama child exits (OOM, segfault, etc.)."""
+    if not hasattr(proc, "wait"):
+        return
+
+    def _watch() -> None:
+        returncode = proc.wait()
+        log.error(
+            "Ollama server %s exited unexpectedly (code=%s). "
+            "Check dmesg/journal for OOM kills; performance models need one model "
+            "in memory at a time on limited VRAM.",
+            host,
+            returncode,
+        )
+
+    threading.Thread(
+        target=_watch,
+        name=f"ollama-exit-watch-{host}",
+        daemon=True,
+    ).start()
+
+
 class FleetSupervisor:
-    """Track Ollama fleet processes and restart crashed or unresponsive servers."""
+    """Track Ollama fleet processes and restart only when a child actually exits."""
 
     def __init__(self, cfg: FleetConfig, spec: SystemSpec) -> None:
         self._cfg = cfg
@@ -65,6 +87,7 @@ class FleetSupervisor:
                 max_loaded_models=max_loaded_models,
                 proc=proc,
             )
+        _spawn_exit_watcher(host, proc)
 
     def is_healthy(self, host: str) -> bool:
         with self._lock:
@@ -76,16 +99,27 @@ class FleetSupervisor:
         return _api_reachable(host)
 
     def restart_if_unhealthy(self, host: str) -> bool:
-        """Restart the server for ``host`` when the process exited or API is down."""
+        """Restart only when the managed child process has exited.
+
+        A slow or unresponsive ``/api/tags`` during long GPU inference is normal;
+        killing a busy Ollama server was a common source of mid-job failures.
+        """
         with self._lock:
             entry = self._servers.get(host)
             if entry is None:
                 return False
             proc_dead = entry.proc is None or entry.proc.poll() is not None
-        if not proc_dead and _api_reachable(host):
+
+        if not proc_dead:
+            if not _api_reachable(host):
+                log.warning(
+                    "Ollama server %s is slow to answer /api/tags but the process "
+                    "is still running; not restarting (likely busy inferring)",
+                    host,
+                )
             return False
 
-        log.warning("Ollama server %s unhealthy; restarting", host)
+        log.warning("Ollama server %s process exited; restarting", host)
         with self._lock:
             entry = self._servers.get(host)
             if entry is None:
@@ -118,6 +152,7 @@ class FleetSupervisor:
             max_loaded_models=entry.max_loaded_models,
         )
         log.info("Ollama server restarted at %s", entry.host)
+        _spawn_exit_watcher(entry.host, entry.proc)
 
 
 def attach_fleet_to_supervisor(
@@ -126,7 +161,9 @@ def attach_fleet_to_supervisor(
     spec: SystemSpec,
     procs: list[subprocess.Popen],
 ) -> None:
-    max_loaded = cfg.model_count if cfg.model_count > 0 else None
+    from worker.fleet.setup import effective_max_loaded_models
+
+    max_loaded = effective_max_loaded_models(cfg)
     for i, proc in enumerate(procs):
         port = cfg.base_port + i
         gpu = i % spec.gpu_count if spec.gpu_count else None

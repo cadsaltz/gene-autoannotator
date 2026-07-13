@@ -73,7 +73,7 @@ def test_start_fleet_launches_one_process_per_server(monkeypatch):
             self.args = args
             self.kwargs = kwargs
 
-    def fake_start(*, port, parallel, gpu_index):
+    def fake_start(*, port, parallel, gpu_index, max_loaded_models=None):
         launched.append((port, parallel, gpu_index))
         return FakePopen()
 
@@ -90,6 +90,36 @@ def test_build_ollama_server_env_does_not_inherit_parent_host(monkeypatch):
     assert env["OLLAMA_HOST"] == "127.0.0.1:11435"
     assert env["OLLAMA_NUM_PARALLEL"] == "2"
     assert env["CUDA_VISIBLE_DEVICES"] == "0"
+
+
+def test_effective_max_loaded_models_defaults_to_one_for_swap_tier(monkeypatch):
+    monkeypatch.delenv("OLLAMA_MAX_LOADED_MODELS", raising=False)
+    cfg = FleetConfig(
+        num_servers=1,
+        parallel=1,
+        max_slots=1,
+        memory_tier="swap",
+        model_count=4,
+    )
+    assert setup.effective_max_loaded_models(cfg) == 1
+
+
+def test_effective_max_loaded_models_uses_model_count_for_warm_stack(monkeypatch):
+    monkeypatch.delenv("OLLAMA_MAX_LOADED_MODELS", raising=False)
+    cfg = FleetConfig(
+        num_servers=1,
+        parallel=1,
+        max_slots=1,
+        memory_tier="warm_stack",
+        model_count=4,
+    )
+    assert setup.effective_max_loaded_models(cfg) == 4
+
+
+def test_effective_max_loaded_models_respects_env_override(monkeypatch):
+    monkeypatch.setenv("OLLAMA_MAX_LOADED_MODELS", "2")
+    cfg = FleetConfig(num_servers=1, parallel=1, max_slots=1, memory_tier="swap")
+    assert setup.effective_max_loaded_models(cfg) == 2
 
 
 def test_ensure_fleet_config_loads_from_env(tmp_path, monkeypatch):
