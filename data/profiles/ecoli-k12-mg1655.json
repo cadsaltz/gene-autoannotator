@@ -1,0 +1,113 @@
+{
+  "annotation_fields": [
+    {
+      "description": "Impact on {species_name} drug susceptibility (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "drug_susc_impact",
+      "label": "Drug susceptibility impact",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "string"
+    },
+    {
+      "description": "Impact on {species_name} infection (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "infection_impact",
+      "label": "Infection impact",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "string"
+    },
+    {
+      "description": "Whether the gene is essential for {species_name} survival in vitro. Use true or false only when the excerpt reports direct experimental evidence. Otherwise use null.",
+      "inference_strategy": "paper_llm",
+      "key": "essential_in_vitro",
+      "label": "Essential in vitro",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "boolean"
+    },
+    {
+      "description": "Whether the gene is essential for {species_name} survival in vivo. Use true or false only when the excerpt reports direct experimental evidence. Otherwise use null.",
+      "inference_strategy": "paper_llm",
+      "key": "essential_in_vivo",
+      "label": "Essential in vivo",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "boolean"
+    }
+  ],
+  "canonical_name": "Escherichia coli K-12 MG1655",
+  "created_at": "2026-07-14T05:47:58.967367+00:00",
+  "custom_fields": [
+    {
+      "description": "Impact on {species_name} drug susceptibility (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "drug_susc_impact",
+      "label": "Drug susceptibility impact",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "string"
+    },
+    {
+      "description": "Impact on {species_name} infection (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "infection_impact",
+      "label": "Infection impact",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "string"
+    },
+    {
+      "description": "Whether the gene is essential for {species_name} survival in vitro. Use true or false only when the excerpt reports direct experimental evidence. Otherwise use null.",
+      "inference_strategy": "paper_llm",
+      "key": "essential_in_vitro",
+      "label": "Essential in vitro",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "boolean"
+    },
+    {
+      "description": "Whether the gene is essential for {species_name} survival in vivo. Use true or false only when the excerpt reports direct experimental evidence. Otherwise use null.",
+      "inference_strategy": "paper_llm",
+      "key": "essential_in_vivo",
+      "label": "Essential in vivo",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "boolean"
+    }
+  ],
+  "default_field_ortholog": {
+    "function": true,
+    "functional_category": true
+  },
+  "excluded_species_patterns": [],
+  "kegg_organism_code": "eco",
+  "locus_regex": "^b\\d{4}$",
+  "off_target_patterns": [],
+  "profile_id": "ecoli-k12-mg1655",
+  "search_terms": [
+    "Escherichia coli",
+    "E. coli",
+    "K-12",
+    "MG1655"
+  ],
+  "species_name": "Escherichia coli",
+  "species_synonyms": [
+    "e coli",
+    "e. coli",
+    "escherichia coli"
+  ],
+  "strain": "K-12 MG1655",
+  "strain_synonyms": [
+    "K-12",
+    "K12",
+    "MG1655"
+  ],
+  "synonyms": [],
+  "target_patterns": [
+    "Escherichia\\scoli",
+    "E\\.\\scoli"
+  ],
+  "updated_at": "2026-07-14T05:52:49.176947+00:00"
+}

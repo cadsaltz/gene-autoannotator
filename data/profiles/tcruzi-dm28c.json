@@ -1,0 +1,122 @@
+{
+  "annotation_fields": [
+    {
+      "description": "Impact on {species_name} drug susceptibility (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "drug_susc_impact",
+      "label": "Drug susceptibility impact",
+      "ortholog_allowed": false,
+      "required": false,
+      "type": "string"
+    },
+    {
+      "description": "Impact on {species_name} infection (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "infection_impact",
+      "label": "Infection impact",
+      "ortholog_allowed": false,
+      "required": false,
+      "type": "string"
+    },
+    {
+      "description": "Whether the gene is essential for {species_name} survival in vitro. Use true or false only when the excerpt reports direct experimental evidence. Otherwise use null.",
+      "inference_strategy": "paper_llm",
+      "key": "essential_in_vitro",
+      "label": "Essential in vitro",
+      "ortholog_allowed": false,
+      "required": false,
+      "type": "boolean"
+    },
+    {
+      "description": "Whether the gene is essential for {species_name} survival in vivo. Use true or false only when the excerpt reports direct experimental evidence. Otherwise use null.",
+      "inference_strategy": "paper_llm",
+      "key": "essential_in_vivo",
+      "label": "Essential in vivo",
+      "ortholog_allowed": false,
+      "required": false,
+      "type": "boolean"
+    }
+  ],
+  "canonical_name": "Trypanosoma cruzi Dm28c",
+  "created_at": "2026-07-14T05:39:49.829761+00:00",
+  "custom_fields": [
+    {
+      "description": "Impact on {species_name} drug susceptibility (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "drug_susc_impact",
+      "label": "Drug susceptibility impact",
+      "ortholog_allowed": false,
+      "required": false,
+      "type": "string"
+    },
+    {
+      "description": "Impact on {species_name} infection (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "infection_impact",
+      "label": "Infection impact",
+      "ortholog_allowed": false,
+      "required": false,
+      "type": "string"
+    },
+    {
+      "description": "Whether the gene is essential for {species_name} survival in vitro. Use true or false only when the excerpt reports direct experimental evidence. Otherwise use null.",
+      "inference_strategy": "paper_llm",
+      "key": "essential_in_vitro",
+      "label": "Essential in vitro",
+      "ortholog_allowed": false,
+      "required": false,
+      "type": "boolean"
+    },
+    {
+      "description": "Whether the gene is essential for {species_name} survival in vivo. Use true or false only when the excerpt reports direct experimental evidence. Otherwise use null.",
+      "inference_strategy": "paper_llm",
+      "key": "essential_in_vivo",
+      "label": "Essential in vivo",
+      "ortholog_allowed": false,
+      "required": false,
+      "type": "boolean"
+    }
+  ],
+  "default_field_ortholog": {
+    "function": false,
+    "functional_category": false
+  },
+  "excluded_species_patterns": [],
+  "kegg_organism_code": null,
+  "locus_regex": "^TCDM_\\d{5}$",
+  "off_target_patterns": [
+    "\\bEscherichia\\s+coli\\b",
+    "\\bE\\.?\\s*coli\\b",
+    "Trypanosoma\\sbrucei",
+    "T.\\sbrucei"
+  ],
+  "profile_id": "tcruzi-dm28c",
+  "search_terms": [
+    "Trypanosoma cruzi",
+    "T. cruzi",
+    "Dm28c"
+  ],
+  "species_name": "Trypanosoma cruzi",
+  "species_synonyms": [
+    "t cruzi",
+    "t. cruzi",
+    "trypanosoma cruzi"
+  ],
+  "strain": "Dm28c",
+  "strain_synonyms": [
+    "dm28c"
+  ],
+  "synonyms": [
+    "tcruzi-dm28c",
+    "t cruzi dm28c",
+    "t. cruzi dm28c",
+    "trypanosoma cruzi dm28c",
+    "trypanosomacruzidm28c"
+  ],
+  "target_patterns": [
+    "Trypanosoma\\scruzi",
+    "T.\\scruzi",
+    "T\\scruzi"
+  ],
+  "updated_at": "2026-07-14T05:44:41.850167+00:00"
+}
