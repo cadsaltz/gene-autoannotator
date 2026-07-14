@@ -215,7 +215,7 @@ test("buildJobPayload includes allow_ortholog_fallback and override when enabled
   });
 });
 
-test("buildJobPayload omits override when ortholog locus is blank", () => {
+test("buildJobPayload includes profile-only override when locus is blank", () => {
   const payload = buildJobPayload({
     profile: "mtb-h37rv",
     locus: "Rv0001",
@@ -224,7 +224,30 @@ test("buildJobPayload omits override when ortholog locus is blank", () => {
     orthologLocus: "",
   });
   assert.equal(payload.allow_ortholog_fallback, true);
-  assert.equal(payload.ortholog_override, undefined);
+  assert.deepEqual(payload.ortholog_override, {
+    profile_id: "mory",
+    locus: null,
+    name: null,
+  });
+});
+
+test("buildBatchPayload includes profile-only ortholog override", () => {
+  const payload = buildBatchPayload(
+    {
+      profile: "mtb-h37rv",
+      allowOrthologFallback: true,
+      orthologProfile: "mory",
+      orthologLocus: "MO_000001",
+      orthologName: "dnaA",
+    },
+    [{ input: "Rv0001" }],
+  );
+  assert.equal(payload.allow_ortholog_fallback, true);
+  assert.deepEqual(payload.ortholog_override, {
+    profile_id: "mory",
+    locus: null,
+    name: null,
+  });
 });
 
 test("buildJobPayload defaults fallback to false", () => {

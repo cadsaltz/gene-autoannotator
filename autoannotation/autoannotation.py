@@ -271,22 +271,36 @@ def _decide_ortholog_action(
     kegg_code, gene, cache_dir, profile_config=None, ortholog_catalog=None,
 ):
     """Decide whether/how to run the ortholog fallback. May perform a cache/network
-    SSDB lookup on the automatic path."""
+    SSDB lookup on the automatic path.
+
+    ortholog_override modes:
+    - profile + locus: manual ortholog hit (bypasses relevance gate and SSDB)
+    - profile only: automatic SSDB search restricted to that organism's KEGG code
+    - absent: automatic SSDB search across all profiled organisms
+    """
     if not allow_ortholog_fallback:
         return OrthologDecision(hit=None, skipped_reason='fallback_disabled_for_job')
 
+    restrict_to_organism_code = None
     if ortholog_override:
         override_profile = _resolve_profile_from_catalog(
             ortholog_override['profile_id'],
             profile_config=profile_config,
             ortholog_catalog=ortholog_catalog,
         )
-        hit = orthology.build_manual_ortholog_hit(
-            override_profile,
-            ortholog_override['locus'],
-            name=ortholog_override.get('name'),
+        override_locus = ortholog_override.get('locus')
+        if override_locus:
+            hit = orthology.build_manual_ortholog_hit(
+                override_profile,
+                override_locus,
+                name=ortholog_override.get('name'),
+            )
+            return OrthologDecision(hit=hit, skipped_reason=None)
+        restrict_to_organism_code = (
+            (override_profile.kegg_organism_code or '').lower() or None
         )
-        return OrthologDecision(hit=hit, skipped_reason=None)
+        if not restrict_to_organism_code:
+            return OrthologDecision(hit=None, skipped_reason='no_profiled_ortholog')
 
     if cumulative_relevance >= pmc.DEFAULT_TARGET_RELEVANCE:
         return OrthologDecision(hit=None, skipped_reason='target_relevance_sufficient')
@@ -299,6 +313,7 @@ def _decide_ortholog_action(
         gene,
         cache_dir=cache_dir,
         extra_profiles=ortholog_catalog,
+        restrict_to_organism_code=restrict_to_organism_code,
     )
     if hit is None:
         return OrthologDecision(hit=None, skipped_reason='no_profiled_ortholog')

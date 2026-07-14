@@ -469,3 +469,70 @@ def test_ortholog_manual_override_resolves_non_mtb_profile():
     assert decision.hit.source_gene_id == "TcCLB.1"
     search_profile = aa.orthology.profile_for_kegg_organism(decision.hit.source_organism_code)
     assert "Trypanosoma cruzi" in search_profile.species_name
+
+
+def test_ortholog_profile_only_override_restricts_automatic_lookup(monkeypatch):
+    from autoannotation import autoannotation as aa
+
+    captured = {}
+    sentinel = object()
+
+    def fake_lookup(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return sentinel
+
+    monkeypatch.setattr(aa.orthology, "lookup_best_profiled_ortholog", fake_lookup)
+    monkeypatch.setattr(
+        aa,
+        "_resolve_profile_from_catalog",
+        lambda profile_id, **kwargs: type(
+            "P",
+            (),
+            {"kegg_organism_code": "mory", "profile_id": profile_id},
+        )(),
+    )
+
+    decision = aa._decide_ortholog_action(
+        allow_ortholog_fallback=True,
+        ortholog_override={"profile_id": "mory"},
+        cumulative_relevance=0.0,
+        kegg_code="mtu",
+        gene="Rv0001",
+        cache_dir="./.cache",
+    )
+    assert decision.hit is sentinel
+    assert decision.skipped_reason is None
+    assert captured["kwargs"]["restrict_to_organism_code"] == "mory"
+
+
+def test_ortholog_profile_only_override_still_gates_on_relevance(monkeypatch):
+    from autoannotation import autoannotation as aa
+
+    called = {"lookup": False}
+
+    def fake_lookup(*args, **kwargs):
+        called["lookup"] = True
+        return object()
+
+    monkeypatch.setattr(aa.orthology, "lookup_best_profiled_ortholog", fake_lookup)
+    monkeypatch.setattr(
+        aa,
+        "_resolve_profile_from_catalog",
+        lambda profile_id, **kwargs: type(
+            "P",
+            (),
+            {"kegg_organism_code": "mory", "profile_id": profile_id},
+        )(),
+    )
+
+    decision = aa._decide_ortholog_action(
+        allow_ortholog_fallback=True,
+        ortholog_override={"profile_id": "mory"},
+        cumulative_relevance=aa.pmc.DEFAULT_TARGET_RELEVANCE + 1,
+        kegg_code="mtu",
+        gene="Rv0001",
+        cache_dir="./.cache",
+    )
+    assert decision.hit is None
+    assert decision.skipped_reason == "target_relevance_sufficient"
+    assert called["lookup"] is False

@@ -46,4 +46,8 @@ test("JobWorkspace exposes an ortholog fallback checkbox and manual override inp
   assert.match(workspace, /updateForm\("orthologProfile", event\.target\.value\)/);
   assert.match(workspace, /updateForm\("orthologLocus", event\.target\.value\)/);
   assert.match(workspace, /updateForm\("orthologName", event\.target\.value\)/);
+  assert.match(
+    workspace,
+    /Choose a profile without a locus to restrict[\s\S]*automatic search to that organism/,
+  );
 });

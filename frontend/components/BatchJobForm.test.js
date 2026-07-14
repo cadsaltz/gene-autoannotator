@@ -35,3 +35,16 @@ test("batch job form supports validate preview and batch submit flow", async () 
   assert.match(component, /selected_locus: selected/);
   assert.match(component, /Choose locus…/);
 });
+
+test("batch job form exposes profile-only ortholog override controls", async () => {
+  const component = await readProjectFile("components/BatchJobForm.js");
+
+  assert.match(component, /Allow ortholog fallback/);
+  assert.match(component, /updateForm\("allowOrthologFallback"/);
+  assert.match(component, /Ortholog organism\/profile/);
+  assert.match(component, /updateForm\("orthologProfile"/);
+  assert.match(component, /A single ortholog gene cannot be reused across the batch/);
+  assert.doesNotMatch(component, /Ortholog locus/);
+  assert.doesNotMatch(component, /orthologLocus/);
+  assert.doesNotMatch(component, /orthologName/);
+});

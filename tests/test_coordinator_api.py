@@ -1168,6 +1168,49 @@ def test_create_batch_propagates_fallback_flag(tmp_path, monkeypatch):
     assert all(job["request"].get("ortholog_override") is None for job in jobs)
 
 
+def test_batch_rejects_ortholog_gene_override():
+    from pydantic import ValidationError
+    from coordinator.schemas import BatchCreateRequest
+
+    with pytest.raises(ValidationError):
+        BatchCreateRequest(
+            profile="mtb-h37rv",
+            entries=[{"input": "Rv0001"}],
+            allow_ortholog_fallback=True,
+            ortholog_override={"profile_id": "mory", "locus": "MO_000001"},
+        )
+
+
+def test_create_batch_propagates_profile_only_ortholog_override(tmp_path, monkeypatch):
+    _patch_mtb_dnaa_lookup(monkeypatch, locus="Rv0001")
+    client = TestClient(_batch_app(tmp_path))
+
+    response = client.post(
+        "/batches",
+        json={
+            "profile": "mtb-h37rv",
+            "entries": [{"input": "Rv0001"}],
+            "allow_online_name_lookup": False,
+            "allow_ortholog_fallback": True,
+            "ortholog_override": {"profile_id": "mtb-h37rv"},
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    jobs_response = client.get("/jobs", params={"batch_id": payload["batch_id"]})
+    assert jobs_response.status_code == 200
+    jobs = jobs_response.json()["jobs"]
+    assert jobs
+    for job in jobs:
+        assert job["request"]["allow_ortholog_fallback"] is True
+        assert job["request"]["ortholog_override"] == {
+            "profile_id": "mtb-h37rv",
+            "locus": None,
+            "name": None,
+        }
+
+
 def test_batches_rejects_empty(tmp_path):
     client = TestClient(_batch_app(tmp_path), raise_server_exceptions=False)
 

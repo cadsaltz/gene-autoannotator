@@ -15,14 +15,22 @@ def _normalize_optional_string(value):
 
 
 class OrthologOverride(BaseModel):
+    """Manual gene override (profile + locus) or profile-only search constraint."""
+
     profile_id: str = Field(min_length=1)
-    locus: str = Field(min_length=1)
+    locus: str | None = None
     name: str | None = None
 
     @field_validator("profile_id", "locus", "name", mode="before")
     @classmethod
     def normalize_strings(cls, value):
         return _normalize_optional_string(value)
+
+    @model_validator(mode="after")
+    def validate_override_shape(self):
+        if self.name and not self.locus:
+            raise ValueError("ortholog override name requires locus")
+        return self
 
 
 class AnnotationJobRequest(BaseModel):

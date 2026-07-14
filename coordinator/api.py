@@ -553,6 +553,7 @@ def create_app(
             off_target_patterns=request.off_target_patterns,
             excluded_species_patterns=request.excluded_species_patterns,
             allow_ortholog_fallback=request.allow_ortholog_fallback,
+            ortholog_override=request.ortholog_override,
         )
 
     @app.get("/health")
@@ -685,6 +686,7 @@ def create_app(
         if not ready_entries:
             raise HTTPException(status_code=422, detail="No ready entries to queue.")
 
+        _reject_unresolvable_ortholog_override(request.ortholog_override)
         _require_worker_fleet()
 
         skipped = [entry for entry in entries if entry["status"] != "ready"]

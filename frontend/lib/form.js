@@ -135,6 +135,19 @@ function buildBatchOptionsPayload(values) {
     allow_ortholog_fallback: Boolean(values.allowOrthologFallback),
   };
 
+  // Batch ortholog overrides are profile-only: each gene finds its own best
+  // match within the chosen organism. Locus/name from the shared form are ignored.
+  if (values.allowOrthologFallback) {
+    const orthologProfile = values.orthologProfile?.trim();
+    if (orthologProfile) {
+      payload.ortholog_override = {
+        profile_id: orthologProfile,
+        locus: null,
+        name: null,
+      };
+    }
+  }
+
   if (profile) {
     payload.profile = profile;
     return payload;
@@ -188,17 +201,16 @@ export function buildJobPayload(values) {
     allow_ortholog_fallback: Boolean(values.allowOrthologFallback),
   };
 
-  // Attach the manual ortholog override to the shared payload before the branch
-  // split so both profile and custom-organism jobs carry it. The backend falls
-  // back to automatic ortholog discovery when the override is omitted.
+  // Attach the ortholog override when fallback is enabled. Profile + locus pins
+  // a manual ortholog; profile alone constrains automatic SSDB search.
   if (values.allowOrthologFallback) {
     const orthologProfile = values.orthologProfile?.trim();
     const orthologLocus = values.orthologLocus?.trim();
-    if (orthologProfile && orthologLocus) {
+    if (orthologProfile) {
       payload.ortholog_override = {
         profile_id: orthologProfile,
-        locus: orthologLocus,
-        name: values.orthologName?.trim() || null,
+        locus: orthologLocus || null,
+        name: orthologLocus ? values.orthologName?.trim() || null : null,
       };
     }
   }

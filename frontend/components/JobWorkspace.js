@@ -608,7 +608,10 @@ export default function JobWorkspace() {
             {form.allowOrthologFallback ? (
               <div className="workbench-muted-bg grid gap-4 rounded-xl border workbench-border p-4 text-sm">
                 <p className="workbench-muted">
-                  Leave the ortholog fields blank for automatic ortholog lookup.
+                  Leave the ortholog fields blank for automatic ortholog lookup across
+                  all profiled organisms. Choose a profile without a locus to restrict
+                  automatic search to that organism. Supply a locus to pin a specific
+                  ortholog gene.
                 </p>
                 <label className="grid gap-2 font-medium">
                   Ortholog organism/profile
@@ -617,7 +620,7 @@ export default function JobWorkspace() {
                     onChange={(event) => updateForm("orthologProfile", event.target.value)}
                     className="workbench-input"
                   >
-                    <option value="">Automatic</option>
+                    <option value="">Automatic (any profiled organism)</option>
                     {profiles.map((profile) => (
                       <option key={profile.profile_id} value={profile.profile_id}>
                         {profile.canonical_name}
@@ -631,7 +634,7 @@ export default function JobWorkspace() {
                     value={form.orthologLocus}
                     onChange={(event) => updateForm("orthologLocus", event.target.value)}
                     className="workbench-input"
-                    placeholder="Leave blank for automatic ortholog lookup"
+                    placeholder="Leave blank to search within the selected profile"
                   />
                 </label>
                 <label className="grid gap-2 font-medium">

@@ -273,10 +273,14 @@ def lookup_top_ortholog(kegg_organism_code, gene_locus, cache_dir='./.cache', *,
 def lookup_best_profiled_ortholog(
     kegg_organism_code, gene_locus, cache_dir='./.cache', *,
     fetch_html=None, min_identity=MIN_ORTHOLOG_IDENTITY, extra_profiles=None,
+    restrict_to_organism_code=None,
 ):
     hits = _fetch_ssdb_hits(kegg_organism_code, gene_locus, cache_dir, fetch_html=fetch_html)
     return select_best_profiled_ortholog(
-        hits, min_identity=min_identity, extra_profiles=extra_profiles,
+        hits,
+        min_identity=min_identity,
+        extra_profiles=extra_profiles,
+        restrict_to_organism_code=restrict_to_organism_code,
     )
 
 
@@ -370,14 +374,23 @@ def supports_ortholog_literature_pass(hit, *, extra_profiles=None):
     return False
 
 
-def select_best_profiled_ortholog(hits, *, min_identity=MIN_ORTHOLOG_IDENTITY, extra_profiles=None):
+def select_best_profiled_ortholog(
+    hits, *, min_identity=MIN_ORTHOLOG_IDENTITY, extra_profiles=None,
+    restrict_to_organism_code=None,
+):
     """Pick the highest-SW-score hit that has a saved profile/hint and clears the
-    identity floor. Returns None when no hit qualifies."""
+    identity floor. Returns None when no hit qualifies.
+
+    When restrict_to_organism_code is set, only hits from that KEGG organism
+    are considered (profile-constrained automatic ortholog search).
+    """
+    restrict = (restrict_to_organism_code or '').lower() or None
     qualifying = [
         hit for hit in hits
         if supports_ortholog_literature_pass(hit, extra_profiles=extra_profiles)
         and hit.identity is not None
         and hit.identity >= min_identity
+        and (restrict is None or hit.source_organism_code.lower() == restrict)
     ]
     if not qualifying:
         return None

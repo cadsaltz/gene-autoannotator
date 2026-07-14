@@ -151,6 +151,9 @@ class BatchJobOptions(BaseModel):
     off_target_patterns: list[str] = Field(default_factory=list)
     excluded_species_patterns: list[str] = Field(default_factory=list)
     allow_ortholog_fallback: bool = False
+    # Batch jobs may constrain ortholog search to a profile, but must not pin a
+    # single ortholog gene for every target in the batch.
+    ortholog_override: OrthologOverride | None = None
 
     @field_validator(
         "profile",
@@ -169,6 +172,15 @@ class BatchJobOptions(BaseModel):
             raise ValueError("use either profile or organism, not both")
         if not self.profile and not self.organism:
             raise ValueError("profile or organism is required")
+        if self.ortholog_override and not self.allow_ortholog_fallback:
+            raise ValueError("ortholog_override requires allow_ortholog_fallback=true")
+        if self.ortholog_override and (
+            self.ortholog_override.locus or self.ortholog_override.name
+        ):
+            raise ValueError(
+                "batch ortholog_override may specify profile_id only; "
+                "locus and name are not allowed"
+            )
         return self
 
 

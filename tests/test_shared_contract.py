@@ -42,6 +42,28 @@ def test_ortholog_override_requires_fallback_enabled():
         )
 
 
+def test_ortholog_override_allows_profile_only():
+    override = OrthologOverride(profile_id="mory")
+    assert override.profile_id == "mory"
+    assert override.locus is None
+    assert override.name is None
+
+    request = AnnotationJobRequest(
+        profile="mtb-h37rv",
+        locus="Rv0001",
+        allow_ortholog_fallback=True,
+        ortholog_override=override,
+    )
+    assert request.ortholog_override.locus is None
+
+
+def test_ortholog_override_rejects_name_without_locus():
+    import pytest
+
+    with pytest.raises(ValueError):
+        OrthologOverride(profile_id="mory", name="dnaA")
+
+
 def test_coordinator_schemas_reexports_job_request():
     from coordinator.schemas import AnnotationJobRequest as CoordJobRequest
 

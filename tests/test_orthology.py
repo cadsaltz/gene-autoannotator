@@ -189,6 +189,48 @@ def test_select_best_profiled_ortholog_prefers_profiled_over_top_score():
     assert chosen.source_organism_code == "mory"
 
 
+def test_select_best_profiled_ortholog_can_restrict_to_organism():
+    from autoannotation import orthology
+
+    mory = orthology.OrthologHit(
+        source_organism_code="mory", source_organism_name="Mycobacterium orygis",
+        source_gene_id="MO_000001", source_gene_name="dnaA",
+        score=2600.0, identity=0.62, lookup_source="kegg_ssdb",
+    )
+    msm = orthology.OrthologHit(
+        source_organism_code="msm", source_organism_name=None,
+        source_gene_id="MSMEG_1", source_gene_name=None,
+        score=2800.0, identity=0.70, lookup_source="kegg_ssdb",
+    )
+    chosen = orthology.select_best_profiled_ortholog(
+        [mory, msm], restrict_to_organism_code="mory",
+    )
+    assert chosen.source_organism_code == "mory"
+    assert chosen.source_gene_id == "MO_000001"
+
+
+def test_lookup_best_profiled_ortholog_restricts_to_organism(tmp_path):
+    from autoannotation import orthology
+
+    html = (
+        '<A HREF="/entry/mtu:Rv0001">mtu:Rv0001</A> (507 a.a.) '
+        '<A HREF="/entry/K02313">K02313</a>     507     2615     1.000      507\n'
+        '<A HREF="/entry/msm:MSMEG_6947">msm:MSMEG_6947</A> initiator '
+        '<A HREF="/entry/K02313">K02313</a>     504     2800     0.805      508\n'
+        '<A HREF="/entry/mory:MO_000001">mory:MO_000001</A> initiator '
+        '<A HREF="/entry/K02313">K02313</a>     507     2600     0.620      507\n'
+    )
+    hit = orthology.lookup_best_profiled_ortholog(
+        "mtu",
+        "Rv0001",
+        cache_dir=str(tmp_path),
+        fetch_html=lambda url: html,
+        restrict_to_organism_code="mory",
+    )
+    assert hit.source_organism_code == "mory"
+    assert hit.source_gene_id == "MO_000001"
+
+
 def test_select_best_profiled_ortholog_rejects_below_identity_floor():
     from autoannotation import orthology
 

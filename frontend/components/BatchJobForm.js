@@ -54,8 +54,8 @@ function PreviewStatusBadge({ status }) {
 
 export default function BatchJobForm({
   form,
-  updateForm: _updateForm,
-  profiles: _profiles,
+  updateForm,
+  profiles,
   selectedProfile,
   isCustomProfile: _isCustomProfile,
   canSubmit,
@@ -167,6 +167,42 @@ export default function BatchJobForm({
         <div className="workbench-muted-bg workbench-muted rounded-xl border workbench-border p-4 text-sm">
           Expected locus format:{" "}
           <code className="rounded bg-[#eee6d9] px-1 py-0.5">{selectedProfile.locus_regex}</code>
+        </div>
+      ) : null}
+
+      <div className="workbench-muted-bg grid gap-3 rounded-xl border workbench-border p-4 text-sm">
+        <label className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={form.allowOrthologFallback}
+            onChange={(event) => updateForm("allowOrthologFallback", event.target.checked)}
+          />
+          Allow ortholog fallback
+        </label>
+      </div>
+
+      {form.allowOrthologFallback ? (
+        <div className="workbench-muted-bg grid gap-4 rounded-xl border workbench-border p-4 text-sm">
+          <p className="workbench-muted">
+            Optionally constrain automatic ortholog search to one organism profile.
+            Each gene in the batch finds its own best sequence match within that
+            profile. A single ortholog gene cannot be reused across the batch.
+          </p>
+          <label className="grid gap-2 font-medium">
+            Ortholog organism/profile
+            <select
+              value={form.orthologProfile}
+              onChange={(event) => updateForm("orthologProfile", event.target.value)}
+              className="workbench-input"
+            >
+              <option value="">Automatic (any profiled organism)</option>
+              {profiles.map((profile) => (
+                <option key={profile.profile_id} value={profile.profile_id}>
+                  {profile.canonical_name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       ) : null}
 
