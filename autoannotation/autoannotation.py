@@ -436,12 +436,16 @@ def get_gene_annotation(
     merged_annotation = None
     field_coverage = None
     if gene_distillation is not None:
-        field_coverage = metadata.build_field_coverage(
+        target_parsed = metadata.null_out_other_locus_claims(
             json.loads(gene_distillation),
+            expected_gene_id=gene,
+        )
+        field_coverage = metadata.build_field_coverage(
+            target_parsed,
             profile=profile_context,
         )
         merged_annotation = metadata.merge_annotation_output(
-            gene_distillation,
+            json.dumps(target_parsed),
             annotation_metadata,
             field_coverage=field_coverage,
         )
@@ -518,7 +522,12 @@ def get_gene_annotation(
                 fields_requested=eligible_fields,
             )
         else:
-            ortholog_parsed = json.loads(ortholog_pass.gene_distillation)
+            # Ortholog pass uses the same LLM inference path as the target;
+            # only ortholog_allowed fields may be copied onto the target annotation.
+            ortholog_parsed = metadata.null_out_other_locus_claims(
+                json.loads(ortholog_pass.gene_distillation),
+                expected_gene_id=ortholog_gene,
+            )
             merged_annotation, fields_filled = metadata.merge_ortholog_annotation(
                 merged_annotation,
                 ortholog_parsed,

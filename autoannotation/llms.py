@@ -40,6 +40,8 @@ UNKNOWN_STRINGS = frozenset({
     'insufficient evidence',
     'not stated',
     'not reported',
+    'null',
+    'none',
 })
 
 SECTION_HINTS = {
@@ -611,12 +613,18 @@ class LlmHandler:
             else:
                 if not isinstance(gene_id, str):
                     return False
-                if expected_gene is not None and gene_id != expected_gene:
-                    return False
-                if expected_gene is None and not gene_id:
-                    return False
-                if has_locus_regex and not re.fullmatch(locus_ptrn, gene_id):
-                    return False
+                if expected_gene is not None:
+                    # Ortholog / explicit-identity passes: gene_id must match the
+                    # supplied identifier. Do not also require organism locus_regex —
+                    # KEGG SSDB IDs (e.g. MO_*) can differ from annotation-table
+                    # schemes (e.g. RJtmp_*).
+                    if gene_id != expected_gene:
+                        return False
+                else:
+                    if not gene_id:
+                        return False
+                    if has_locus_regex and not re.fullmatch(locus_ptrn, gene_id):
+                        return False
             name = gene_info.get('name', '')
             if relaxed_name:
                 if not isinstance(name, str) or not name.strip():

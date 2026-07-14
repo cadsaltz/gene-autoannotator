@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
+import re
 
 from . import field_defs
+from . import llms
 
 # Metadata is the audit trail attached to generated annotations. Keep curator-
 # facing confidence, paper selection, and field coverage information here rather
@@ -297,9 +299,74 @@ def merge_annotation_output(gene_distillation_json, annotation_metadata, field_c
 
 
 def _field_value_missing(value):
-    if value is None or value == '' or value == []:
-        return True
+    return llms.is_unknown_value(value)
+
+
+# Locus-like tokens that LLMs hallucinate into the wrong gene's annotations.
+_LOCUS_CLAIM_RE = re.compile(
+    r'\b(?:'
+    r'Rv\d{4}[A-Za-z]?'
+    r'|MSMEG_\d+'
+    r'|MMAR_\d+'
+    r'|BCG_\d+[A-Za-z]?'
+    r'|MAB_\d+[A-Za-z]?'
+    r'|NCgl\d+'
+    r'|MO_\d+'
+    r'|RJtmp_\d+'
+    r'|b\d{4}'
+    r')\b',
+    re.IGNORECASE,
+)
+
+
+def text_mentions_other_locus(text, expected_gene_id):
+    """True when free text names a different locus than the gene being annotated."""
+    if not expected_gene_id or not isinstance(text, str):
+        return False
+    expected = str(expected_gene_id).strip().lower()
+    if not expected:
+        return False
+    for match in _LOCUS_CLAIM_RE.finditer(text):
+        if match.group(0).lower() != expected:
+            return True
     return False
+
+
+def null_out_other_locus_claims(annotation, *, expected_gene_id):
+    """Null biology string fields that attribute evidence to a different locus.
+
+    gene_id shape checks only keep identity fields honest; the body text can still
+    describe another gene (e.g. infection_impact about Rv0792c while annotating
+    Rv1734c). Drop those values so ortholog fallback can fill eligible gaps.
+    """
+    if not annotation or not expected_gene_id:
+        return annotation
+    cleaned = dict(annotation)
+    for field_def in field_defs.REQUIRED_DEFAULT_FIELDS:
+        if field_def.type not in {'string', 'array:string'}:
+            continue
+        key = field_def.key
+        value = cleaned.get(key)
+        if isinstance(value, str) and text_mentions_other_locus(value, expected_gene_id):
+            cleaned[key] = None
+        elif isinstance(value, list):
+            kept = [
+                item for item in value
+                if not (isinstance(item, str) and text_mentions_other_locus(item, expected_gene_id))
+            ]
+            if not kept and value:
+                cleaned[key] = None
+            elif len(kept) != len(value):
+                cleaned[key] = kept or None
+    # Custom biology fields follow the same rule when present on the annotation.
+    for key, value in list(cleaned.items()):
+        if key in {'gene_id', 'name', 'rv_id', 'annotation_metadata', 'annotation_notes'}:
+            continue
+        if key in {field.key for field in field_defs.REQUIRED_DEFAULT_FIELDS}:
+            continue
+        if isinstance(value, str) and text_mentions_other_locus(value, expected_gene_id):
+            cleaned[key] = None
+    return cleaned
 
 
 def find_fields_needing_ortholog(direct_annotation, field_coverage, profile_field_defs):
@@ -397,13 +464,13 @@ def merge_ortholog_annotation(
     target_gene_id=None,
     target_gene_name=None,
 ):
-    """Keep both target and ortholog evidence per field.
+    """Copy ortholog values into ortholog-allowed target fields that are unknown.
 
-    - target empty, ortholog present  -> canonical value = ortholog, provenance 'ortholog_derived'
-    - both present                     -> canonical value = target, ortholog stored in
-                                          annotation_metadata.ortholog_fields, provenance
-                                          'target_plus_ortholog'
-    - ortholog empty                  -> no change
+    Simple gap-fill for eligible fields:
+    - target unknown, ortholog present -> canonical = ortholog, provenance ortholog_derived
+    - both present -> keep target canonical, store ortholog in ortholog_fields
+      (target_plus_ortholog)
+    - ortholog unknown -> no change
     """
     merged = dict(direct_annotation)
     metadata_block = dict(merged.get('annotation_metadata') or {})

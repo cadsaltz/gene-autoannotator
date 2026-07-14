@@ -158,16 +158,123 @@ def test_attach_ortholog_metadata_adds_top_hit_and_pass_block():
     )
 
 
-def test_merge_ortholog_annotation_keeps_both_values():
-    from autoannotation import metadata, orthology
-
-    hit = orthology.OrthologHit(
-        source_organism_code="mory", source_organism_name="Mycobacterium orygis",
-        source_gene_id="MO_000001", source_gene_name="octT",
-        score=2600.0, identity=0.62, lookup_source="kegg_ssdb",
+def test_merge_ortholog_annotation_treats_string_null_as_missing():
+    hit = OrthologHit(
+        source_organism_code="mmi",
+        source_organism_name="Mycobacterium marinum",
+        source_gene_id="MMAR_3491",
+        source_gene_name=None,
+        score=360.0,
+        identity=0.736,
+        lookup_source="kegg_ssdb",
     )
     direct = {
-        "gene_id": "Rv0001", "name": "dnaA",
+        "gene_id": "Rv1734c",
+        "function": "null",
+        "infection_impact": None,
+        "annotation_metadata": {},
+    }
+    ortholog = {
+        "function": "E2 component of pyruvate dehydrogenase.",
+        "infection_impact": None,
+    }
+    merged, filled = metadata.merge_ortholog_annotation(
+        direct,
+        ortholog,
+        ["function", "infection_impact"],
+        hit,
+        target_gene_id="Rv1734c",
+    )
+
+    assert merged["function"] == "E2 component of pyruvate dehydrogenase."
+    assert merged["annotation_metadata"]["field_provenance"]["function"] == "ortholog_derived"
+    assert "function" in filled
+
+
+def test_null_out_other_locus_claims_clears_wrong_gene_text():
+    annotation = {
+        "gene_id": "Rv1734c",
+        "function": None,
+        "infection_impact": (
+            "Rv0792c plays a key role in M. tuberculosis virulence "
+            "(PMID: 36280199)"
+        ),
+        "annotation_metadata": {},
+    }
+
+    cleaned = metadata.null_out_other_locus_claims(annotation, expected_gene_id="Rv1734c")
+
+    assert cleaned["infection_impact"] is None
+    assert cleaned["gene_id"] == "Rv1734c"
+
+
+def test_null_out_other_locus_claims_keeps_matching_locus_text():
+    annotation = {
+        "gene_id": "Rv1734c",
+        "function": "Rv1734c encodes a conserved hypothetical protein.",
+        "annotation_metadata": {},
+    }
+
+    cleaned = metadata.null_out_other_locus_claims(annotation, expected_gene_id="Rv1734c")
+
+    assert cleaned["function"] == "Rv1734c encodes a conserved hypothetical protein."
+
+
+def test_merge_fills_eligible_fields_after_wrong_locus_is_nulled():
+    hit = OrthologHit(
+        source_organism_code="mmi",
+        source_organism_name="Mycobacterium marinum",
+        source_gene_id="MMAR_3491",
+        source_gene_name=None,
+        score=360.0,
+        identity=0.736,
+        lookup_source="kegg_ssdb",
+    )
+    direct = metadata.null_out_other_locus_claims(
+        {
+            "gene_id": "Rv1734c",
+            "function": None,
+            "infection_impact": (
+                "Rv0792c plays a key role in M. tuberculosis virulence."
+            ),
+            "annotation_metadata": {},
+        },
+        expected_gene_id="Rv1734c",
+    )
+    ortholog = {
+        "function": "pyruvate dehydrogenase E2 ortholog function",
+        "infection_impact": "MMAR_3491 infection phenotype in fish.",
+    }
+    merged, filled = metadata.merge_ortholog_annotation(
+        direct,
+        ortholog,
+        ["function", "infection_impact"],
+        hit,
+        target_gene_id="Rv1734c",
+    )
+
+    assert merged["function"] == "pyruvate dehydrogenase E2 ortholog function"
+    assert merged["infection_impact"] == "MMAR_3491 infection phenotype in fish."
+    assert set(filled) == {"function", "infection_impact"}
+    assert merged["annotation_metadata"]["field_provenance"]["function"] == "ortholog_derived"
+    assert merged["annotation_metadata"]["field_provenance"]["infection_impact"] == (
+        "ortholog_derived"
+    )
+
+
+def test_merge_ortholog_annotation_keeps_both_values():
+    hit = OrthologHit(
+        source_organism_code="mory",
+        source_organism_name="Mycobacterium orygis",
+        source_gene_id="MO_000001",
+        source_gene_name="octT",
+        score=2600.0,
+        identity=0.62,
+        lookup_source="kegg_ssdb",
+    )
+    direct = {
+        "gene_id": "Rv0001",
+        "name": "dnaA",
         "function": "target function text",
         "infection_impact": None,
         "annotation_metadata": {},
@@ -177,8 +284,12 @@ def test_merge_ortholog_annotation_keeps_both_values():
         "infection_impact": "ortholog infection text",
     }
     merged, filled = metadata.merge_ortholog_annotation(
-        direct, ortholog, ["function", "infection_impact"], hit,
-        target_gene_id="Rv0001", target_gene_name="dnaA",
+        direct,
+        ortholog,
+        ["function", "infection_impact"],
+        hit,
+        target_gene_id="Rv0001",
+        target_gene_name="dnaA",
     )
 
     # both present -> canonical value stays target, ortholog stored separately

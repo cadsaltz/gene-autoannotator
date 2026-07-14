@@ -23,6 +23,8 @@ def test_is_unknown_value_treats_null_empty_and_placeholders():
     assert llms.is_unknown_value(None)
     assert llms.is_unknown_value('')
     assert llms.is_unknown_value('unknown')
+    assert llms.is_unknown_value('null')
+    assert llms.is_unknown_value('Null')
     assert llms.is_unknown_value([])
     assert not llms.is_unknown_value('DNA replication initiator')
     assert not llms.is_unknown_value(['virulence'])
@@ -128,25 +130,26 @@ def test_json_regex_filter_rejects_mismatching_expected_gene_without_locus_regex
     )
 
 
-def test_json_regex_filter_relaxed_name_accepts_descriptive_ortholog_names():
-    from autoannotation import orthology
-
-    profile = orthology.profile_for_kegg_organism('mory')
+def test_json_regex_filter_expected_gene_bypasses_mismatched_profile_locus_regex():
+    """KEGG ortholog IDs may not match the local annotation-table locus regex."""
+    profile = organisms.resolve_profile('morygis-51145')
+    assert profile.locus_regex
+    assert not __import__('re').fullmatch(profile.locus_regex, 'MO_002536')
     section_json = json.dumps({
         'gene_id': 'MO_002536',
-        'name': 'diglucosylglycerate octanoyltransferase',
+        'name': 'MO_002536',
         'function': 'Octanoyltransferase activity.',
     })
-
-    assert not llms.LlmHandler.json_regex_filter(
-        section_json,
-        organism_profile=profile,
-        expected_gene='MO_002536',
-    )
     assert llms.LlmHandler.json_regex_filter(
         section_json,
         organism_profile=profile,
         expected_gene='MO_002536',
+        relaxed_name=True,
+    )
+    assert not llms.LlmHandler.json_regex_filter(
+        section_json,
+        organism_profile=profile,
+        expected_gene='MO_999999',
         relaxed_name=True,
     )
 
@@ -236,7 +239,7 @@ def test_get_llm_gene_info_retry_preserves_ortholog_framing(monkeypatch):
     prompts = []
     calls = {"n": 0}
 
-    def fake_chat(*, model, messages, format, options):
+    def fake_chat(*, model, messages, format, options, **kwargs):
         prompts.append(messages[0]["content"])
         calls["n"] += 1
         if calls["n"] == 1:
