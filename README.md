@@ -1,12 +1,12 @@
 # Gene Autoannotator
 
-Work-in-progress tooling for generating literature-backed gene annotation drafts. The project combines a Python annotation pipeline, Mongo-backed saved organism profiles, a FastAPI job queue, a Next.js review UI, and comparison scripts for benchmarking generated JSON against trusted annotations.
+Work-in-progress tooling for generating literature-backed gene annotation drafts. The project combines a Python annotation pipeline, local file-backed organism profiles, a FastAPI job queue, a Next.js review UI, and comparison scripts for benchmarking generated JSON against trusted annotations.
 
 Generated annotations are curator aids, not curated truth. The pipeline tries to expose evidence, paper selection, unknown fields, and limitations so a human can review the result.
 
 ## What It Does
 
-1. Resolve a built-in, saved MongoDB, or custom/ad hoc organism profile.
+1. Resolve a local saved or custom/ad hoc organism profile.
 2. Resolve an annotation target from a supplied gene name, locus, or both.
 3. Resolve a gene name from a supplied value, profile table, local cache, NCBI Gene, UniProt, or locus fallback.
 4. Query PubMed Central by locus and, when available, gene name.
@@ -23,7 +23,7 @@ Main generated fields are `gene_id`, `name`, `function`, `functional_category`, 
 ## Repo Map
 
 - `autoannotation/`: core Python pipeline, organism profiles, PMC retrieval, LLM prompts, metadata, and CLI.
-- `coordinator/`: FastAPI API, SQLite job queue, optional MongoDB annotation history/search and saved profiles, and in-process runner.
+- `coordinator/`: FastAPI API, SQLite job queue, local JSON organism profiles, optional MongoDB annotation history/search, and in-process runner.
 - `frontend/`: Next.js UI for job submission, profile management, queue monitoring, and direct MongoDB annotation search/review.
 - `compareannotations/`: trusted-vs-generated scoring tools using exact matching, GO/category graph logic, embeddings/NLI, and an Ollama judge.
 - `tests/`: mostly deterministic unit/API tests; some model-style tests require local model dependencies.
@@ -40,7 +40,7 @@ Runtime assumptions:
 - Internet access to NCBI Entrez/PubMed Central and optional UniProt lookup.
 - Local Ollama with the configured annotation/comparison models pulled.
 - SQLite for job queue state.
-- MongoDB optional, used by the backend for annotation history writes and saved user profiles, and by the Next.js server for annotation search/review reads.
+- MongoDB optional, used by the backend for annotation history writes and by the Next.js server for annotation search/review reads. Organism profiles are local JSON files (`data/profiles` / `PROFILES_DIR`), not MongoDB.
 
 Python install:
 
@@ -98,7 +98,8 @@ Useful environment variables:
 - `AUTOANNOTATION_AGGREGATION_MODEL=model`
 - `AUTOANNOTATION_OLLAMA_KEEP_ALIVE=-1` (or `forever`) keeps models loaded indefinitely; `0` (default outside bench) unloads after each call; `5m` keeps warm for five minutes.
 - `OLLAMA_HOST=http://host:11434` when Ollama is not local.
-- `MONGO_URI` or `MONGODB_URI` to enable annotation history/search and saved user profiles. Set it for the FastAPI backend so completed jobs and custom profiles can be saved, and set it in `frontend/.env.local` so Next.js can read stored annotations directly.
+- `MONGO_URI` or `MONGODB_URI` to enable annotation history/search. Set it for the FastAPI backend so completed jobs can be saved, and set it in `frontend/.env.local` so Next.js can read stored annotations directly.
+- `PROFILES_DIR=data/profiles` for local organism profile JSON storage (default).
 - `COORDINATOR_API_BASE_URL=http://127.0.0.1:8000` for the Next.js proxy/server calls (legacy `BACKEND_API_BASE_URL` still honored as a fallback).
 - `CORS_ORIGINS` and `CORS_ORIGIN_REGEX` for FastAPI browser access.
 - `GO_BASIC_OBO_PATH=data/go-basic.obo` for richer functional-category comparison.
@@ -187,8 +188,8 @@ Some comparison/model tests may need HuggingFace model downloads and local Ollam
 ## Web API Summary
 
 - `GET /health`: job store, annotation store, profile store, queue, and process resource status.
-- `GET /profiles`: built-in and Mongo-backed user organism profiles.
-- `POST /profiles`, `GET /profiles/{profile_id}`, `PUT /profiles/{profile_id}`, `DELETE /profiles/{profile_id}`: create, read, update, and delete Mongo-backed user profiles. Built-in profiles are read-only.
+- `GET /profiles`: local organism profiles (`PROFILES_DIR` / `data/profiles`).
+- `POST /profiles`, `GET /profiles/{profile_id}`, `PUT /profiles/{profile_id}`, `DELETE /profiles/{profile_id}`: create, read, update, and delete local profile files.
 - `POST /validate`: target preflight for a profile or ad hoc organism plus name, locus, or both. It returns the resolved profile, submitted/resolved identifiers, primary identifier, and warnings.
 - `POST /jobs`: queue an annotation job after the same target preflight; the stored job request includes `target_preflight`.
 - `GET /jobs?order=queue|newest`: list job history and queue summary.
@@ -204,7 +205,7 @@ Some comparison/model tests may need HuggingFace model downloads and local Ollam
 - Only one annotation job runs at a time.
 - Web progress is coarse (`queued`, `running`, `saving_result`, `completed`, `failed`).
 - API request paths such as `cache_dir` and `output_dir` are trusted server paths.
-- MongoDB is optional; if unavailable to FastAPI, jobs can complete but completed annotations will not be saved to MongoDB and user profile CRUD will be unavailable. If unavailable to the Next.js server, annotation search/review will not work even if FastAPI is online.
+- MongoDB is optional; if unavailable to FastAPI, jobs can complete but completed annotations will not be saved to MongoDB. Profile CRUD uses local files and does not require MongoDB. If MongoDB is unavailable to the Next.js server, annotation search/review will not work even if FastAPI is online.
 - Literature parsing handles common top-level PMC/JATS sections and may miss nested or unusual section layouts.
 - Relevance scoring is heuristic and should be tuned with `get_papers.py` plus tests.
 - LLM validation checks JSON shape and gene identity, not factual correctness.

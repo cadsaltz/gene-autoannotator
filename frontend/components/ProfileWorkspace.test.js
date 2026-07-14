@@ -62,7 +62,9 @@ test("profile workspace supports editing all reusable profile fields", async () 
   assert.match(workspace, /updateProfile\(editingProfileId,/);
   assert.match(workspace, /createProfile\(payload\)/);
   assert.match(workspace, /deleteProfile\(profileId\)/);
-  assert.match(workspace, /profile\.source === "builtin"/);
+  assert.doesNotMatch(workspace, /profile\.source === "builtin"/);
+  assert.doesNotMatch(workspace, /PROFILE_SOURCE_FILTERS/);
+  assert.doesNotMatch(workspace, /Built-in/);
 });
 
 test("resetting the profile form clears stale edit status text", async () => {
@@ -83,13 +85,12 @@ test("profile detail cards include synonym fields", async () => {
   assert.match(workspace, /\["Strain synonyms", profile\.strain_synonyms\?\.join\(", "\)\]/);
 });
 
-test("profile source chip centers its label", async () => {
+test("profile workspace describes local file storage", async () => {
   const workspace = await readProjectFile("components/ProfileWorkspace.js");
 
-  assert.match(
-    workspace,
-    /className="inline-flex items-center rounded-full border workbench-border bg-white\/70 px-3 py-1 leading-none text-xs font-bold uppercase tracking-wide text-\[#3f4b43\]"/,
-  );
+  assert.match(workspace, /data\/profiles/);
+  assert.match(workspace, /PROFILES_DIR/);
+  assert.match(workspace, /MongoDB is not[\s\S]*used for organism profiles/);
 });
 
 test("profile workspace mounts the regex helper under the form", async () => {
@@ -109,16 +110,15 @@ test("profile workspace avoids loading-only submit hydration mismatches", async 
   assert.match(workspace, /disabled=\{isSaving \|\| isLoading\}/);
 });
 
-test("available profiles are searchable filterable and grouped", async () => {
+test("available profiles are searchable and grouped by species", async () => {
   const workspace = await readProjectFile("components/ProfileWorkspace.js");
 
   assert.match(
     workspace,
-    /import \{\s*filterProfiles,\s*groupProfilesBySpecies,\s*PROFILE_SOURCE_FILTERS,\s*\} from "\.\.\/lib\/profileFilters";/s,
+    /import \{\s*filterProfiles,\s*groupProfilesBySpecies,\s*\} from "\.\.\/lib\/profileFilters";/s,
   );
   assert.match(workspace, /placeholder="Search profile ID, organism, strain, or synonym"/);
-  assert.match(workspace, /setSourceFilter\(PROFILE_SOURCE_FILTERS\.BUILTIN\)/);
-  assert.match(workspace, /setSourceFilter\(PROFILE_SOURCE_FILTERS\.USER\)/);
+  assert.doesNotMatch(workspace, /PROFILE_SOURCE_FILTERS/);
   assert.match(workspace, /groupProfilesBySpecies\(visibleProfiles\)/);
 });
 

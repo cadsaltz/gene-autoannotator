@@ -147,16 +147,15 @@ def build_ad_hoc_profile(
 
 def _profile_from_lookup_result(profile_payload):
     if isinstance(profile_payload, organisms.OrganismProfile):
-        return profile_payload, 'builtin'
+        return profile_payload, 'local'
     if isinstance(profile_payload, Mapping):
-        source = profile_payload.get('source') or 'user'
-        return organisms.profile_from_mapping(profile_payload), source
+        return organisms.profile_from_mapping(profile_payload), 'local'
     raise TypeError('profile lookup must return an OrganismProfile or mapping')
 
 
 def _resolve_profile(profile_identifier, profile_lookup):
     if profile_lookup is None:
-        return organisms.resolve_profile(profile_identifier), 'builtin'
+        return organisms.resolve_profile(profile_identifier), 'local'
     profile_payload = profile_lookup(profile_identifier)
     if profile_payload is None:
         raise organisms.UnknownOrganismError(f'Unknown organism profile: {profile_identifier}')

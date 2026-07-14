@@ -54,9 +54,8 @@ def _pmc_mapping_cache_key(profile, target):
 
 def _profile_lookup_from_config(profile_config):
     # Any attached profile_config is the job-time snapshot of the profile the
-    # coordinator resolved (including Mongo overrides of builtins). Always use
-    # it when present — do not fall back to code defaults just because
-    # source == 'builtin'.
+    # coordinator resolved from the local profile store. Always use it when
+    # present — do not fall back to code catalog defaults.
     if not profile_config:
         return None
 
@@ -83,7 +82,7 @@ def _profile_lookup_from_config(profile_config):
 
 
 def _resolve_profile_from_catalog(profile_id, *, profile_config=None, ortholog_catalog=None):
-    """Resolve a profile id from the job snapshot, then code builtins."""
+    """Resolve a profile id from the job snapshot, then the code catalog."""
     if profile_config and profile_config.get('profile_id') == profile_id:
         return organisms.profile_from_mapping(profile_config)
     for document in ortholog_catalog or ():

@@ -53,18 +53,22 @@ Check that it is reachable:
 curl http://10.158.45.197:8000/health
 ```
 
-Annotation history writes and user-saved organism profiles use MongoDB. Put your
-local connection string in the project root `.env` file so completed backend jobs
-and custom profiles can be saved:
+Annotation history writes use MongoDB. Put your local connection string in the
+project root `.env` file so completed backend jobs can be saved:
 
 ```bash
 MONGO_URI=mongodb://localhost:27017/gene_autoannotator
 ```
 
+Organism profiles are stored as local JSON files under `data/profiles/` (or
+`PROFILES_DIR`). MongoDB is not used for profile storage. On first start the
+coordinator seeds that directory from the code catalog in
+`autoannotation.organisms.PROFILES`.
+
 The API will still start if MongoDB is unavailable, but `/health` will report
-backend annotation/profile storage as unavailable. Completed jobs will record an
-annotation storage warning until the connection is fixed, and profile create,
-update, and delete calls will return a storage-unavailable error.
+annotation storage as unavailable. Completed jobs will record an annotation
+storage warning until the connection is fixed. Profile create/update/delete
+only need a writable profiles directory.
 
 The Next.js frontend reads stored annotations directly from MongoDB through its
 own `/api/annotations/...` routes. Add the same `MONGO_URI` value to
@@ -92,7 +96,7 @@ same local services, models, network access, and cache/output directories as the
 terminal command, including Ollama and the configured LLM models.
 
 Job and validation requests require either `profile` or `organism`, and either
-`name` or `locus`. `profile` selects a built-in or Mongo-backed saved profile;
+`name` or `locus`. `profile` selects a local saved profile;
 `organism` with optional `strain` builds an ad hoc profile for one submission.
 Supplying both name and locus gives the target resolver the strongest evidence,
 but name-only and locus-only submissions are accepted.
@@ -130,15 +134,14 @@ Job submission returns **503** when no workers are connected with available slot
 
 ## Endpoint Summary
 
-- `GET /health`: API, SQLite job store, Mongo annotation store, profile store,
-  queue, and process resource health.
-- `GET /profiles`: lists built-in and Mongo-backed user organism profiles.
-- `POST /profiles`: creates a Mongo-backed user profile.
-- `GET /profiles/{profile_id}`: returns a built-in or user profile.
-- `PUT /profiles/{profile_id}`: updates a Mongo-backed user profile. Built-in
-  profiles are read-only.
-- `DELETE /profiles/{profile_id}`: deletes a Mongo-backed user profile. Built-in
-  profiles are read-only.
+- `GET /health`: API, SQLite job store, Mongo annotation store, local profile
+  store, queue, and process resource health.
+- `GET /profiles`: lists local organism profiles (JSON files under
+  `PROFILES_DIR`, default `data/profiles`).
+- `POST /profiles`: creates a local profile file.
+- `GET /profiles/{profile_id}`: returns a local profile.
+- `PUT /profiles/{profile_id}`: updates a local profile.
+- `DELETE /profiles/{profile_id}`: deletes a local profile.
 - `POST /validate`: runs target preflight for a profile or ad hoc organism plus
   name, locus, or both. The response includes the resolved profile, submitted and
   resolved identifiers, primary identifier, and warnings such as missing locus,
@@ -237,6 +240,7 @@ docker compose -f deploy/compose/docker-compose.coordinator.yml up --build
 
 The coordinator listens on port 8000 and the frontend on port 3000. Job queue
 state is persisted in a Docker volume mounted at `/app/coordinator` (SQLite).
-Set `MONGO_URI` in `.env` for annotation history and profile storage; the
+Set `MONGO_URI` in `.env` for annotation history; organism profiles are stored
+locally under `data/profiles` (mount or set `PROFILES_DIR` if needed). The
 frontend proxy uses `COORDINATOR_API_BASE_URL=http://coordinator:8000` inside
 the compose network.

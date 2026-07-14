@@ -9,6 +9,9 @@ services:
       - ../../.env
     volumes:
       - coordinator-data:/app/coordinator
+      - profiles-data:/app/data/profiles
+    environment:
+      PROFILES_DIR: /app/data/profiles
 
   frontend:
     build:
@@ -25,3 +28,4 @@ services:
 
 volumes:
   coordinator-data:
+  profiles-data:

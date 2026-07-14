@@ -1,8 +1,21 @@
-export const PROFILE_SOURCE_FILTERS = {
-  ALL: "all",
-  BUILTIN: "builtin",
-  USER: "user",
-};
+export function filterProfiles(profiles, { query = "" } = {}) {
+  return profiles.filter((profile) => profileMatchesQuery(profile, query));
+}
+
+export function groupProfilesBySpecies(profiles) {
+  const groups = [];
+  const bySpecies = new Map();
+  for (const profile of profiles) {
+    const speciesName = profile.species_name || "Unknown species";
+    if (!bySpecies.has(speciesName)) {
+      const group = { speciesName, profiles: [] };
+      bySpecies.set(speciesName, group);
+      groups.push(group);
+    }
+    bySpecies.get(speciesName).profiles.push(profile);
+  }
+  return groups;
+}
 
 function fieldValues(profile) {
   return [
@@ -28,37 +41,4 @@ function profileMatchesQuery(profile, query) {
   return fieldValues(profile).some((value) =>
     normalize(value).includes(normalizedQuery),
   );
-}
-
-function profileMatchesSource(profile, sourceFilter) {
-  if (sourceFilter === PROFILE_SOURCE_FILTERS.BUILTIN) {
-    return profile.source === "builtin";
-  }
-  if (sourceFilter === PROFILE_SOURCE_FILTERS.USER) {
-    return profile.source !== "builtin";
-  }
-  return true;
-}
-
-export function filterProfiles(profiles, { query = "", sourceFilter = PROFILE_SOURCE_FILTERS.ALL } = {}) {
-  return profiles.filter(
-    (profile) =>
-      profileMatchesSource(profile, sourceFilter) &&
-      profileMatchesQuery(profile, query),
-  );
-}
-
-export function groupProfilesBySpecies(profiles) {
-  const groups = [];
-  const bySpecies = new Map();
-  for (const profile of profiles) {
-    const speciesName = profile.species_name || "Unknown species";
-    if (!bySpecies.has(speciesName)) {
-      const group = { speciesName, profiles: [] };
-      bySpecies.set(speciesName, group);
-      groups.push(group);
-    }
-    bySpecies.get(speciesName).profiles.push(profile);
-  }
-  return groups;
 }

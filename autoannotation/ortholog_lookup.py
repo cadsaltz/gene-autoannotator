@@ -8,16 +8,13 @@ from .targets import TARGET_WARNING_MESSAGES
 
 
 def _profile_lookup_from_env():
-    """Prefer Mongo/user profile store when configured so UI-saved kegg codes work."""
+    """Prefer the local profile store so UI-saved kegg codes work."""
     try:
-        from coordinator.profile_store import (
-            BuiltinAndUserProfileStore,
-            user_profile_store_from_env,
-        )
+        from coordinator.profile_store import profile_store_from_env
     except Exception:
         return None
     try:
-        store = BuiltinAndUserProfileStore(user_store=user_profile_store_from_env())
+        store = profile_store_from_env()
     except Exception:
         return None
 

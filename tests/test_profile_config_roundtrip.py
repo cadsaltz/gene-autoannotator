@@ -7,7 +7,7 @@ from autoannotation import organisms
 from autoannotation import orthology
 from coordinator.api import create_app
 from coordinator.job_store import JobStore
-from coordinator.profile_store import BuiltinAndUserProfileStore, InMemoryUserProfileStore
+from coordinator.profile_store import LocalProfileStore
 from fastapi.testclient import TestClient
 
 
@@ -41,7 +41,6 @@ def test_profile_lookup_uses_builtin_source_override():
             "function": True,
             "functional_category": True,
         },
-        "source": "builtin",
     }
     lookup = annotation_pipeline._profile_lookup_from_config(config)
     assert lookup is not None
@@ -49,7 +48,7 @@ def test_profile_lookup_uses_builtin_source_override():
 
 
 def test_job_submission_stores_kegg_and_field_ortholog_for_builtin_override(tmp_path):
-    profile_store = BuiltinAndUserProfileStore(user_store=InMemoryUserProfileStore())
+    profile_store = LocalProfileStore(tmp_path / "profiles")
     builtin = profile_store.get_profile("mtb-h37rv")
     payload = {
         **builtin,
@@ -62,7 +61,7 @@ def test_job_submission_stores_kegg_and_field_ortholog_for_builtin_override(tmp_
             for field in builtin["custom_fields"]
         ],
     }
-    for key in ("trusted", "read_only", "created_at", "updated_at"):
+    for key in ("created_at", "updated_at", "source", "trusted", "read_only"):
         payload.pop(key, None)
     profile_store.update_user_profile("mtb-h37rv", payload)
 

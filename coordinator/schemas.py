@@ -216,9 +216,6 @@ class RegexFromDescriptionRequest(BaseModel):
 
 
 class ProfileDetailResponse(ProfileResponse):
-    source: str = "builtin"
-    trusted: bool = True
-    read_only: bool = False
     search_terms: list[str] = Field(default_factory=list)
     target_patterns: list[str] = Field(default_factory=list)
     off_target_patterns: list[str] = Field(default_factory=list)

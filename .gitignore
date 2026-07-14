@@ -13,6 +13,8 @@ coordinator/*.sqlite3-wal
 
 creds/
 data/go-basic.obo
+data/profiles/
+!data/profiles/.gitkeep
 
 node_modules/
 frontend/node_modules/

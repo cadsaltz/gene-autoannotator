@@ -11,7 +11,6 @@ import {
 import {
   filterProfiles,
   groupProfilesBySpecies,
-  PROFILE_SOURCE_FILTERS,
 } from "../lib/profileFilters";
 import { buildProfilePayload, profileToForm, resolveProfileFieldsForDisplay, sanitizeDefaultFieldOrthologForPayload } from "../lib/profileStore";
 import CustomFieldsEditor from "./CustomFieldsEditor";
@@ -187,15 +186,14 @@ export default function ProfileWorkspace() {
   const [editingProfileId, setEditingProfileId] = useState("");
   const [expandedProfileId, setExpandedProfileId] = useState("");
   const [profileQuery, setProfileQuery] = useState("");
-  const [sourceFilter, setSourceFilter] = useState(PROFILE_SOURCE_FILTERS.ALL);
   const [statusMessage, setStatusMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const formRef = useRef(null);
 
   const visibleProfiles = useMemo(
-    () => filterProfiles(profiles, { query: profileQuery, sourceFilter }),
-    [profiles, profileQuery, sourceFilter],
+    () => filterProfiles(profiles, { query: profileQuery }),
+    [profiles, profileQuery],
   );
   const profileGroups = useMemo(
     () => groupProfilesBySpecies(visibleProfiles),
@@ -285,12 +283,7 @@ export default function ProfileWorkspace() {
       return;
     }
 
-    const isBuiltin = profile.source === "builtin";
-    const confirmed = window.confirm(
-      isBuiltin
-        ? `Reset profile ${profileId} to its built-in defaults? Custom changes will be removed.`
-        : `Delete user profile ${profileId}?`,
-    );
+    const confirmed = window.confirm(`Delete profile ${profileId}?`);
     if (!confirmed) {
       return;
     }
@@ -302,11 +295,7 @@ export default function ProfileWorkspace() {
         resetForm();
       }
       await refreshProfiles();
-      setStatusMessage(
-        isBuiltin
-          ? `Reset profile ${profileId} to built-in defaults.`
-          : `Deleted profile ${profileId}.`,
-      );
+      setStatusMessage(`Deleted profile ${profileId}.`);
     } catch (error) {
       setStatusMessage(error.message);
     }
@@ -321,9 +310,9 @@ export default function ProfileWorkspace() {
             Manage reusable annotation targets
           </h1>
           <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
-            Built-in profiles ship with the application and can be edited like user
-            profiles. Changes to built-in profiles are saved as overrides; use Reset to
-            restore defaults.
+            Profiles are stored locally on the coordinator as JSON files. Create,
+            edit, and delete them here; annotation jobs receive a snapshot of the
+            selected profile and the full local catalog for ortholog selection.
           </p>
         </div>
 
@@ -332,9 +321,9 @@ export default function ProfileWorkspace() {
             Profile storage
           </h2>
           <p className="mt-3 text-sm leading-6 text-[#5f4b2e]">
-            User profile changes are stored by the backend profile API. If MongoDB
-            profile storage is not configured, built-in profiles remain visible
-            and save/delete actions will report the backend error.
+            Profiles live under <code>data/profiles</code> (or{" "}
+            <code>PROFILES_DIR</code>) on the coordinator host. MongoDB is not
+            used for organism profiles.
           </p>
         </div>
       </section>
@@ -344,7 +333,7 @@ export default function ProfileWorkspace() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">
-                {editingProfileId ? "Edit user profile" : "New user profile"}
+                {editingProfileId ? "Edit profile" : "New profile"}
               </h2>
               <p className="workbench-muted mt-2 text-sm leading-6">
                 Use one value per line for synonyms, search terms, and organism
@@ -473,29 +462,6 @@ export default function ProfileWorkspace() {
                 placeholder="Search profile ID, organism, strain, or synonym"
               />
             </label>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setSourceFilter(PROFILE_SOURCE_FILTERS.ALL)}
-                className={`workbench-button ${sourceFilter === PROFILE_SOURCE_FILTERS.ALL ? "workbench-button-primary" : "workbench-button-secondary"}`}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setSourceFilter(PROFILE_SOURCE_FILTERS.BUILTIN)}
-                className={`workbench-button ${sourceFilter === PROFILE_SOURCE_FILTERS.BUILTIN ? "workbench-button-primary" : "workbench-button-secondary"}`}
-              >
-                Built-in
-              </button>
-              <button
-                type="button"
-                onClick={() => setSourceFilter(PROFILE_SOURCE_FILTERS.USER)}
-                className={`workbench-button ${sourceFilter === PROFILE_SOURCE_FILTERS.USER ? "workbench-button-primary" : "workbench-button-secondary"}`}
-              >
-                User
-              </button>
-            </div>
           </div>
 
           <div className="mt-6 grid max-h-[760px] gap-4 overflow-y-auto pr-1">
@@ -530,9 +496,6 @@ export default function ProfileWorkspace() {
                             </p>
                           </button>
                           <div className="flex flex-wrap gap-2">
-                            <span className="inline-flex items-center rounded-full border workbench-border bg-white/70 px-3 py-1 leading-none text-xs font-bold uppercase tracking-wide text-[#3f4b43]">
-                              {profile.source === "builtin" ? "Built-in" : "User"}
-                            </span>
                             <button
                               type="button"
                               onClick={() => setExpandedProfileId(isExpanded ? "" : profile.profile_id)}
@@ -552,7 +515,7 @@ export default function ProfileWorkspace() {
                               onClick={() => handleDelete(profile.profile_id)}
                               className="workbench-button workbench-button-secondary workbench-red"
                             >
-                              {profile.source === "builtin" ? "Reset" : "Delete"}
+                              Delete
                             </button>
                           </div>
                         </div>
@@ -565,7 +528,7 @@ export default function ProfileWorkspace() {
               ))
             ) : profiles.length > 0 ? (
               <div className="workbench-muted rounded-2xl border border-dashed workbench-border p-8 text-center">
-                No profiles match the current search or filter.
+                No profiles match the current search.
               </div>
             ) : (
               <div className="workbench-muted rounded-2xl border border-dashed workbench-border p-8 text-center">

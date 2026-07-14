@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from coordinator.annotation_store import InMemoryAnnotationStore
 from coordinator.api import create_app
 from coordinator.job_store import JobStore
-from coordinator.profile_store import BuiltinAndUserProfileStore, InMemoryUserProfileStore
+from coordinator.profile_store import LocalProfileStore
 from coordinator import regex_gen
 
 
@@ -22,7 +22,8 @@ class FailingProfileStore:
 
 
 @pytest.fixture(autouse=True)
-def clear_mongo_env(monkeypatch):
+def isolate_profile_and_mongo_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROFILES_DIR", str(tmp_path / "default-profiles"))
     monkeypatch.delenv("MONGO_URI", raising=False)
     monkeypatch.delenv("MONGODB_URI", raising=False)
 
@@ -96,7 +97,7 @@ def test_profiles_endpoint_lists_configured_profiles(tmp_path):
 
 
 def test_profiles_endpoint_includes_user_profiles(tmp_path):
-    profile_store = BuiltinAndUserProfileStore(user_store=InMemoryUserProfileStore())
+    profile_store = LocalProfileStore(tmp_path / "profiles")
     profile_store.create_user_profile({
         "profile_id": "custom-profile",
         "canonical_name": "Custom organism",
@@ -113,8 +114,10 @@ def test_profiles_endpoint_includes_user_profiles(tmp_path):
 
     assert response.status_code == 200
     profiles = {profile["profile_id"]: profile for profile in response.json()["profiles"]}
-    assert profiles["mtb-h37rv"]["source"] == "builtin"
-    assert profiles["custom-profile"]["source"] == "user"
+    assert "mtb-h37rv" in profiles
+    assert "custom-profile" in profiles
+    assert "source" not in profiles["mtb-h37rv"]
+    assert "source" not in profiles["custom-profile"]
 
 
 def test_profiles_endpoint_reports_store_failures_as_unavailable(tmp_path):
@@ -146,7 +149,7 @@ def test_profile_detail_endpoint_reports_store_failures_as_unavailable(tmp_path)
 def test_profile_crud_allows_builtin_update(tmp_path):
     app = create_app(
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
-        profile_store=BuiltinAndUserProfileStore(user_store=InMemoryUserProfileStore()),
+        profile_store=LocalProfileStore(tmp_path / "profiles"),
     )
     client = TestClient(app)
 
@@ -162,10 +165,11 @@ def test_profile_crud_allows_builtin_update(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["canonical_name"] == "Mycobacterium tuberculosis H37Rv edited"
-    assert response.json()["source"] == "builtin"
+    assert "source" not in response.json()
 
 
-def test_profile_creation_without_user_store_returns_unavailable(tmp_path):
+def test_profile_creation_works_without_mongo(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROFILES_DIR", str(tmp_path / "env-profiles"))
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
     client = TestClient(app)
 
@@ -178,14 +182,15 @@ def test_profile_creation_without_user_store_returns_unavailable(tmp_path):
         },
     )
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == "MONGO_URI is not configured"
+    assert response.status_code == 201
+    assert response.json()["profile_id"] == "custom-profile"
+    assert (tmp_path / "env-profiles" / "custom-profile.json").is_file()
 
 
 def test_profile_crud_creates_reads_updates_and_deletes_user_profile(tmp_path):
     app = create_app(
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
-        profile_store=BuiltinAndUserProfileStore(user_store=InMemoryUserProfileStore()),
+        profile_store=LocalProfileStore(tmp_path / "profiles"),
     )
     client = TestClient(app)
 
@@ -244,7 +249,7 @@ def test_validate_endpoint_wraps_existing_locus_validation(tmp_path):
 def test_validate_accepts_name_only_custom_organism(tmp_path):
     app = create_app(
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
-        profile_store=BuiltinAndUserProfileStore(user_store=InMemoryUserProfileStore()),
+        profile_store=LocalProfileStore(tmp_path / "profiles"),
     )
     client = TestClient(app)
 
@@ -265,8 +270,8 @@ def test_validate_accepts_name_only_custom_organism(tmp_path):
 
 @pytest.mark.parametrize("endpoint", ["/validate", "/jobs"])
 def test_target_requests_reject_saved_profile_locus_schema_mismatch(tmp_path, endpoint):
-    user_store = InMemoryUserProfileStore()
-    user_store.create_profile(
+    profile_store = LocalProfileStore(tmp_path / "profiles", seed_profiles=())
+    profile_store.create_profile(
         {
             "profile_id": "ecoli-k12-mg1655",
             "canonical_name": "Escherichia coli K-12 MG1655",
@@ -278,7 +283,7 @@ def test_target_requests_reject_saved_profile_locus_schema_mismatch(tmp_path, en
     )
     app = create_app(
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
-        profile_store=BuiltinAndUserProfileStore(user_store=user_store),
+        profile_store=profile_store,
         run_jobs_inline=False,
         start_worker=False,
     )
@@ -471,7 +476,7 @@ def test_job_submission_executes_inferred_builtin_profile(tmp_path):
 
 
 def test_job_submission_stores_profile_config_for_user_profile(tmp_path):
-    profile_store = BuiltinAndUserProfileStore(user_store=InMemoryUserProfileStore())
+    profile_store = LocalProfileStore(tmp_path / "profiles")
     profile_store.create_user_profile({
         "profile_id": "custom-profile",
         "canonical_name": "Custom organism",
@@ -529,7 +534,7 @@ def test_job_submission_stores_profile_config_for_user_profile(tmp_path):
 
 
 def test_worker_marks_stale_invalid_saved_profile_locus_job_failed(tmp_path):
-    profile_store = BuiltinAndUserProfileStore(user_store=InMemoryUserProfileStore())
+    profile_store = LocalProfileStore(tmp_path / "profiles")
     profile_store.create_user_profile({
         "profile_id": "ecoli-k12-mg1655",
         "canonical_name": "Escherichia coli K-12 MG1655",

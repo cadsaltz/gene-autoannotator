@@ -2,7 +2,8 @@
 
 This [Next.js](https://nextjs.org) app is the web interface for the gene
 autoannotator API. It has pages for usage guidance, queued job submission,
-Mongo-backed profile management, and searching generated annotation history.
+local profile management (via the coordinator API), and searching generated
+annotation history.
 
 ## Getting Started
 
@@ -27,8 +28,9 @@ machine as Next.js, set `BACKEND_API_BASE_URL` to its internal URL.
 
 Set `MONGO_URI` in `.env.local` when you want the frontend's annotation search
 and review routes to read stored generated annotations directly from MongoDB.
-Profile management is proxied through FastAPI, so the backend also needs
-`MONGO_URI` for creating, updating, or deleting saved user profiles.
+Profile management is proxied through FastAPI and stored as local JSON on the
+coordinator (`data/profiles` / `PROFILES_DIR`); MongoDB is not required for
+profiles.
 
 ## Scripts
 
@@ -43,8 +45,8 @@ Profile management is proxied through FastAPI, so the backend also needs
 - `/jobs`: shows backend health, submits annotation jobs, and polls the shared
   sequential queue. Jobs can use a saved profile or a custom organism plus a
   gene name, locus, or both.
-- `/profiles`: lists built-in and Mongo-backed organism profiles, and creates,
-  edits, or deletes saved user profiles for reuse in job submissions.
+- `/profiles`: lists local organism profiles and creates, edits, or deletes
+  them for reuse in job submissions.
 - `/annotations`: searches Mongo-backed generated annotations, displays the
   current annotation, loads older versions on demand, and links back to `/jobs`
   for update runs.

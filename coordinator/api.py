@@ -14,11 +14,10 @@ from .annotation_store import AnnotationStoreUnavailable, annotation_store_from_
 from .batch_store import BatchStore
 from .job_store import JobStore
 from .profile_store import (
-    BuiltinAndUserProfileStore,
     DuplicateProfileError,
     InvalidProfileError,
     ProfileStoreUnavailable,
-    user_profile_store_from_env,
+    profile_store_from_env,
 )
 from .runner import run_annotation_job
 from . import regex_gen
@@ -173,9 +172,7 @@ def create_app(
         if annotation_store is not None
         else annotation_store_from_env()
     )
-    profiles_store = profile_store or BuiltinAndUserProfileStore(
-        user_store=user_profile_store_from_env()
-    )
+    profiles_store = profile_store or profile_store_from_env()
     worker_lock = threading.Lock()
 
     def _require_worker_fleet():
@@ -375,14 +372,12 @@ def create_app(
         config["custom_fields"] = custom_fields
         config["annotation_fields"] = list(custom_fields)
         config["default_field_ortholog"] = default_field_ortholog
-        # Prefer the document source from the store (builtin overrides stay "builtin"
-        # for Reset UX) but still ship a complete config so workers use the override.
         config["source"] = target.profile_source
         return config
 
     def _ortholog_profile_catalog():
         """Snapshot every kegg-coded profile so workers can select ortholog sources
-        without a live Mongo round-trip. Includes frontend-saved organisms."""
+        without a live profile-store round-trip."""
         catalog = []
         try:
             profiles = profiles_store.list_profiles()
@@ -416,7 +411,6 @@ def create_app(
                 "default_field_ortholog": dict(
                     document.get("default_field_ortholog") or {}
                 ),
-                "source": document.get("source") or "user",
             })
         return catalog
 
@@ -427,9 +421,9 @@ def create_app(
             stored_request["organism"] = None
             stored_request["strain"] = None
         stored_request["target_preflight"] = target.to_preflight_dict()
-        # Always attach the resolved profile snapshot for named profiles (and
-        # user/ad-hoc cases) so annotation uses Mongo overrides, not code defaults.
-        if request.profile or target.profile_source in {"user", "builtin"}:
+        # Attach the resolved profile snapshot for named/local profiles so
+        # workers use the local store document, not code-only defaults.
+        if request.profile or target.profile_source == "local":
             stored_request["profile_config"] = _profile_config_from_target(target)
         stored_request["ortholog_profile_catalog"] = _ortholog_profile_catalog()
         return stored_request
@@ -454,8 +448,8 @@ def create_app(
         raise HTTPException(status_code=422, detail=detail)
 
     def _reject_unresolvable_ortholog_override(override):
-        # Resolve via the same profile store the UI edits (builtin + Mongo),
-        # then fall back to code builtins for CLI-only organisms.
+        # Resolve via the same local profile store the UI edits, then fall
+        # back to code catalog profiles for CLI-only organisms.
         if override is None:
             return
         profile_id = override.profile_id
