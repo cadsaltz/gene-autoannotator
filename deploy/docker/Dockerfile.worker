@@ -1,0 +1,32 @@
+FROM ollama/ollama:0.15.6
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       python3 python3-pip python-is-python3 \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt requirements-web.txt ./
+RUN python -m pip install --no-cache-dir --break-system-packages \
+      -r requirements.txt -r requirements-web.txt
+
+COPY autoannotation/ autoannotation/
+COPY worker/ worker/
+COPY shared/ shared/
+COPY deploy/docker/worker-bench-entrypoint.sh /usr/local/bin/worker-bench-entrypoint.sh
+RUN chmod +x /usr/local/bin/worker-bench-entrypoint.sh
+
+ENV AUTOANNOTATION_MODEL_MODE=performance \
+    OLLAMA_MODELS=/models \
+    WORKER_CACHE_DIR=/out/cache \
+    WORKER_OUTPUT_DIR=/out/annotations \
+    COORDINATOR_URL=http://127.0.0.1:9 \
+    WORKER_API_TOKEN=unused \
+    ANNOTATION_MEMORY_BUDGET_GB=64 \
+    OLLAMA_FLEET_SERVERS=1 \
+    OLLAMA_FLEET_PARALLEL=1 \
+    WORKER_MAX_SLOTS=2 \
+    PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["/usr/local/bin/worker-bench-entrypoint.sh"]
