@@ -42,6 +42,7 @@ def test_runner_calls_existing_cli_main():
         "cache_supplied_name": True,
         "allow_ortholog_fallback": False,
         "ortholog_override": None,
+        "ortholog_catalog": [],
     }
     assert result["annotation"]["gene_id"] == "TcCLB.503799.4"
     assert result["output_path"].endswith("gen_TcCLB.503799.4.json")
@@ -116,3 +117,4 @@ def test_runner_forwards_ortholog_fields():
 
     assert captured["allow_ortholog_fallback"] is True
     assert captured["ortholog_override"] == {"profile_id": "mtb-h37rv", "locus": "Rv9999", "name": "x"}
+    assert captured["ortholog_catalog"] == []

@@ -152,6 +152,41 @@ def test_ensure_fleet_config_loads_from_env(tmp_path, monkeypatch):
     assert cfg.memory_tier == "warm_stack"
 
 
+def test_pids_from_fuser_output_ignores_port_number():
+    text = "11434/tcp:            4321 8765\n"
+    assert setup._pids_from_fuser_output(text, port=11434) == [4321, 8765]
+
+
+def test_pids_from_fuser_output_fallback_still_excludes_port():
+    text = "Cannot open a network namespace.\n11434 9999\n"
+    assert setup._pids_from_fuser_output(text, port=11434) == [9999]
+
+
+def test_coerce_pid_rejects_overflow_values():
+    assert setup._coerce_pid(2**31) is None
+    assert setup._coerce_pid(2**32 - 1) is None
+    assert setup._coerce_pid(0) is None
+    assert setup._coerce_pid(-1) is None
+    assert setup._coerce_pid(12345) == 12345
+
+
+def test_kill_all_ollama_servers_ignores_overflow_pids(monkeypatch):
+    calls = {"count": 0}
+
+    def fake_find():
+        calls["count"] += 1
+        return [2**31 + 5, 4242] if calls["count"] == 1 else []
+
+    monkeypatch.setattr(setup, "_stop_snap_ollama", lambda: None)
+    monkeypatch.setattr(setup, "_stop_systemd_ollama", lambda: None)
+    monkeypatch.setattr(setup, "_find_ollama_serve_pids", fake_find)
+    monkeypatch.setattr(setup, "_pids_listening_on_port", lambda _port: [])
+    killed = []
+    monkeypatch.setattr(setup, "_signal_pid", lambda pid, sig: killed.append((pid, sig)))
+    setup.kill_all_ollama_servers(timeout_sec=0.05)
+    assert killed == [(4242, setup.signal.SIGTERM)]
+
+
 def test_kill_all_ollama_servers_sends_sigterm(monkeypatch):
     calls = {"count": 0}
 
@@ -164,7 +199,7 @@ def test_kill_all_ollama_servers_sends_sigterm(monkeypatch):
     monkeypatch.setattr(setup, "_pids_listening_on_port", lambda _port: [])
     monkeypatch.setattr(setup, "_find_ollama_serve_pids", fake_find)
     killed = []
-    monkeypatch.setattr(setup.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    monkeypatch.setattr(setup, "_signal_pid", lambda pid, sig: killed.append((pid, sig)))
     setup.kill_all_ollama_servers(timeout_sec=0.2)
     assert (100, setup.signal.SIGTERM) in killed
     assert (200, setup.signal.SIGTERM) in killed

@@ -25,6 +25,7 @@ KEGG_ORGANISM_NAMES = {
     'msm': 'Mycobacterium smegmatis',
     'mory': 'Mycobacterium orygis',
     'mmar': 'Mycobacterium marinum',
+    'mmi': 'Mycobacterium marinum',
     'tcr': 'Trypanosoma cruzi',
     'eco': 'Escherichia coli',
 }
@@ -78,7 +79,29 @@ KEGG_ORGANISM_PROFILE_HINTS = {
         'canonical_name': 'Mycobacterium marinum',
         'species_name': 'Mycobacterium marinum',
         'strain': None,
-        'synonyms': ('mmar',),
+        'synonyms': ('mmar', 'mmi'),
+        'species_synonyms': ('m marinum', 'm. marinum'),
+        'strain_synonyms': (),
+        'locus_regex': r'^MMAR_\d+$',
+        'search_terms': ('Mycobacterium marinum', 'M. marinum'),
+        'target_patterns': (
+            r'Mycobacterium\smarinum',
+            r'M.\smarinum',
+        ),
+        'off_target_patterns': (
+            r'\bEscherichia\s+coli\b',
+            r'\bE\.?\s*coli\b',
+        ),
+        'excluded_species_patterns': (),
+    },
+    # KEGG SSDB currently reports M. marinum M as organism code "mmi"
+    # (locus MMAR_*), while older references use "mmar".
+    'mmi': {
+        'profile_id': 'kegg-mmi',
+        'canonical_name': 'Mycobacterium marinum',
+        'species_name': 'Mycobacterium marinum',
+        'strain': None,
+        'synonyms': ('mmi', 'mmar'),
         'species_synonyms': ('m marinum', 'm. marinum'),
         'strain_synonyms': (),
         'locus_regex': r'^MMAR_\d+$',
@@ -113,6 +136,23 @@ KEGG_ORGANISM_PROFILE_HINTS = {
             r'Trypanosoma\sbrucei',
             r'T.\sbrucei',
         ),
+        'excluded_species_patterns': (),
+    },
+    'eco': {
+        'profile_id': 'kegg-eco',
+        'canonical_name': 'Escherichia coli',
+        'species_name': 'Escherichia coli',
+        'strain': None,
+        'synonyms': ('eco',),
+        'species_synonyms': ('e coli', 'e. coli'),
+        'strain_synonyms': (),
+        'locus_regex': r'^b\d{4}$',
+        'search_terms': ('Escherichia coli', 'E. coli'),
+        'target_patterns': (
+            r'Escherichia\scoli',
+            r'E.\scoli',
+        ),
+        'off_target_patterns': (),
         'excluded_species_patterns': (),
     },
 }
@@ -232,10 +272,12 @@ def lookup_top_ortholog(kegg_organism_code, gene_locus, cache_dir='./.cache', *,
 
 def lookup_best_profiled_ortholog(
     kegg_organism_code, gene_locus, cache_dir='./.cache', *,
-    fetch_html=None, min_identity=MIN_ORTHOLOG_IDENTITY,
+    fetch_html=None, min_identity=MIN_ORTHOLOG_IDENTITY, extra_profiles=None,
 ):
     hits = _fetch_ssdb_hits(kegg_organism_code, gene_locus, cache_dir, fetch_html=fetch_html)
-    return select_best_profiled_ortholog(hits, min_identity=min_identity)
+    return select_best_profiled_ortholog(
+        hits, min_identity=min_identity, extra_profiles=extra_profiles,
+    )
 
 
 def build_manual_ortholog_hit(profile, locus, name=None):
@@ -252,8 +294,16 @@ def build_manual_ortholog_hit(profile, locus, name=None):
     )
 
 
-def profile_for_kegg_organism(kegg_code):
+def profile_for_kegg_organism(kegg_code, *, extra_profiles=None):
     kegg_code = kegg_code.lower()
+    for item in extra_profiles or ():
+        if isinstance(item, organisms.OrganismProfile):
+            if item.kegg_organism_code and item.kegg_organism_code.lower() == kegg_code:
+                return item
+        elif isinstance(item, dict):
+            code = item.get('kegg_organism_code')
+            if code and str(code).lower() == kegg_code:
+                return organisms.profile_from_mapping(item)
     for profile in organisms.PROFILES:
         if profile.kegg_organism_code and profile.kegg_organism_code.lower() == kegg_code:
             return profile
@@ -298,7 +348,7 @@ def profile_for_kegg_organism(kegg_code):
     )
 
 
-def supports_ortholog_literature_pass(hit):
+def supports_ortholog_literature_pass(hit, *, extra_profiles=None):
     """Whether the ortholog organism has enough profile metadata for a paper pass."""
     if hit is None:
         return False
@@ -308,15 +358,24 @@ def supports_ortholog_literature_pass(hit):
     for profile in organisms.PROFILES:
         if profile.kegg_organism_code and profile.kegg_organism_code.lower() == code:
             return True
+    for item in extra_profiles or ():
+        if isinstance(item, organisms.OrganismProfile):
+            kegg = item.kegg_organism_code
+        elif isinstance(item, dict):
+            kegg = item.get('kegg_organism_code')
+        else:
+            continue
+        if kegg and str(kegg).lower() == code:
+            return True
     return False
 
 
-def select_best_profiled_ortholog(hits, *, min_identity=MIN_ORTHOLOG_IDENTITY):
+def select_best_profiled_ortholog(hits, *, min_identity=MIN_ORTHOLOG_IDENTITY, extra_profiles=None):
     """Pick the highest-SW-score hit that has a saved profile/hint and clears the
     identity floor. Returns None when no hit qualifies."""
     qualifying = [
         hit for hit in hits
-        if supports_ortholog_literature_pass(hit)
+        if supports_ortholog_literature_pass(hit, extra_profiles=extra_profiles)
         and hit.identity is not None
         and hit.identity >= min_identity
     ]

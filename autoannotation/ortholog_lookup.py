@@ -7,6 +7,29 @@ from . import targets
 from .targets import TARGET_WARNING_MESSAGES
 
 
+def _profile_lookup_from_env():
+    """Prefer Mongo/user profile store when configured so UI-saved kegg codes work."""
+    try:
+        from coordinator.profile_store import (
+            BuiltinAndUserProfileStore,
+            user_profile_store_from_env,
+        )
+    except Exception:
+        return None
+    try:
+        store = BuiltinAndUserProfileStore(user_store=user_profile_store_from_env())
+    except Exception:
+        return None
+
+    def lookup(profile_id):
+        try:
+            return store.get_profile(profile_id)
+        except Exception:
+            return None
+
+    return lookup
+
+
 def lookup_for_target(
     *,
     profile=None,
@@ -14,6 +37,7 @@ def lookup_for_target(
     strain=None,
     locus=None,
     cache_dir='./.cache',
+    profile_lookup=None,
 ):
     target = targets.resolve_annotation_target(
         profile_identifier=profile,
@@ -21,6 +45,7 @@ def lookup_for_target(
         strain_identifier=strain,
         locus=locus,
         name=None,
+        profile_lookup=profile_lookup,
     )
     kegg_code = target.profile.kegg_organism_code
     gene_locus = target.resolved_locus
@@ -126,6 +151,7 @@ def main(argv=None):
         strain=args.strain,
         locus=locus,
         cache_dir=args.cache_dir,
+        profile_lookup=_profile_lookup_from_env(),
     )
     print(json.dumps(result, indent=2))
     return 0 if result['ortholog_top_hit'] is not None else 1

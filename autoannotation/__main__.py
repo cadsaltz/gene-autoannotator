@@ -19,6 +19,7 @@ def main(
     cache_supplied_name=False,
     allow_ortholog_fallback=False,
     ortholog_override=None,
+    ortholog_catalog=None,
     quiet=None,
 ):
     if quiet is None:
@@ -40,6 +41,7 @@ def main(
         cache_supplied_name=cache_supplied_name,
         allow_ortholog_fallback=allow_ortholog_fallback,
         ortholog_override=ortholog_override,
+        ortholog_catalog=ortholog_catalog,
     )
 
     if result is None:

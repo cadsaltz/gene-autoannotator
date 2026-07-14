@@ -183,6 +183,7 @@ PROFILES = (
             r'\bEscherichia\s+coli\b',
             r'\bE\.?\s*coli\b',
         ),
+        kegg_organism_code='mory',
     ),
     OrganismProfile(
         profile_id="mmarinum-m",
@@ -215,6 +216,7 @@ PROFILES = (
             r'\bEscherichia\s+coli\b',
             r'\bE\.?\s*coli\b',
         ),
+        kegg_organism_code='mmi',
     ),
     OrganismProfile(
         profile_id="tcruzi-clbrener",

@@ -53,7 +53,11 @@ def _pmc_mapping_cache_key(profile, target):
 
 
 def _profile_lookup_from_config(profile_config):
-    if not profile_config or profile_config.get('source') == 'builtin':
+    # Any attached profile_config is the job-time snapshot of the profile the
+    # coordinator resolved (including Mongo overrides of builtins). Always use
+    # it when present — do not fall back to code defaults just because
+    # source == 'builtin'.
+    if not profile_config:
         return None
 
     identifiers = [
@@ -76,6 +80,16 @@ def _profile_lookup_from_config(profile_config):
         return None
 
     return lookup_profile
+
+
+def _resolve_profile_from_catalog(profile_id, *, profile_config=None, ortholog_catalog=None):
+    """Resolve a profile id from the job snapshot, then code builtins."""
+    if profile_config and profile_config.get('profile_id') == profile_id:
+        return organisms.profile_from_mapping(profile_config)
+    for document in ortholog_catalog or ():
+        if document.get('profile_id') == profile_id:
+            return organisms.profile_from_mapping(document)
+    return organisms.resolve_profile(profile_id)
 
 
 def run_paper_annotation_pass(
@@ -255,7 +269,7 @@ class OrthologDecision:
 
 def _decide_ortholog_action(
     *, allow_ortholog_fallback, ortholog_override, cumulative_relevance,
-    kegg_code, gene, cache_dir,
+    kegg_code, gene, cache_dir, profile_config=None, ortholog_catalog=None,
 ):
     """Decide whether/how to run the ortholog fallback. May perform a cache/network
     SSDB lookup on the automatic path."""
@@ -263,7 +277,11 @@ def _decide_ortholog_action(
         return OrthologDecision(hit=None, skipped_reason='fallback_disabled_for_job')
 
     if ortholog_override:
-        override_profile = organisms.resolve_profile(ortholog_override['profile_id'])
+        override_profile = _resolve_profile_from_catalog(
+            ortholog_override['profile_id'],
+            profile_config=profile_config,
+            ortholog_catalog=ortholog_catalog,
+        )
         hit = orthology.build_manual_ortholog_hit(
             override_profile,
             ortholog_override['locus'],
@@ -277,7 +295,12 @@ def _decide_ortholog_action(
     if not (kegg_code and gene):
         return OrthologDecision(hit=None, skipped_reason='no_ortholog_found')
 
-    hit = orthology.lookup_best_profiled_ortholog(kegg_code, gene, cache_dir=cache_dir)
+    hit = orthology.lookup_best_profiled_ortholog(
+        kegg_code,
+        gene,
+        cache_dir=cache_dir,
+        extra_profiles=ortholog_catalog,
+    )
     if hit is None:
         return OrthologDecision(hit=None, skipped_reason='no_profiled_ortholog')
     return OrthologDecision(hit=hit, skipped_reason=None)
@@ -289,6 +312,7 @@ def get_gene_annotation(
     allow_online_name_lookup=True, refresh_gene_name_cache=False,
     cache_supplied_name=False,
     allow_ortholog_fallback=False, ortholog_override=None,
+    ortholog_catalog=None,
 ):
     if locus is None and gene is not None:
         locus = gene
@@ -435,6 +459,8 @@ def get_gene_annotation(
         kegg_code=profile_context.kegg_organism_code,
         gene=gene,
         cache_dir=cache_dir,
+        profile_config=profile_config,
+        ortholog_catalog=ortholog_catalog,
     )
     ortholog_hit = decision.hit
     ortholog_pass_metadata = metadata.build_ortholog_pass_metadata(
@@ -458,7 +484,10 @@ def get_gene_annotation(
             allow_online_lookup=allow_online_name_lookup,
             target_gene_name=name,
         )
-        ortholog_profile = orthology.profile_for_kegg_organism(ortholog_hit.source_organism_code)
+        ortholog_profile = orthology.profile_for_kegg_organism(
+            ortholog_hit.source_organism_code,
+            extra_profiles=ortholog_catalog,
+        )
         ortholog_context = {
             'target_gene_id': gene,
             'target_gene_name': name or display_gene,

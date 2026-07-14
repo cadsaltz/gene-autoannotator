@@ -87,6 +87,7 @@ def _run_inprocess(request: AnnotationJobRequest, annotation_main=None):
             if request.ortholog_override is not None
             else None
         ),
+        ortholog_catalog=list(request.ortholog_profile_catalog or []),
     )
 
 

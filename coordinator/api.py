@@ -144,6 +144,7 @@ PROFILE_CONFIG_FIELDS = (
     "target_patterns",
     "off_target_patterns",
     "excluded_species_patterns",
+    "kegg_organism_code",
 )
 
 
@@ -345,6 +346,23 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    def _serialize_profile_fields(profile):
+        custom = getattr(profile, "custom_fields", ()) or ()
+        custom_fields = [
+            field_def.to_dict() if hasattr(field_def, "to_dict") else dict(field_def)
+            for field_def in custom
+        ]
+        raw_default = getattr(profile, "default_field_ortholog", ()) or ()
+        if isinstance(raw_default, dict):
+            default_field_ortholog = {
+                key: bool(value) for key, value in raw_default.items()
+            }
+        else:
+            default_field_ortholog = {
+                key: bool(value) for key, value in raw_default
+            }
+        return custom_fields, default_field_ortholog
+
     def _profile_config_from_target(target):
         config = {
             field: getattr(target.profile, field)
@@ -353,8 +371,54 @@ def create_app(
         for field, value in config.items():
             if isinstance(value, tuple):
                 config[field] = list(value)
+        custom_fields, default_field_ortholog = _serialize_profile_fields(target.profile)
+        config["custom_fields"] = custom_fields
+        config["annotation_fields"] = list(custom_fields)
+        config["default_field_ortholog"] = default_field_ortholog
+        # Prefer the document source from the store (builtin overrides stay "builtin"
+        # for Reset UX) but still ship a complete config so workers use the override.
         config["source"] = target.profile_source
         return config
+
+    def _ortholog_profile_catalog():
+        """Snapshot every kegg-coded profile so workers can select ortholog sources
+        without a live Mongo round-trip. Includes frontend-saved organisms."""
+        catalog = []
+        try:
+            profiles = profiles_store.list_profiles()
+        except Exception:  # noqa: BLE001 - catalog is best-effort enrichment
+            return catalog
+        for document in profiles:
+            kegg = document.get("kegg_organism_code")
+            if not kegg:
+                continue
+            catalog.append({
+                "profile_id": document.get("profile_id"),
+                "canonical_name": document.get("canonical_name"),
+                "species_name": document.get("species_name"),
+                "strain": document.get("strain"),
+                "synonyms": list(document.get("synonyms") or []),
+                "species_synonyms": list(document.get("species_synonyms") or []),
+                "strain_synonyms": list(document.get("strain_synonyms") or []),
+                "locus_regex": document.get("locus_regex") or "",
+                "search_terms": list(document.get("search_terms") or []),
+                "target_patterns": list(document.get("target_patterns") or []),
+                "off_target_patterns": list(document.get("off_target_patterns") or []),
+                "excluded_species_patterns": list(
+                    document.get("excluded_species_patterns") or []
+                ),
+                "kegg_organism_code": kegg,
+                "custom_fields": list(
+                    document.get("custom_fields")
+                    or document.get("annotation_fields")
+                    or []
+                ),
+                "default_field_ortholog": dict(
+                    document.get("default_field_ortholog") or {}
+                ),
+                "source": document.get("source") or "user",
+            })
+        return catalog
 
     def _stored_request_for_target(request, target):
         stored_request = request.model_dump()
@@ -363,8 +427,11 @@ def create_app(
             stored_request["organism"] = None
             stored_request["strain"] = None
         stored_request["target_preflight"] = target.to_preflight_dict()
-        if request.profile or target.profile_source == "user":
+        # Always attach the resolved profile snapshot for named profiles (and
+        # user/ad-hoc cases) so annotation uses Mongo overrides, not code defaults.
+        if request.profile or target.profile_source in {"user", "builtin"}:
             stored_request["profile_config"] = _profile_config_from_target(target)
+        stored_request["ortholog_profile_catalog"] = _ortholog_profile_catalog()
         return stored_request
 
     def _invalid_target_detail(target):
@@ -387,23 +454,27 @@ def create_app(
         raise HTTPException(status_code=422, detail=detail)
 
     def _reject_unresolvable_ortholog_override(override):
-        # Mirror the resolution the annotation pipeline uses for a manual
-        # override (autoannotation._decide_ortholog_action -> resolve_profile)
-        # so the API rejects up front instead of failing mid-run.
+        # Resolve via the same profile store the UI edits (builtin + Mongo),
+        # then fall back to code builtins for CLI-only organisms.
         if override is None:
             return
+        profile_id = override.profile_id
+        stored = _get_profile_for_target(profile_id)
+        if stored is not None:
+            return
         try:
-            organisms.resolve_profile(override.profile_id)
+            organisms.resolve_profile(profile_id)
         except organisms.UnknownOrganismError as exc:
             raise HTTPException(
                 status_code=422,
-                detail=f"Unknown ortholog override profile: {override.profile_id}",
+                detail=f"Unknown ortholog override profile: {profile_id}",
             ) from exc
 
     def _public_job_record(job):
         public_job = dict(job)
         public_request = dict(public_job.get("request") or {})
         public_request.pop("profile_config", None)
+        public_request.pop("ortholog_profile_catalog", None)
         public_job["request"] = public_request
         return public_job
 

@@ -266,6 +266,36 @@ def start_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
     return procs
 
 
+_MAX_PID_CACHE: int | None = None
+
+
+def _max_pid() -> int:
+    """Upper bound for valid Linux PIDs (signed 32-bit os.kill limit)."""
+    global _MAX_PID_CACHE
+    if _MAX_PID_CACHE is not None:
+        return _MAX_PID_CACHE
+    try:
+        value = int(Path("/proc/sys/kernel/pid_max").read_text().strip())
+    except Exception:
+        value = 2**22  # common Linux default
+    _MAX_PID_CACHE = value
+    return value
+
+
+def _coerce_pid(raw: str | int, *, exclude: set[int] | None = None) -> int | None:
+    """Return a killable PID or None when the token is not a real process id."""
+    try:
+        pid = int(raw)
+    except (TypeError, ValueError):
+        return None
+    # os.kill raises OverflowError for values outside signed 32-bit pid_t.
+    if pid <= 0 or pid >= 2**31 or pid > _max_pid():
+        return None
+    if exclude and pid in exclude:
+        return None
+    return pid
+
+
 def _find_pgrep_pids(pattern: str) -> list[int]:
     if shutil.which("pgrep") is None:
         return []
@@ -277,11 +307,12 @@ def _find_pgrep_pids(pattern: str) -> list[int]:
     )
     if result.returncode != 0:
         return []
+    skip = {os.getpid()}
     pids: list[int] = []
     for line in result.stdout.splitlines():
-        token = line.strip()
-        if token.isdigit():
-            pids.append(int(token))
+        pid = _coerce_pid(line.strip(), exclude=skip)
+        if pid is not None:
+            pids.append(pid)
     return pids
 
 
@@ -299,6 +330,30 @@ def _find_ollama_serve_pids() -> list[int]:
     return sorted(pids)
 
 
+def _pids_from_fuser_output(text: str, *, port: int) -> list[int]:
+    """Parse ``fuser`` output without treating the port itself as a PID.
+
+    Typical stderr: ``11434/tcp:            12345 12346``
+    A naive digit scan would also pick up ``11434`` (the port).
+    """
+    skip = {os.getpid(), port}
+    pids: list[int] = []
+    # Prefer the PID list after "port/proto:"
+    for match in re.finditer(rf"{port}\s*/\s*tcp\s*:\s*([^\n]*)", text, flags=re.IGNORECASE):
+        for token in match.group(1).split():
+            pid = _coerce_pid(token.rstrip("m"), exclude=skip)  # fuser may suffix 'm'
+            if pid is not None:
+                pids.append(pid)
+    if pids:
+        return sorted(set(pids))
+    # Fallback: any digit tokens, still excluding the port / our pid
+    for token in text.replace("/", " ").replace(":", " ").split():
+        pid = _coerce_pid(token.rstrip("m"), exclude=skip)
+        if pid is not None:
+            pids.append(pid)
+    return sorted(set(pids))
+
+
 def _pids_listening_on_port(port: int) -> list[int]:
     if shutil.which("fuser") is not None:
         result = subprocess.run(
@@ -307,12 +362,9 @@ def _pids_listening_on_port(port: int) -> list[int]:
             capture_output=True,
             text=True,
         )
-        pids: list[int] = []
-        for token in (result.stdout + result.stderr).replace("/", " ").split():
-            if token.isdigit():
-                pids.append(int(token))
+        pids = _pids_from_fuser_output(result.stdout + result.stderr, port=port)
         if pids:
-            return sorted(set(pids))
+            return pids
     if shutil.which("ss") is not None:
         result = subprocess.run(
             ["ss", "-ltnp", f"sport = :{port}"],
@@ -320,12 +372,22 @@ def _pids_listening_on_port(port: int) -> list[int]:
             capture_output=True,
             text=True,
         )
-        pids = []
+        skip = {os.getpid()}
+        pids: list[int] = []
         for match in re.finditer(r"pid=(\d+)", result.stdout):
-            pids.append(int(match.group(1)))
+            pid = _coerce_pid(match.group(1), exclude=skip)
+            if pid is not None:
+                pids.append(pid)
         if pids:
             return sorted(set(pids))
     return []
+
+
+def _signal_pid(pid: int, sig: int) -> None:
+    try:
+        os.kill(pid, sig)
+    except (ProcessLookupError, PermissionError, OverflowError):
+        return
 
 
 def _stop_systemd_ollama() -> None:
@@ -388,18 +450,30 @@ def kill_all_ollama_servers(*, timeout_sec: float = 10.0) -> None:
     if not pids:
         return
 
+    # Drop ports that looked like PIDs, our own process, and impossible values.
+    self_pid = os.getpid()
+    pids = {
+        pid
+        for pid in pids
+        if _coerce_pid(pid, exclude={self_pid}) is not None
+    }
+    if not pids:
+        return
+
     log.info("Stopping %s existing Ollama-related process(es)", len(pids))
     for pid in sorted(pids):
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            continue
+        _signal_pid(pid, signal.SIGTERM)
 
     deadline = time.monotonic() + timeout_sec
     while time.monotonic() < deadline:
         remaining = set(_find_ollama_serve_pids())
         for port in ports:
             remaining.update(_pids_listening_on_port(port))
+        remaining = {
+            pid
+            for pid in remaining
+            if _coerce_pid(pid, exclude={self_pid}) is not None
+        }
         if not remaining:
             return
         time.sleep(0.1)
@@ -407,11 +481,13 @@ def kill_all_ollama_servers(*, timeout_sec: float = 10.0) -> None:
     remaining = set(_find_ollama_serve_pids())
     for port in ports:
         remaining.update(_pids_listening_on_port(port))
+    remaining = {
+        pid
+        for pid in remaining
+        if _coerce_pid(pid, exclude={self_pid}) is not None
+    }
     for pid in sorted(remaining):
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            continue
+        _signal_pid(pid, signal.SIGKILL)
 
 
 def _port_is_open(port: int) -> bool:

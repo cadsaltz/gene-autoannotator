@@ -41,6 +41,10 @@ class AnnotationJobRequest(BaseModel):
     refresh_gene_name_cache: bool = False
     cache_supplied_name: bool = False
     profile_config: dict[str, Any] | None = Field(default=None, exclude=True)
+    ortholog_profile_catalog: list[dict[str, Any]] = Field(
+        default_factory=list,
+        exclude=True,
+    )
     locus_regex: str | None = None
     search_terms: list[str] = Field(default_factory=list)
     target_patterns: list[str] = Field(default_factory=list)
