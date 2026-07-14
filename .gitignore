@@ -26,3 +26,7 @@ docs/
 gen_json/
 test_json/
 trust_json/
+
+bench_outputs/
+reports/
+tests/fixtures/
