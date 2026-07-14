@@ -118,22 +118,29 @@ def ensure_worker_env(
     cli_overrides: dict | None = None,
     interactive: bool | None = None,
     skip_fleet_config: bool = False,
+    require_coordinator: bool = True,
 ) -> None:
     cli_overrides = cli_overrides or {}
     path = default_env_path()
     is_interactive = sys.stdin.isatty() if interactive is None else interactive
 
+    coord_default = None if require_coordinator else "http://127.0.0.1:9"
+    token_default = None if require_coordinator else "unused"
+    mem_default = None if require_coordinator else "64"
+
     url, _ = resolve_value(
         "COORDINATOR_URL",
         env_file=path,
         cli_value=cli_overrides.get("COORDINATOR_URL"),
-        prompt_fn=lambda _k, _d: _prompt_coordinator_url(),
+        prompt_fn=(lambda _k, _d: _prompt_coordinator_url()) if is_interactive and require_coordinator else None,
+        default=coord_default,
     )
     token, _ = resolve_value(
         "WORKER_API_TOKEN",
         env_file=path,
         cli_value=cli_overrides.get("WORKER_API_TOKEN"),
-        prompt_fn=lambda _k, _d: _prompt_token(),
+        prompt_fn=(lambda _k, _d: _prompt_token()) if is_interactive and require_coordinator else None,
+        default=token_default,
     )
 
     mem = cli_overrides.get("ANNOTATION_MEMORY_BUDGET_GB")
@@ -147,7 +154,12 @@ def ensure_worker_env(
             "ANNOTATION_MEMORY_BUDGET_GB",
             env_file=path,
             cli_value=None,
-            prompt_fn=lambda _k, _d: _format_memory_gb(prompt_memory_budget_gb()),
+            prompt_fn=(
+                (lambda _k, _d: _format_memory_gb(prompt_memory_budget_gb()))
+                if is_interactive and require_coordinator
+                else None
+            ),
+            default=mem_default,
         )
 
     os.environ.setdefault("COORDINATOR_URL", url)

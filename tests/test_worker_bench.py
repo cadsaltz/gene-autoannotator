@@ -143,6 +143,7 @@ def test_bench_configure_fleet_prompts_interactively(monkeypatch):
     assert captured["ensure_worker_env"] == {
         "interactive": False,
         "skip_fleet_config": True,
+        "require_coordinator": False,
     }
     assert captured["ensure_fleet_config"] == {"interactive": True}
 

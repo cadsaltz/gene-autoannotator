@@ -60,10 +60,41 @@ def test_bootstrap_writes_env_file(tmp_path, monkeypatch):
             c_slot_bytes=int(0.4 * 1024**3),
         ),
     )
-    bootstrap.ensure_worker_env(cli_overrides={})
+    bootstrap.ensure_worker_env(cli_overrides={}, interactive=True)
     from shared.env_persist import load_env_file
 
     saved = load_env_file(env_path)
     assert saved["COORDINATOR_URL"] == "http://192.168.1.10:8000"
     assert saved["WORKER_API_TOKEN"] == "dev-token"
     assert saved["ANNOTATION_MEMORY_BUDGET_GB"] == "24"
+
+
+def test_ensure_worker_env_without_coordinator_uses_defaults(tmp_path, monkeypatch):
+    env_path = tmp_path / "worker.env"
+    monkeypatch.setattr(bootstrap, "default_env_path", lambda: env_path)
+    monkeypatch.delenv("COORDINATOR_URL", raising=False)
+    monkeypatch.delenv("WORKER_API_TOKEN", raising=False)
+    monkeypatch.delenv("ANNOTATION_MEMORY_BUDGET_GB", raising=False)
+    monkeypatch.setattr(bootstrap, "ensure_model_mode", lambda **kwargs: "performance")
+    monkeypatch.setattr(
+        bootstrap.fleet_setup,
+        "ensure_fleet_config",
+        lambda **kwargs: None,
+    )
+
+    def _should_not_prompt(*_a, **_k):
+        raise AssertionError("prompt should not run when require_coordinator=False")
+
+    monkeypatch.setattr(bootstrap, "_prompt_coordinator_url", _should_not_prompt)
+    monkeypatch.setattr(bootstrap, "_prompt_token", _should_not_prompt)
+    monkeypatch.setattr(bootstrap, "prompt_memory_budget_gb", _should_not_prompt)
+
+    bootstrap.ensure_worker_env(
+        interactive=False,
+        require_coordinator=False,
+        skip_fleet_config=True,
+    )
+
+    assert os.environ["COORDINATOR_URL"] == "http://127.0.0.1:9"
+    assert os.environ["WORKER_API_TOKEN"] == "unused"
+    assert os.environ["ANNOTATION_MEMORY_BUDGET_GB"] == "64"
