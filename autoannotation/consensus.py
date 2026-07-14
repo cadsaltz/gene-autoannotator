@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -11,7 +12,6 @@ from typing import Any, Callable
 from . import field_defs
 from . import llms
 
-MIN_AGREEMENT = 2
 STRING_PARAPHRASE_JACCARD = 0.35
 ARRAY_PARAPHRASE_JACCARD = 0.50
 FUZZY_DETERMINISTIC_STRING = 0.85
@@ -21,6 +21,17 @@ POST_LLM_MIN_EXCERPT_OVERLAP = 1
 POST_LLM_MAX_EXTRA_TOKENS = 2
 
 BatchMerger = Callable[[list[dict[str, Any]], list[str]], dict[str, Any]]
+
+
+def agreement_threshold(n_candidates: int) -> int:
+    """Minimum agreeing extractors: ceil(n/2). With 2 extractors, 1 is enough."""
+    if n_candidates < 1:
+        return 1
+    return max(1, math.ceil(n_candidates / 2))
+
+
+# Backward-compatible alias for prototypes/docs that expected a fixed 2-of-N bar.
+MIN_AGREEMENT = 2
 
 
 @dataclass(frozen=True)
@@ -88,39 +99,51 @@ def _category_set(value: Any) -> frozenset[str]:
     )
 
 
-def _majority_exact(values: list[Any], *, normalizer=lambda v: v) -> tuple[Any | None, str]:
+def _majority_exact(
+    values: list[Any],
+    *,
+    threshold: int,
+    normalizer=lambda v: v,
+) -> tuple[Any | None, str]:
     if not values:
         return None, 'all_null'
     normalized = [normalizer(value) for value in values]
     counts = Counter(normalized)
     value, count = counts.most_common(1)[0]
-    if count >= MIN_AGREEMENT:
+    tied_winners = sum(1 for item_count in counts.values() if item_count == count)
+    if count >= threshold and tied_winners == 1:
         for original in values:
             if normalizer(original) == value:
                 return original, f'{count}/{len(values)}_exact'
-    if len(values) == 1:
+    if len(values) == 1 and threshold > 1:
         return None, 'lone_non_null_rejected'
     return None, 'insufficient_exact_agreement'
 
 
-def _majority_boolean(values: list[bool]) -> tuple[bool | None, str]:
+def _majority_boolean(values: list[bool], *, threshold: int) -> tuple[bool | None, str]:
     if not values:
         return None, 'all_null'
     counts = Counter(values)
-    if counts.get(True, 0) >= MIN_AGREEMENT:
-        return True, f'{counts[True]}/{len(values)}_true'
-    if counts.get(False, 0) >= MIN_AGREEMENT:
-        return False, f'{counts[False]}/{len(values)}_false'
-    if len(values) == 1:
+    true_count = counts.get(True, 0)
+    false_count = counts.get(False, 0)
+    if true_count >= threshold and true_count > false_count:
+        return True, f'{true_count}/{len(values)}_true'
+    if false_count >= threshold and false_count > true_count:
+        return False, f'{false_count}/{len(values)}_false'
+    if len(values) == 1 and threshold > 1:
         return None, 'lone_non_null_rejected'
     return None, 'boolean_conflict'
 
 
-def _array_intersection(values: list[list[str]]) -> tuple[list[str] | None, str]:
+def _array_intersection(
+    values: list[list[str]],
+    *,
+    threshold: int,
+) -> tuple[list[str] | None, str]:
     if not values:
         return None, 'all_null'
     sets = [_category_set(value) for value in values]
-    exact, reason = _majority_exact(values, normalizer=_category_set)
+    exact, reason = _majority_exact(values, threshold=threshold, normalizer=_category_set)
     if exact is not None:
         return sorted(_category_set(exact)), reason
     best_jaccard = 0.0
@@ -134,10 +157,10 @@ def _array_intersection(values: list[list[str]]) -> tuple[list[str] | None, str]
             if jaccard > best_jaccard:
                 best_jaccard = jaccard
                 best_inter = sets[i] & sets[j]
-    if best_inter is not None and best_jaccard >= 0.8:
+    if best_inter is not None and best_jaccard >= 0.8 and threshold <= 2:
         inter = sorted(best_inter)
         return (inter if inter else None), f'2/{len(values)}_jaccard_intersection'
-    if len(values) == 1:
+    if len(values) == 1 and threshold > 1:
         return None, 'lone_non_null_rejected'
     return None, 'array_conflict'
 
@@ -150,6 +173,7 @@ def _merge_field_rules_only(
     expected_name: str,
 ) -> tuple[Any | None, str, bool]:
     non_null = _non_null_values(values)
+    threshold = agreement_threshold(len(values))
 
     if field.kind == 'identity':
         if field.key == 'gene_id':
@@ -159,18 +183,30 @@ def _merge_field_rules_only(
     if not non_null:
         return None, 'all_null', False
 
+    if len(non_null) < threshold:
+        if len(non_null) == 1:
+            return None, 'lone_non_null_rejected', False
+        return None, 'insufficient_agreement', False
+
     if len(non_null) == 1:
-        return None, 'lone_non_null_rejected', False
+        return non_null[0], 'lone_non_null_accepted', False
 
     if field.kind == 'boolean':
-        value, reason = _majority_boolean([bool(v) for v in non_null])
+        value, reason = _majority_boolean([bool(v) for v in non_null], threshold=threshold)
         return value, reason, False
 
     if field.kind == 'array':
-        value, reason = _array_intersection([list(v) for v in non_null])
+        value, reason = _array_intersection(
+            [list(v) for v in non_null],
+            threshold=threshold,
+        )
         return value, reason, value is None and reason == 'array_conflict'
 
-    value, reason = _majority_exact(non_null, normalizer=_normalize_string)
+    value, reason = _majority_exact(
+        non_null,
+        threshold=threshold,
+        normalizer=_normalize_string,
+    )
     return value, reason, value is None and reason == 'insufficient_exact_agreement'
 
 

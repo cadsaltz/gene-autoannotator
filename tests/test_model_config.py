@@ -23,6 +23,7 @@ def test_model_config_defaults_to_performance_models(monkeypatch):
     assert configured.MODEL_SUMMARY == [
         "qwen3:14b",
         "gemma3:12b",
+        "mistral-nemo:12b",
     ]
     assert configured.MODEL_CONSENSUS == "qwen3:8b"
     assert configured.MODEL_AGGREGATION == "gemma3:27b"
@@ -34,6 +35,7 @@ def test_model_config_can_use_lite_mode(monkeypatch):
     assert configured.MODEL_SUMMARY == [
         "qwen3.5:0.8b",
         "gemma3:1b",
+        "llama3.2:1b",
     ]
     assert configured.MODEL_CONSENSUS == "qwen3:0.6b"
     assert configured.MODEL_AGGREGATION == "qwen3:1.7b"
@@ -45,6 +47,7 @@ def test_model_config_can_use_nano_mode(monkeypatch):
     assert configured.MODEL_SUMMARY == [
         "qwen3:0.6b",
         "qwen2.5:0.5b",
+        "gemma3:270m",
     ]
     assert configured.MODEL_CONSENSUS == "gemma3:270m"
     assert configured.MODEL_AGGREGATION == "gemma3:1b"

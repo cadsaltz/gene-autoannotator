@@ -1,6 +1,7 @@
 from autoannotation import organisms
 from autoannotation.consensus import (
     DEFAULT_FIELD_SPECS,
+    agreement_threshold,
     apply_fuzzy_deterministic_strings,
     deterministic_section_consensus,
     filter_llm_eligible_fields,
@@ -45,7 +46,15 @@ CANDIDATE_C = {
 }
 
 
-def test_deterministic_lone_non_null_rejected():
+def test_agreement_threshold_is_ceil_half():
+    assert agreement_threshold(2) == 1
+    assert agreement_threshold(3) == 2
+    assert agreement_threshold(4) == 2
+    assert agreement_threshold(5) == 3
+    assert agreement_threshold(6) == 3
+
+
+def test_deterministic_lone_non_null_rejected_with_three_extractors():
     lone = [{**CANDIDATE_A, 'drug_susc_impact': 'Confers rifampicin resistance.'}, CANDIDATE_B, CANDIDATE_C]
     merged, provenance, unresolved = deterministic_section_consensus(
         lone,
@@ -55,6 +64,22 @@ def test_deterministic_lone_non_null_rejected():
     )
     assert merged['drug_susc_impact'] is None
     assert provenance['drug_susc_impact'] == 'lone_non_null_rejected'
+    assert 'drug_susc_impact' not in unresolved
+
+
+def test_deterministic_lone_non_null_accepted_with_two_extractors():
+    lone = [
+        {**CANDIDATE_A, 'drug_susc_impact': 'Confers rifampicin resistance.'},
+        {**CANDIDATE_B, 'drug_susc_impact': None},
+    ]
+    merged, provenance, unresolved = deterministic_section_consensus(
+        lone,
+        expected_gene_id='Rv0001',
+        expected_name='dnaA',
+        fields=DEFAULT_FIELD_SPECS,
+    )
+    assert merged['drug_susc_impact'] == 'Confers rifampicin resistance.'
+    assert provenance['drug_susc_impact'] == 'lone_non_null_accepted'
     assert 'drug_susc_impact' not in unresolved
 
 
@@ -302,7 +327,7 @@ def test_regression_edge_function_three_unrelated_claims_null_without_llm():
     assert provenance['function'] == 'semantic_conflict'
 
 
-def test_regression_lone_drug_claim_rejected():
+def test_regression_lone_drug_claim_accepted_with_two_extractors():
     candidates = [
         {**CANDIDATE_A, 'drug_susc_impact': 'Confers rifampicin resistance.'},
         {**CANDIDATE_B, 'drug_susc_impact': None},
@@ -315,5 +340,23 @@ def test_regression_lone_drug_claim_rejected():
         batch_merger=None,
     )
     assert llm_calls == 0
-    assert merged['drug_susc_impact'] is None
-    assert provenance['drug_susc_impact'] == 'lone_non_null_rejected'
+    assert merged['drug_susc_impact'] == 'Confers rifampicin resistance.'
+    assert provenance['drug_susc_impact'] == 'lone_non_null_accepted'
+
+
+def test_four_extractor_majority_requires_two_matching():
+    """ceil(4/2)=2: two identical non-nulls beat two nulls."""
+    candidates = [
+        {**CANDIDATE_A, 'drug_susc_impact': 'Confers rifampicin resistance.'},
+        {**CANDIDATE_B, 'drug_susc_impact': 'Confers rifampicin resistance.'},
+        {**CANDIDATE_C, 'drug_susc_impact': None},
+        {**CANDIDATE_A, 'drug_susc_impact': None, 'essential_in_vitro': None},
+    ]
+    merged, provenance, unresolved = deterministic_section_consensus(
+        candidates,
+        expected_gene_id='Rv0001',
+        expected_name='dnaA',
+        fields=DEFAULT_FIELD_SPECS,
+    )
+    assert merged['drug_susc_impact'] == 'Confers rifampicin resistance.'
+    assert provenance['drug_susc_impact'].endswith('_exact')

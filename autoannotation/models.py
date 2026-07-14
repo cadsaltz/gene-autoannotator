@@ -6,11 +6,11 @@ import os
 # Model roles are deliberately separated: summary models create independent
 # section candidates, a consensus model reconciles each section, and an
 # aggregation model synthesizes across papers. Two or more summary models are
-# supported; the default performance stack uses two extractors from different
-# families.
+# supported; the default performance stack uses three extractors from different
+# families. Consensus requires ceil(n/2) agreement among those extractors.
 # === Performance models ===
 PERF_MODELS = {
-    'summary': ['qwen3:14b', 'gemma3:12b'],
+    'summary': ['qwen3:14b', 'gemma3:12b', 'mistral-nemo:12b'],
     'consensus': 'qwen3:8b',
     'aggregation': 'gemma3:27b',
 }
@@ -18,7 +18,7 @@ PERF_MODELS = {
 # === Lite models (~4GB total) ===
 # Use smaller, RAM-friendly alternatives that roughly mimic variety:
 LITE_MODELS = {
-    'summary': ['qwen3.5:0.8b', 'gemma3:1b'],
+    'summary': ['qwen3.5:0.8b', 'gemma3:1b', 'llama3.2:1b'],
     'consensus': 'qwen3:0.6b',
     'aggregation': 'qwen3:1.7b',
 }
@@ -27,7 +27,7 @@ LITE_MODELS = {
 # Infrastructure / router testing on ~8GB VRAM: two homogeneous Ollama servers
 # can each keep all four models warm. Not for production annotation quality.
 NANO_MODELS = {
-    'summary': ['qwen3:0.6b', 'qwen2.5:0.5b'],
+    'summary': ['qwen3:0.6b', 'qwen2.5:0.5b', 'gemma3:270m'],
     'consensus': 'gemma3:270m',
     'aggregation': 'gemma3:1b',
 }
