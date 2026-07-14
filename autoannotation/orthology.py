@@ -424,7 +424,8 @@ def resolve_ortholog_gene_name(
     if kegg_name and kegg_name != hit.source_gene_id and not _is_descriptive_kegg_name(kegg_name):
         return kegg_name
 
-    if _looks_like_gene_symbol(target_gene_name):
-        return target_gene_name.strip()
-
+    # Never borrow the *target* gene symbol/locus for ortholog PMC search.
+    # That pulls target-organism literature into the ortholog pass (and can
+    # even substitute a completely unrelated gene if name resolution is wrong).
+    # Prefer the ortholog locus when no clean ortholog symbol exists.
     return hit.source_gene_id

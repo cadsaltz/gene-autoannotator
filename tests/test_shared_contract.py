@@ -1,12 +1,27 @@
 from shared.job_contract import AnnotationJobRequest, OrthologOverride
 
 
-def test_job_request_round_trips_from_shared():
-    request = AnnotationJobRequest(profile="mtb-h37rv", locus="Rv0001")
-    dumped = request.model_dump()
-    assert dumped["profile"] == "mtb-h37rv"
-    assert dumped["locus"] == "Rv0001"
-    assert AnnotationJobRequest(**dumped).locus == "Rv0001"
+def test_job_request_model_dump_keeps_profile_snapshots():
+    """Worker subprocess serialization must retain Mongo field settings."""
+    request = AnnotationJobRequest(
+        profile="mtb-h37rv",
+        locus="Rv1734c",
+        profile_config={
+            "profile_id": "mtb-h37rv",
+            "kegg_organism_code": "mtu",
+            "default_field_ortholog": {"function": True, "functional_category": True},
+            "custom_fields": [{"key": "drug_susc_impact", "ortholog_allowed": True}],
+            "source": "builtin",
+        },
+        ortholog_profile_catalog=[{"profile_id": "msm-mc2155", "kegg_organism_code": "msm"}],
+    )
+    dumped = request.model_dump(mode="json")
+    assert dumped["profile_config"]["kegg_organism_code"] == "mtu"
+    assert dumped["profile_config"]["default_field_ortholog"]["functional_category"] is True
+    assert dumped["ortholog_profile_catalog"][0]["kegg_organism_code"] == "msm"
+    restored = AnnotationJobRequest(**dumped)
+    assert restored.profile_config["custom_fields"][0]["ortholog_allowed"] is True
+
 
 
 def test_job_request_requires_profile_or_organism():

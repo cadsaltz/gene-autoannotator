@@ -84,9 +84,11 @@ function AnnotationContent({ annotation }) {
                   <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#8a7340]">
                     From ortholog: {row.orthologBlock.sourceLabel}
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[#3d463f]">
-                    {row.orthologBlock.value}
-                  </p>
+                  {row.orthologBlock.value ? (
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[#3d463f]">
+                      {row.orthologBlock.value}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
             </div>

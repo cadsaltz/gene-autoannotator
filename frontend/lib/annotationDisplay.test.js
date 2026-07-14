@@ -69,6 +69,14 @@ test("getGeneratedFieldRows marks ortholog-derived fields from field_provenance"
           field_provenance: {
             function: "ortholog_derived",
           },
+          ortholog_fields: {
+            function: {
+              value: "Octanoyltransferase activity in M. orygis.",
+              source_organism: "Mycobacterium orygis",
+              source_gene_id: "MO_000001",
+              identity: 0.62,
+            },
+          },
         },
       },
     },
@@ -80,6 +88,9 @@ test("getGeneratedFieldRows marks ortholog-derived fields from field_provenance"
 
   assert.equal(functionRow.orthologDerived, true);
   assert.equal(categoryRow.orthologDerived, false);
+  // Same text as canonical value — show source chip only, not a duplicate paragraph.
+  assert.equal(functionRow.orthologBlock.value, null);
+  assert.ok(functionRow.orthologBlock.sourceLabel.includes("MO_000001"));
 });
 
 test("getMetadataRows extracts requested metadata fields", () => {

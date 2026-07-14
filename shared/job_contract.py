@@ -40,11 +40,10 @@ class AnnotationJobRequest(BaseModel):
     allow_online_name_lookup: bool = True
     refresh_gene_name_cache: bool = False
     cache_supplied_name: bool = False
-    profile_config: dict[str, Any] | None = Field(default=None, exclude=True)
-    ortholog_profile_catalog: list[dict[str, Any]] = Field(
-        default_factory=list,
-        exclude=True,
-    )
+    # Job-time snapshots. Public/list APIs strip these; workers must receive them
+    # (subprocess serialization uses model_dump, so do NOT mark exclude=True).
+    profile_config: dict[str, Any] | None = None
+    ortholog_profile_catalog: list[dict[str, Any]] = Field(default_factory=list)
     locus_regex: str | None = None
     search_terms: list[str] = Field(default_factory=list)
     target_patterns: list[str] = Field(default_factory=list)

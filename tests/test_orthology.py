@@ -217,7 +217,9 @@ def test_select_best_profiled_ortholog_ranks_profiled_by_score():
     assert chosen.source_organism_code == "msm"
 
 
-def test_resolve_ortholog_gene_name_prefers_target_symbol_over_kegg_description(tmp_path):
+def test_resolve_ortholog_gene_name_does_not_borrow_target_symbol(tmp_path):
+    """Descriptive KEGG product names should fall back to the ortholog locus,
+    never the target gene symbol (that would search the wrong organism papers)."""
     hit = OrthologHit(
         source_organism_code='mory',
         source_organism_name='Mycobacterium orygis',
@@ -231,7 +233,7 @@ def test_resolve_ortholog_gene_name_prefers_target_symbol_over_kegg_description(
         hit,
         tmp_path,
         target_gene_name='octT',
-    ) == 'octT'
+    ) == 'MO_002536'
 
 
 def test_resolve_ortholog_gene_name_falls_back_to_locus_without_symbol(tmp_path):

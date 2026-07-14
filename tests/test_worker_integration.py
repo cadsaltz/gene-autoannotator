@@ -71,7 +71,7 @@ def test_worker_agent_completes_job_end_to_end(tmp_path, monkeypatch):
 
     did_work = agent.run_once(coordinator, _config(), active_jobs=0, execute=fake_execute)
     assert did_work is True
-    # profile_config (exclude=True on the model) must survive the claim round-trip.
+    # profile_config must survive the claim round-trip into the worker.
     assert executed["profile_config"] == {"profile_id": "mtb-h37rv", "source": "user"}
 
     completed = store.get_job(job["id"])

@@ -115,19 +115,30 @@ export function getGeneratedFieldRows(annotation) {
   return GENERATED_FIELD_ORDER.map(([key, label]) => {
     const provenance = fieldProvenance[key];
     const orthologEntry = orthologFields[key];
+    const orthologDerived =
+      provenance === FIELD_PROVENANCE_ORTHolog_DERIVED ||
+      provenance === FIELD_PROVENANCE_TARGET_PLUS_ORTHOLOG;
+    // When the canonical value already IS the ortholog value, only show the
+    // source chip once — avoid repeating the same text under "From ortholog".
+    const showOrthologBlock =
+      Boolean(orthologEntry) &&
+      provenance === FIELD_PROVENANCE_TARGET_PLUS_ORTHOLOG;
     return {
       key,
       label,
       value: formatAnnotationValue(payload[key]),
-      orthologDerived:
-        provenance === FIELD_PROVENANCE_ORTHolog_DERIVED ||
-        provenance === FIELD_PROVENANCE_TARGET_PLUS_ORTHOLOG,
-      orthologBlock: orthologEntry
+      orthologDerived,
+      orthologBlock: showOrthologBlock
         ? {
             value: formatAnnotationValue(orthologEntry.value),
             sourceLabel: formatOrthologSourceLabel(orthologEntry),
           }
-        : null,
+        : orthologEntry && orthologDerived
+          ? {
+              value: null,
+              sourceLabel: formatOrthologSourceLabel(orthologEntry),
+            }
+          : null,
     };
   });
 }
