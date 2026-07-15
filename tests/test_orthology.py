@@ -134,11 +134,11 @@ def test_profile_for_kegg_organism_uses_builtin_profile():
     assert profile.kegg_organism_code == 'mtu'
 
 
-def test_profile_for_kegg_organism_builds_ad_hoc_for_msm():
+def test_profile_for_kegg_organism_uses_msm_catalog_profile():
     profile = orthology.profile_for_kegg_organism('msm')
 
-    assert profile.profile_id == 'kegg-msm'
-    assert profile.excluded_species_patterns == ()
+    assert profile.profile_id == 'msm-mc2155'
+    assert profile.kegg_organism_code == 'msm'
 
 
 def test_profile_for_kegg_organism_resolves_profile_id_fallback():

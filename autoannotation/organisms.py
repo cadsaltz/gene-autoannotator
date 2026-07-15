@@ -1,13 +1,15 @@
+import json
+import os
 import re
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 from . import field_defs
 from . import gene_names
 
 # Organism profiles are the boundary between general annotation logic and
-# organism-specific assumptions. Add new strains here by defining identifiers,
-# locus syntax, search terms, and target/off-target patterns rather than
-# special-casing downstream retrieval or prompts.
+# organism-specific assumptions. The catalog lives on disk as one JSON file per
+# profile under PROFILES_DIR (default: data/profiles).
 
 class UnknownOrganismError(ValueError):
     """Raised when an organism identifier does not resolve to a configured profile."""
@@ -91,216 +93,76 @@ class LocusValidationResult:
         return asdict(self)
 
 
-PROFILES = (
-    OrganismProfile(
-        profile_id="mtb-h37rv",
-        canonical_name="Mycobacterium tuberculosis H37Rv",
-        species_name="Mycobacterium tuberculosis",
-        strain="H37Rv",
-        synonyms=(
-            "mtb-h37rv",
-            "mtb h37rv",
-            "m tuberculosis h37rv",
-            "m. tuberculosis h37rv",
-            "mycobacterium tuberculosis h37rv",
-            "mycobacteriumtuberculosish37rv",
-        ),
-        species_synonyms=(
-            "mtb",
-            "m tuberculosis",
-            "m. tuberculosis",
-            "mycobacterium tuberculosis",
-        ),
-        strain_synonyms=(
-            "h37rv",
-            "h37 rv",
-        ),
-        locus_regex=r"^Rv\d{4}[Ac]?$",
-        search_terms=(
-            "Mycobacterium tuberculosis",
-            "M. tuberculosis",
-            "Mtb",
-            "H37Rv",
-        ),
-        target_patterns=(
-            r'Mycobacterium\stuberculosis',
-            r'M.\stuberculosis',
-            r'M.\stb',
-            'MTB',
-            'Mtb',
-            'MTb',
-            'mTB',
-        ),
-        off_target_patterns=(
-            r'\bEscherichia\s+coli\b',
-            r'\bE\.?\s*coli\b',
-            r'Mycobacterium\ssmegmatis',
-            r'M.\ssmegmatis',
-            r'M.\ssmeg',
-        ),
-        excluded_species_patterns=(
-            r'Mycobacterium\ssmegmatis',
-            r'M.\ssmegmatis',
-            r'M.\ssmeg',
-        ),
-        annotation_table_path='./Mycobacterium_tuberculosis_H37Rv_txt_v5.txt',
-        annotation_id_column='Locus',
-        annotation_name_column='Name',
-        annotation_feature_column='Feature',
-        annotation_feature_value='CDS',
-        kegg_organism_code='mtu',
-        custom_fields=field_defs.MTB_DEFAULT_CUSTOM_FIELDS,
-    ),
-    OrganismProfile(
-        profile_id="morygis-51145",
-        canonical_name="Mycobacterium orygis 51145",
-        species_name="Mycobacterium orygis",
-        strain="51145",
-        synonyms=(
-            "morygis-51145",
-            "m orygis 51145",
-            "m. orygis 51145",
-            "mycobacterium orygis 51145",
-            "mycobacteriumorygis51145",
-        ),
-        species_synonyms=(
-            "m orygis",
-            "m. orygis",
-            "mycobacterium orygis",
-        ),
-        strain_synonyms=("51145",),
-        locus_regex=r"^RJtmp_\d{6}$",
-        search_terms=(
-            "Mycobacterium orygis",
-            "M. orygis",
-            "51145",
-        ),
-        target_patterns=(
-            r'Mycobacterium\sorygis',
-            r'M.\sorygis',
-        ),
-        off_target_patterns=(
-            r'\bEscherichia\s+coli\b',
-            r'\bE\.?\s*coli\b',
-        ),
-        kegg_organism_code='mory',
-    ),
-    OrganismProfile(
-        profile_id="mmarinum-m",
-        canonical_name="Mycobacterium marinum M",
-        species_name="Mycobacterium marinum",
-        strain="M",
-        synonyms=(
-            "mmarinum-m",
-            "m marinum m",
-            "m. marinum m",
-            "mycobacterium marinum m",
-            "mycobacteriummarinumm",
-        ),
-        species_synonyms=(
-            "m marinum",
-            "m. marinum",
-            "mycobacterium marinum",
-        ),
-        strain_synonyms=("m",),
-        locus_regex=r"^MMAR_\d{4}$",
-        search_terms=(
-            "Mycobacterium marinum",
-            "M. marinum",
-        ),
-        target_patterns=(
-            r'Mycobacterium\smarinum',
-            r'M.\smarinum',
-        ),
-        off_target_patterns=(
-            r'\bEscherichia\s+coli\b',
-            r'\bE\.?\s*coli\b',
-        ),
-        kegg_organism_code='mmi',
-    ),
-    OrganismProfile(
-        profile_id="tcruzi-clbrener",
-        canonical_name="Trypanosoma cruzi CL Brener",
-        species_name="Trypanosoma cruzi",
-        strain="CL Brener",
-        synonyms=(
-            "tcruzi-clbrener",
-            "t cruzi cl brener",
-            "t. cruzi cl brener",
-            "trypanosoma cruzi cl brener",
-            "trypanosomacruziclbrener",
-        ),
-        species_synonyms=(
-            "t cruzi",
-            "t. cruzi",
-            "trypanosoma cruzi",
-        ),
-        strain_synonyms=(
-            "cl brener",
-            "clbrener",
-        ),
-        locus_regex=r"^TcCLB\.\d+\.\d+$",
-        search_terms=(
-            "Trypanosoma cruzi",
-            "T. cruzi",
-            "CL Brener",
-        ),
-        target_patterns=(
-            r'Trypanosoma\scruzi',
-            r'T.\scruzi',
-            r'T\scruzi',
-        ),
-        off_target_patterns=(
-            r'\bEscherichia\s+coli\b',
-            r'\bE\.?\s*coli\b',
-            r'Trypanosoma\sbrucei',
-            r'T.\sbrucei',
-        ),
-    ),
-    OrganismProfile(
-        profile_id="tcruzi-dm28c",
-        canonical_name="Trypanosoma cruzi Dm28c",
-        species_name="Trypanosoma cruzi",
-        strain="Dm28c",
-        synonyms=(
-            "tcruzi-dm28c",
-            "t cruzi dm28c",
-            "t. cruzi dm28c",
-            "trypanosoma cruzi dm28c",
-            "trypanosomacruzidm28c",
-        ),
-        species_synonyms=(
-            "t cruzi",
-            "t. cruzi",
-            "trypanosoma cruzi",
-        ),
-        strain_synonyms=("dm28c",),
-        locus_regex=r"^TCDM_\d{5}$",
-        search_terms=(
-            "Trypanosoma cruzi",
-            "T. cruzi",
-            "Dm28c",
-        ),
-        target_patterns=(
-            r'Trypanosoma\scruzi',
-            r'T.\scruzi',
-            r'T\scruzi',
-        ),
-        off_target_patterns=(
-            r'\bEscherichia\s+coli\b',
-            r'\bE\.?\s*coli\b',
-            r'Trypanosoma\sbrucei',
-            r'T.\sbrucei',
-        ),
-    ),
-)
+
+DEFAULT_PROFILES_DIR = "data/profiles"
+_SKIP_PROFILE_NAMES = {".gitkeep", ".seeded"}
+
+_loaded_dir: Path | None = None
+_profiles: tuple[OrganismProfile, ...] = ()
+_profile_by_synonym: dict = {}
+_profiles_by_species_synonym: dict = {}
+
+
+def profiles_dir() -> Path:
+    """Active catalog used by resolve_profile (honors PROFILES_DIR)."""
+    return Path(os.getenv("PROFILES_DIR") or DEFAULT_PROFILES_DIR)
+
+
+def seed_catalog_dir() -> Path:
+    """Canonical on-disk catalog used to seed empty LocalProfileStore dirs.
+
+    Defaults to ``data/profiles`` (or PROFILES_SEED_DIR). Independent of
+    PROFILES_DIR so tests can point PROFILES_DIR at a temp folder and still
+    seed from the repo catalog.
+    """
+    return Path(os.getenv("PROFILES_SEED_DIR") or DEFAULT_PROFILES_DIR)
+
+
+def _load_profiles_from_directory(directory: Path) -> tuple[OrganismProfile, ...]:
+    if not directory.is_dir():
+        return ()
+    profiles: list[OrganismProfile] = []
+    for path in sorted(directory.glob("*.json")):
+        if path.name in _SKIP_PROFILE_NAMES:
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"failed to read organism profile {path}: {exc}") from exc
+        if not isinstance(payload, dict) or not payload.get("profile_id"):
+            raise RuntimeError(f"invalid organism profile document: {path}")
+        profiles.append(profile_from_mapping(payload))
+    return tuple(profiles)
+
+
+def reload_profiles(*, directory: Path | None = None) -> tuple[OrganismProfile, ...]:
+    """Reload the in-process catalog from disk. Used by tests and after writes."""
+    global _loaded_dir, _profiles, _profile_by_synonym, _profiles_by_species_synonym
+    directory = (directory or profiles_dir()).resolve()
+    profiles = _load_profiles_from_directory(directory)
+    _profiles = profiles
+    _profile_by_synonym = _build_synonym_index(profiles)
+    _profiles_by_species_synonym = _build_species_index(profiles)
+    _loaded_dir = directory
+    return profiles
+
+
+def _ensure_profiles_loaded() -> None:
+    directory = profiles_dir().resolve()
+    if _loaded_dir != directory:
+        reload_profiles(directory=directory)
+
+
+def all_profiles() -> tuple[OrganismProfile, ...]:
+    _ensure_profiles_loaded()
+    return _profiles
 
 
 def normalize_identifier(identifier):
     return re.sub(r"[^a-z0-9]+", "", identifier.casefold())
 
 
-def _build_synonym_index(profiles=PROFILES):
+def _build_synonym_index(profiles):
     # Profile synonyms must be unique because API/CLI callers may use any
     # synonym as the primary profile identifier.
     index = {}
@@ -318,7 +180,7 @@ def _build_synonym_index(profiles=PROFILES):
     return index
 
 
-def _build_species_index(profiles=PROFILES):
+def _build_species_index(profiles):
     # Species names can map to multiple strains. Later validation narrows those
     # candidates with strain input and/or locus regex.
     index = {}
@@ -332,22 +194,20 @@ def _build_species_index(profiles=PROFILES):
     return index
 
 
-_PROFILE_BY_SYNONYM = _build_synonym_index()
-_PROFILES_BY_SPECIES_SYNONYM = _build_species_index()
-
-
 def resolve_profile(identifier):
+    _ensure_profiles_loaded()
     normalized = normalize_identifier(identifier)
     try:
-        return _PROFILE_BY_SYNONYM[normalized]
+        return _profile_by_synonym[normalized]
     except KeyError as exc:
         raise UnknownOrganismError(f"Unknown organism profile: {identifier}") from exc
 
 
 def resolve_species_profiles(identifier):
+    _ensure_profiles_loaded()
     normalized = normalize_identifier(identifier)
     try:
-        return tuple(_PROFILES_BY_SPECIES_SYNONYM[normalized])
+        return tuple(_profiles_by_species_synonym[normalized])
     except KeyError as exc:
         raise UnknownOrganismError(f"Unknown organism species: {identifier}") from exc
 
@@ -386,9 +246,15 @@ def profile_from_mapping(payload):
         target_patterns=tuple(payload.get("target_patterns") or ()),
         off_target_patterns=tuple(payload.get("off_target_patterns") or ()),
         excluded_species_patterns=tuple(payload.get("excluded_species_patterns") or ()),
+        annotation_table_path=payload.get("annotation_table_path"),
+        annotation_id_column=payload.get("annotation_id_column"),
+        annotation_name_column=payload.get("annotation_name_column"),
+        annotation_feature_column=payload.get("annotation_feature_column"),
+        annotation_feature_value=payload.get("annotation_feature_value"),
         kegg_organism_code=kegg_code,
         custom_fields=custom_fields,
         default_field_ortholog=tuple(default_field_ortholog.items()),
+        annotation_fields=custom_fields,
     )
 
 

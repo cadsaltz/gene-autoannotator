@@ -308,7 +308,7 @@ def profile_for_kegg_organism(kegg_code, *, extra_profiles=None):
             code = item.get('kegg_organism_code')
             if code and str(code).lower() == kegg_code:
                 return organisms.profile_from_mapping(item)
-    for profile in organisms.PROFILES:
+    for profile in organisms.all_profiles():
         if profile.kegg_organism_code and profile.kegg_organism_code.lower() == kegg_code:
             return profile
     hints = KEGG_ORGANISM_PROFILE_HINTS.get(kegg_code)
@@ -359,7 +359,7 @@ def supports_ortholog_literature_pass(hit, *, extra_profiles=None):
     code = hit.source_organism_code.lower()
     if code in KEGG_ORGANISM_PROFILE_HINTS:
         return True
-    for profile in organisms.PROFILES:
+    for profile in organisms.all_profiles():
         if profile.kegg_organism_code and profile.kegg_organism_code.lower() == code:
             return True
     for item in extra_profiles or ():

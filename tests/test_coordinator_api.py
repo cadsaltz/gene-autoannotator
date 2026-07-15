@@ -534,7 +534,7 @@ def test_job_submission_stores_profile_config_for_user_profile(tmp_path):
 
 
 def test_worker_marks_stale_invalid_saved_profile_locus_job_failed(tmp_path):
-    profile_store = LocalProfileStore(tmp_path / "profiles")
+    profile_store = LocalProfileStore(tmp_path / "profiles", seed_profiles=())
     profile_store.create_user_profile({
         "profile_id": "ecoli-k12-mg1655",
         "canonical_name": "Escherichia coli K-12 MG1655",

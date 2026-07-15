@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -257,15 +258,24 @@ class LocalProfileStore:
     """Filesystem-backed organism profile store.
 
     Profiles live as one JSON file per id under ``directory``. On first use the
-    store seeds any missing files from ``seed_profiles`` (defaults to
-    ``organisms.PROFILES``), then writes a marker so deliberate deletes stick.
+    store seeds any missing files from ``seed_catalog_dir`` (defaults to the
+    repo ``data/profiles`` catalog via ``organisms.seed_catalog_dir()``), then
+    writes a marker so deliberate deletes stick.
     """
 
-    def __init__(self, directory, *, seed_profiles=None):
+    def __init__(self, directory, *, seed_catalog_dir=None, seed_profiles=None):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
-        seeds = organisms.PROFILES if seed_profiles is None else seed_profiles
-        self._seed_if_needed(seeds)
+        # seed_profiles kept for tests that pass OrganismProfile tuples explicitly.
+        if seed_profiles is not None:
+            self._seed_from_profiles(seed_profiles)
+        else:
+            catalog = (
+                Path(seed_catalog_dir)
+                if seed_catalog_dir is not None
+                else organisms.seed_catalog_dir()
+            )
+            self._seed_from_catalog_dir(catalog)
 
     def health(self):
         return {
@@ -277,7 +287,7 @@ class LocalProfileStore:
     def _seed_marker_path(self):
         return self.directory / SEED_MARKER_NAME
 
-    def _seed_if_needed(self, seed_profiles):
+    def _seed_from_profiles(self, seed_profiles):
         marker = self._seed_marker_path()
         if marker.exists():
             return
@@ -286,6 +296,28 @@ class LocalProfileStore:
             if path.exists():
                 continue
             self._write_document(_profile_to_document(profile))
+        marker.write_text("1\n", encoding="utf-8")
+
+    def _seed_from_catalog_dir(self, catalog_dir: Path):
+        marker = self._seed_marker_path()
+        if marker.exists():
+            return
+        catalog_dir = Path(catalog_dir)
+        try:
+            same = catalog_dir.resolve() == self.directory.resolve()
+        except OSError:
+            same = False
+        if catalog_dir.is_dir() and not same:
+            for path in sorted(catalog_dir.glob("*.json")):
+                dest = self.directory / path.name
+                if dest.exists():
+                    continue
+                try:
+                    shutil.copyfile(path, dest)
+                except OSError as exc:
+                    raise ProfileStoreUnavailable(
+                        f"failed to seed profile {path.name}: {exc}"
+                    ) from exc
         marker.write_text("1\n", encoding="utf-8")
 
     def _profile_path(self, profile_id):

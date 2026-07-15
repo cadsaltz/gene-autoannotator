@@ -14,6 +14,7 @@ RUN python -m pip install --no-cache-dir --break-system-packages \
 COPY autoannotation/ autoannotation/
 COPY worker/ worker/
 COPY shared/ shared/
+COPY data/profiles/ data/profiles/
 COPY deploy/docker/worker-bench-entrypoint.sh /usr/local/bin/worker-bench-entrypoint.sh
 RUN chmod +x /usr/local/bin/worker-bench-entrypoint.sh
 
@@ -21,6 +22,7 @@ ENV AUTOANNOTATION_MODEL_MODE=performance \
     OLLAMA_MODELS=/models \
     WORKER_CACHE_DIR=/out/cache \
     WORKER_OUTPUT_DIR=/out/annotations \
+    PROFILES_DIR=/app/data/profiles \
     COORDINATOR_URL=http://127.0.0.1:9 \
     WORKER_API_TOKEN=unused \
     ANNOTATION_MEMORY_BUDGET_GB=64 \

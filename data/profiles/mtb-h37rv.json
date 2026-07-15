@@ -50,6 +50,11 @@
     "M.\\ssmegmatis",
     "M.\\ssmeg"
   ],
+  "annotation_table_path": "./Mycobacterium_tuberculosis_H37Rv_txt_v5.txt",
+  "annotation_id_column": "Locus",
+  "annotation_name_column": "Name",
+  "annotation_feature_column": "Feature",
+  "annotation_feature_value": "CDS",
   "kegg_organism_code": "mtu",
   "locus_regex": "^Rv\\d{4}[Ac]?$",
   "off_target_patterns": [
