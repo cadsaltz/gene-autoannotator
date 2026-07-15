@@ -83,6 +83,7 @@
   },
   "excluded_species_patterns": [],
   "kegg_organism_code": "tcr",
+  "kegg_locus_regex": "^TcCLB\\.(.+)$",
   "locus_regex": "^TcCLB\\.\\d+\\.\\d+$",
   "off_target_patterns": [
     "\\bEscherichia\\s+coli\\b",

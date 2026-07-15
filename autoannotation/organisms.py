@@ -43,6 +43,8 @@ class OrganismProfile:
     annotation_feature_column: str | None = None
     annotation_feature_value: str | None = None
     kegg_organism_code: str | None = None
+    # Optional regex with one capture group: group 1 is the KEGG SSDB gene id.
+    kegg_locus_regex: str | None = None
     custom_fields: tuple = ()
     default_field_ortholog: tuple = ()
     annotation_fields: tuple = ()  # legacy alias; use custom_fields
@@ -224,6 +226,13 @@ def validate_locus(profile, locus):
     return re.fullmatch(profile.locus_regex, locus) is not None
 
 
+def _optional_stripped(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def profile_from_mapping(payload):
     raw_custom = payload.get('custom_fields')
     if raw_custom is None:
@@ -252,6 +261,7 @@ def profile_from_mapping(payload):
         annotation_feature_column=payload.get("annotation_feature_column"),
         annotation_feature_value=payload.get("annotation_feature_value"),
         kegg_organism_code=kegg_code,
+        kegg_locus_regex=_optional_stripped(payload.get("kegg_locus_regex")),
         custom_fields=custom_fields,
         default_field_ortholog=tuple(default_field_ortholog.items()),
         annotation_fields=custom_fields,

@@ -158,6 +158,7 @@ export function buildProfilePayload(values) {
     off_target_patterns: splitLines(values.offTargetPatterns),
     excluded_species_patterns: splitLines(values.excludedSpeciesPatterns),
     kegg_organism_code: keggOrganismCode,
+    kegg_locus_regex: values.keggLocusRegex?.trim() || null,
     custom_fields: sanitizeCustomFieldsForPayload(values.customFields, keggOrganismCode),
     default_field_ortholog: sanitizeDefaultFieldOrthologForPayload(
       values.defaultFieldOrtholog,
@@ -182,6 +183,7 @@ export function profileToForm(profile) {
     offTargetPatterns: (profile.off_target_patterns || []).join("\n"),
     excludedSpeciesPatterns: (profile.excluded_species_patterns || []).join("\n"),
     keggOrganismCode: profile.kegg_organism_code || "",
+    keggLocusRegex: profile.kegg_locus_regex || "",
     customFields: profileCustomFieldsFromApi(profile),
     defaultFieldOrtholog: defaultFieldOrthologFromApi(profile),
   };

@@ -29,6 +29,7 @@ test("buildProfilePayload serializes profile form fields", () => {
       targetPatterns: "Custom organism",
       offTargetPatterns: "Other organism",
       excludedSpeciesPatterns: "",
+      keggLocusRegex: "",
       defaultFieldOrtholog: {
         function: true,
         functional_category: false,
@@ -48,6 +49,7 @@ test("buildProfilePayload serializes profile form fields", () => {
       off_target_patterns: ["Other organism"],
       excluded_species_patterns: [],
       kegg_organism_code: null,
+      kegg_locus_regex: null,
       custom_fields: [],
       default_field_ortholog: {
         function: false,

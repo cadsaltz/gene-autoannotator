@@ -30,6 +30,7 @@ const emptyForm = {
   offTargetPatterns: "",
   excludedSpeciesPatterns: "",
   keggOrganismCode: "",
+  keggLocusRegex: "",
   customFields: [],
   defaultFieldOrtholog: {
     function: true,
@@ -161,6 +162,7 @@ function ProfileDetailList({ profile }) {
     ["Off-target patterns", profile.off_target_patterns?.join(", ")],
     ["Excluded species", profile.excluded_species_patterns?.join(", ")],
     ["KEGG organism code", profile.kegg_organism_code],
+    ["KEGG locus regex", profile.kegg_locus_regex],
   ].filter(([, value]) => value);
 
   return (
@@ -381,6 +383,20 @@ export default function ProfileWorkspace() {
               <span className="workbench-muted text-xs font-normal leading-5">
                 Required for ortholog lookup. Annotation jobs work without it; ortholog
                 fallback and per-field ortholog allowance stay disabled until a code is set.
+              </span>
+            </label>
+
+            <label className="grid gap-2 text-sm font-medium">
+              KEGG locus regex (optional)
+              <input
+                value={form.keggLocusRegex}
+                onChange={(event) => updateForm("keggLocusRegex", event.target.value)}
+                className="workbench-input"
+                placeholder="^TcCLB\\.(.+)$"
+              />
+              <span className="workbench-muted text-xs font-normal leading-5">
+                Regex with exactly one capture group; group 1 is the KEGG gene id used for
+                SSDB ortholog lookup when it differs from the profile locus.
               </span>
             </label>
 

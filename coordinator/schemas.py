@@ -35,11 +35,12 @@ class ProfilePayload(BaseModel):
     off_target_patterns: list[str] = Field(default_factory=list)
     excluded_species_patterns: list[str] = Field(default_factory=list)
     kegg_organism_code: str | None = None
+    kegg_locus_regex: str | None = None
     custom_fields: list[AnnotationFieldPayload] = Field(default_factory=list)
     annotation_fields: list[AnnotationFieldPayload] = Field(default_factory=list)
     default_field_ortholog: dict[str, bool] = Field(default_factory=dict)
 
-    @field_validator('kegg_organism_code', mode='before')
+    @field_validator('kegg_organism_code', 'kegg_locus_regex', mode='before')
     @classmethod
     def normalize_kegg_code(cls, value):
         return _normalize_optional_string(value)
@@ -233,6 +234,7 @@ class ProfileDetailResponse(ProfileResponse):
     off_target_patterns: list[str] = Field(default_factory=list)
     excluded_species_patterns: list[str] = Field(default_factory=list)
     kegg_organism_code: str | None = None
+    kegg_locus_regex: str | None = None
     custom_fields: list[dict[str, Any]] = Field(default_factory=list)
     annotation_fields: list[dict[str, Any]] = Field(default_factory=list)
     default_field_ortholog: dict[str, bool] = Field(default_factory=dict)

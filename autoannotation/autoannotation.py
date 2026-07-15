@@ -269,6 +269,7 @@ class OrthologDecision:
 def _decide_ortholog_action(
     *, allow_ortholog_fallback, ortholog_override, cumulative_relevance,
     kegg_code, gene, cache_dir, profile_config=None, ortholog_catalog=None,
+    kegg_locus_regex=None,
 ):
     """Decide whether/how to run the ortholog fallback. May perform a cache/network
     SSDB lookup on the automatic path.
@@ -308,9 +309,10 @@ def _decide_ortholog_action(
     if not (kegg_code and gene):
         return OrthologDecision(hit=None, skipped_reason='no_ortholog_found')
 
+    kegg_locus = orthology.resolve_kegg_locus(gene, kegg_locus_regex)
     hit = orthology.lookup_best_profiled_ortholog(
         kegg_code,
-        gene,
+        kegg_locus,
         cache_dir=cache_dir,
         extra_profiles=ortholog_catalog,
         restrict_to_organism_code=restrict_to_organism_code,
@@ -479,6 +481,7 @@ def get_gene_annotation(
         cache_dir=cache_dir,
         profile_config=profile_config,
         ortholog_catalog=ortholog_catalog,
+        kegg_locus_regex=profile_context.kegg_locus_regex,
     )
     ortholog_hit = decision.hit
     ortholog_pass_metadata = metadata.build_ortholog_pass_metadata(

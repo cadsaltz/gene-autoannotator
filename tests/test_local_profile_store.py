@@ -121,6 +121,29 @@ def test_local_store_validates_locus_regex(tmp_path):
         store.create_profile(user_profile_payload(locus_regex="["))
 
 
+def test_local_store_persists_kegg_locus_regex(tmp_path):
+    store = LocalProfileStore(tmp_path)
+    created = store.create_profile(
+        user_profile_payload(
+            profile_id="user-kegg-locus",
+            kegg_organism_code="tcr",
+            kegg_locus_regex=r"^TcCLB\.(.+)$",
+        )
+    )
+    assert created["kegg_locus_regex"] == r"^TcCLB\.(.+)$"
+
+
+def test_local_store_rejects_kegg_locus_regex_without_one_group(tmp_path):
+    store = LocalProfileStore(tmp_path)
+    with pytest.raises(InvalidProfileError, match="exactly one capturing group"):
+        store.create_profile(
+            user_profile_payload(
+                profile_id="user-bad-kegg-locus",
+                kegg_locus_regex=r"^TcCLB\..+$",
+            )
+        )
+
+
 def test_local_store_defaults_target_patterns_when_omitted(tmp_path):
     store = LocalProfileStore(tmp_path)
     payload = user_profile_payload(profile_id="user-default-patterns")

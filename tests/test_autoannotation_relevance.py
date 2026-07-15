@@ -478,6 +478,7 @@ def test_ortholog_profile_only_override_restricts_automatic_lookup(monkeypatch):
     sentinel = object()
 
     def fake_lookup(*args, **kwargs):
+        captured["args"] = args
         captured["kwargs"] = kwargs
         return sentinel
 
@@ -503,6 +504,32 @@ def test_ortholog_profile_only_override_restricts_automatic_lookup(monkeypatch):
     assert decision.hit is sentinel
     assert decision.skipped_reason is None
     assert captured["kwargs"]["restrict_to_organism_code"] == "mory"
+
+
+def test_ortholog_decide_transforms_kegg_locus_before_lookup(monkeypatch):
+    from autoannotation import autoannotation as aa
+
+    captured = {}
+
+    def fake_lookup(kegg_code, gene_locus, **kwargs):
+        captured["kegg_code"] = kegg_code
+        captured["gene_locus"] = gene_locus
+        return object()
+
+    monkeypatch.setattr(aa.orthology, "lookup_best_profiled_ortholog", fake_lookup)
+
+    decision = aa._decide_ortholog_action(
+        allow_ortholog_fallback=True,
+        ortholog_override=None,
+        cumulative_relevance=0.0,
+        kegg_code="tcr",
+        gene="TcCLB.507297.10",
+        cache_dir="./.cache",
+        kegg_locus_regex=r"^TcCLB\.(.+)$",
+    )
+    assert decision.hit is not None
+    assert captured["kegg_code"] == "tcr"
+    assert captured["gene_locus"] == "507297.10"
 
 
 def test_ortholog_profile_only_override_still_gates_on_relevance(monkeypatch):

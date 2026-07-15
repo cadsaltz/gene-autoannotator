@@ -144,6 +144,7 @@ PROFILE_CONFIG_FIELDS = (
     "off_target_patterns",
     "excluded_species_patterns",
     "kegg_organism_code",
+    "kegg_locus_regex",
 )
 
 

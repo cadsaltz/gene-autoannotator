@@ -14,6 +14,30 @@ def _load_fixture(name):
     return (FIXTURE_DIR / name).read_text(encoding='utf-8')
 
 
+def test_resolve_kegg_locus_strips_tcruzi_prefix():
+    assert (
+        orthology.resolve_kegg_locus('TcCLB.507297.10', r'^TcCLB\.(.+)$')
+        == '507297.10'
+    )
+
+
+def test_resolve_kegg_locus_passthrough_without_regex():
+    assert orthology.resolve_kegg_locus('Rv1734c', None) == 'Rv1734c'
+    assert orthology.resolve_kegg_locus('Rv1734c', '') == 'Rv1734c'
+
+
+def test_resolve_kegg_locus_passthrough_when_no_match():
+    assert (
+        orthology.resolve_kegg_locus('TcEsmeraldas.1.1', r'^TcCLB\.(.+)$')
+        == 'TcEsmeraldas.1.1'
+    )
+
+
+def test_resolve_kegg_locus_passthrough_on_invalid_or_groupless_regex():
+    assert orthology.resolve_kegg_locus('TcCLB.1.1', r'^TcCLB\.(') == 'TcCLB.1.1'
+    assert orthology.resolve_kegg_locus('TcCLB.1.1', r'^TcCLB\..+$') == 'TcCLB.1.1'
+
+
 def test_parse_ssdb_best_skips_self_hit_and_returns_top_ortholog():
     html = _load_fixture('mtu_rv0001.html')
 

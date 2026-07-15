@@ -183,6 +183,19 @@ def _validate_regex(value, field):
         raise InvalidProfileError(f"invalid {field}: {exc}") from exc
 
 
+def _validate_kegg_locus_regex(value):
+    """Require a compilable regex with exactly one capturing group."""
+    try:
+        pattern = re.compile(value)
+    except re.error as exc:
+        raise InvalidProfileError(f"invalid kegg_locus_regex: {exc}") from exc
+    if pattern.groups != 1:
+        raise InvalidProfileError(
+            "kegg_locus_regex must contain exactly one capturing group "
+            "(group 1 becomes the KEGG gene id)"
+        )
+
+
 def _default_target_patterns(document):
     candidates = [
         document["species_name"],
@@ -215,6 +228,9 @@ def _normalize_profile_payload(payload):
     locus_regex = _optional_text(payload, "locus_regex")
     if locus_regex is not None:
         _validate_regex(locus_regex, "locus_regex")
+    kegg_locus_regex = _optional_text(payload, "kegg_locus_regex")
+    if kegg_locus_regex is not None:
+        _validate_kegg_locus_regex(kegg_locus_regex)
 
     now = _now_iso()
     document: dict[str, Any] = {
@@ -229,6 +245,7 @@ def _normalize_profile_payload(payload):
     for field in PROFILE_ARRAY_FIELDS:
         document[field] = _list_field(payload, field)
     document["kegg_organism_code"] = _optional_text(payload, "kegg_organism_code")
+    document["kegg_locus_regex"] = kegg_locus_regex
     document["custom_fields"] = _normalize_custom_fields_payload(
         payload,
         document["kegg_organism_code"],

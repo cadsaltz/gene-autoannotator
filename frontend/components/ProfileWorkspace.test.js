@@ -51,6 +51,7 @@ test("profile workspace supports editing all reusable profile fields", async () 
     "offTargetPatterns",
     "excludedSpeciesPatterns",
     "keggOrganismCode",
+    "keggLocusRegex",
     "customFields",
     "defaultFieldOrtholog",
   ]) {

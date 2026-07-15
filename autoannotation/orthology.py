@@ -221,6 +221,28 @@ def parse_ssdb_best_response(html, query_organism_code):
     return hits[0] if hits else None
 
 
+def resolve_kegg_locus(locus, kegg_locus_regex):
+    """Map a profile locus to the gene id KEGG SSDB expects.
+
+    When ``kegg_locus_regex`` is set and fully matches ``locus`` with at least
+    one capturing group, return group 1. Otherwise return ``locus`` unchanged.
+    Invalid patterns are treated as a no-op (validation belongs at profile save).
+    """
+    if not locus or not kegg_locus_regex:
+        return locus
+    try:
+        pattern = re.compile(kegg_locus_regex)
+    except re.error:
+        return locus
+    if pattern.groups < 1:
+        return locus
+    match = pattern.fullmatch(locus)
+    if not match:
+        return locus
+    captured = match.group(1)
+    return captured if captured else locus
+
+
 def _cache_path(cache_dir, kegg_organism_code, gene_locus):
     key = f'{kegg_organism_code}:{gene_locus}'.lower()
     digest = hashlib.sha256(key.encode('utf-8')).hexdigest()[:16]

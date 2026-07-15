@@ -46,6 +46,10 @@ def lookup_for_target(
     )
     kegg_code = target.profile.kegg_organism_code
     gene_locus = target.resolved_locus
+    kegg_locus = orthology.resolve_kegg_locus(
+        gene_locus,
+        getattr(target.profile, 'kegg_locus_regex', None),
+    )
     warnings = [
         {
             'code': warning,
@@ -69,17 +73,17 @@ def lookup_for_target(
         })
 
     ortholog_hit = None
-    if kegg_code and gene_locus:
+    if kegg_code and kegg_locus:
         ortholog_hit = orthology.lookup_top_ortholog(
             kegg_code,
-            gene_locus,
+            kegg_locus,
             cache_dir=cache_dir,
         )
         if ortholog_hit is None:
             warnings.append({
                 'code': 'no_ortholog_hit',
                 'message': (
-                    f'KEGG SSDB returned no cross-organism hit for {kegg_code}:{gene_locus}.'
+                    f'KEGG SSDB returned no cross-organism hit for {kegg_code}:{kegg_locus}.'
                 ),
             })
 
@@ -90,9 +94,12 @@ def lookup_for_target(
         'kegg_organism_code': kegg_code,
         'submitted_locus': target.submitted_locus,
         'resolved_locus': gene_locus,
+        'kegg_locus': kegg_locus,
         'resolved_name': target.resolved_name,
         'primary_identifier': target.primary_identifier,
-        'kegg_query': f'{kegg_code}:{gene_locus}' if kegg_code and gene_locus else None,
+        'kegg_query': (
+            f'{kegg_code}:{kegg_locus}' if kegg_code and kegg_locus else None
+        ),
         'ortholog_top_hit': ortholog_hit.to_metadata() if ortholog_hit else None,
         'warnings': warnings,
     }
