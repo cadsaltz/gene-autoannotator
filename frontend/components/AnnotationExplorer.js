@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   getAnnotation,
   getAnnotationVersions,
+  getProfile,
   searchAnnotations,
 } from "../lib/api";
 import {
@@ -25,6 +26,7 @@ import {
   getTotalVersionCount,
 } from "../lib/annotationVersions";
 import { buildJobPrefillHref } from "../lib/form";
+import { resolveProfileFieldsForDisplay } from "../lib/profileStore";
 
 function EmptyState({ query }) {
   const href = `/jobs?locus=${encodeURIComponent(query)}`;
@@ -45,8 +47,8 @@ function EmptyState({ query }) {
   );
 }
 
-function AnnotationContent({ annotation }) {
-  const generatedRows = getGeneratedFieldRows(annotation);
+function AnnotationContent({ annotation, profileFields }) {
+  const generatedRows = getGeneratedFieldRows(annotation, profileFields);
   const metadataRows = getMetadataRows(annotation);
   const pmcIdsAnalyzed = getPmcIdsAnalyzed(annotation);
 
@@ -230,6 +232,7 @@ function VersionHistory({
 
 function AnnotationDetail({
   annotation,
+  profileFields,
   versions,
   selectedVersionKey,
   onSelectVersion,
@@ -315,7 +318,7 @@ function AnnotationDetail({
       />
 
       <div className="mt-6">
-        <AnnotationContent annotation={displayAnnotation} />
+        <AnnotationContent annotation={displayAnnotation} profileFields={profileFields} />
       </div>
     </article>
   );
@@ -329,6 +332,7 @@ export default function AnnotationExplorer({
   const [query, setQuery] = useState(initialQuery);
   const [matches, setMatches] = useState(initialMatches);
   const [selected, setSelected] = useState(null);
+  const [profileFields, setProfileFields] = useState(null);
   const [versions, setVersions] = useState(null);
   const [selectedVersionKey, setSelectedVersionKey] = useState(CURRENT_VERSION_KEY);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
@@ -361,6 +365,7 @@ export default function AnnotationExplorer({
     setIsSearching(true);
     setMessage("");
     setSelected(null);
+    setProfileFields(null);
     setVersions(null);
     setSelectedVersionKey(CURRENT_VERSION_KEY);
     setSearchedQuery(trimmed);
@@ -380,11 +385,21 @@ export default function AnnotationExplorer({
   async function loadAnnotation(annotationId) {
     setMessage("");
     setVersions(null);
+    setProfileFields(null);
     setSelectedVersionKey(CURRENT_VERSION_KEY);
 
     try {
       const annotation = await getAnnotation(annotationId);
       setSelected(annotation);
+      if (annotation.profile_id) {
+        try {
+          const profile = await getProfile(annotation.profile_id);
+          setProfileFields(resolveProfileFieldsForDisplay(profile));
+        } catch {
+          // Fall back to the hard-coded field list when the profile is unavailable.
+          setProfileFields(null);
+        }
+      }
       if ((annotation.version_count || 0) > 0) {
         await fetchVersions(annotationId);
       }
@@ -488,6 +503,7 @@ export default function AnnotationExplorer({
 
         <AnnotationDetail
           annotation={selected}
+          profileFields={profileFields}
           versions={versions}
           selectedVersionKey={selectedVersionKey}
           onSelectVersion={setSelectedVersionKey}

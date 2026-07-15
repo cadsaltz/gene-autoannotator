@@ -108,11 +108,20 @@ export function formatOrthologSourceLabel(block) {
   return parts.join(" · ");
 }
 
-export function getGeneratedFieldRows(annotation) {
+function resolveFieldSpecs(profileFields) {
+  if (Array.isArray(profileFields) && profileFields.length > 0) {
+    return profileFields
+      .filter((field) => field?.key)
+      .map((field) => [field.key, field.label || field.key]);
+  }
+  return GENERATED_FIELD_ORDER;
+}
+
+export function getGeneratedFieldRows(annotation, profileFields = null) {
   const payload = getAnnotationPayload(annotation);
   const fieldProvenance = getFieldProvenance(annotation);
   const orthologFields = getOrthologFields(annotation);
-  return GENERATED_FIELD_ORDER.map(([key, label]) => {
+  return resolveFieldSpecs(profileFields).map(([key, label]) => {
     const provenance = fieldProvenance[key];
     const orthologEntry = orthologFields[key];
     const orthologDerived =

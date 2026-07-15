@@ -6,6 +6,7 @@ import {
   getMetadataRows,
   getPmcIdsAnalyzed,
 } from "./annotationDisplay.js";
+import { resolveProfileFieldsForDisplay } from "./profileStore.js";
 
 const annotation = {
   result: {
@@ -53,6 +54,36 @@ test("getGeneratedFieldRows returns the required fields in order with fallbacks"
   assert.equal(getGeneratedFieldRows(annotation)[3].value, "No supported data");
   assert.equal(getGeneratedFieldRows(annotation)[4].value, "True");
   assert.equal(getGeneratedFieldRows(annotation)[5].value, "False");
+});
+
+test("getGeneratedFieldRows shows only current profile fields even if annotation has others", () => {
+  const profileFields = resolveProfileFieldsForDisplay({
+    kegg_organism_code: "mtu",
+    custom_fields: [
+      {
+        key: "drug_susc_impact",
+        label: "Drug susceptibility impact",
+      },
+      {
+        key: "infection_impact",
+        label: "Infection impact",
+      },
+    ],
+  });
+
+  const rows = getGeneratedFieldRows(annotation, profileFields);
+  assert.deepEqual(rows.map((row) => row.key), [
+    "function",
+    "functional_category",
+    "drug_susc_impact",
+    "infection_impact",
+  ]);
+  assert.equal(rows.find((row) => row.key === "essential_in_vitro"), undefined);
+  assert.equal(rows.find((row) => row.key === "essential_in_vivo"), undefined);
+  assert.equal(
+    rows.find((row) => row.key === "drug_susc_impact").value,
+    "No supported data",
+  );
 });
 
 test("getGeneratedFieldRows marks ortholog-derived fields from field_provenance", () => {
