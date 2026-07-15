@@ -17,24 +17,6 @@
       "ortholog_allowed": true,
       "required": false,
       "type": "string"
-    },
-    {
-      "description": "Whether the gene is essential for {species_name} survival in vitro. Use true or false only when the excerpt reports direct experimental evidence (e.g., deletion, transposon, CRISPRi). Otherwise use null.",
-      "inference_strategy": "paper_llm",
-      "key": "essential_in_vitro",
-      "label": "Essential in vitro",
-      "ortholog_allowed": true,
-      "required": false,
-      "type": "boolean"
-    },
-    {
-      "description": "Whether the gene is essential for {species_name} survival in vivo. Use true or false only when the excerpt reports direct experimental evidence. Otherwise use null.",
-      "inference_strategy": "paper_llm",
-      "key": "essential_in_vivo",
-      "label": "Essential in vivo",
-      "ortholog_allowed": true,
-      "required": false,
-      "type": "boolean"
     }
   ],
   "canonical_name": "Mycobacterium tuberculosis H37Rv",
@@ -57,24 +39,6 @@
       "ortholog_allowed": true,
       "required": false,
       "type": "string"
-    },
-    {
-      "description": "Whether the gene is essential for {species_name} survival in vitro. Use true or false only when the excerpt reports direct experimental evidence (e.g., deletion, transposon, CRISPRi). Otherwise use null.",
-      "inference_strategy": "paper_llm",
-      "key": "essential_in_vitro",
-      "label": "Essential in vitro",
-      "ortholog_allowed": true,
-      "required": false,
-      "type": "boolean"
-    },
-    {
-      "description": "Whether the gene is essential for {species_name} survival in vivo. Use true or false only when the excerpt reports direct experimental evidence. Otherwise use null.",
-      "inference_strategy": "paper_llm",
-      "key": "essential_in_vivo",
-      "label": "Essential in vivo",
-      "ortholog_allowed": true,
-      "required": false,
-      "type": "boolean"
     }
   ],
   "default_field_ortholog": {
@@ -131,5 +95,5 @@
     "MTb",
     "mTB"
   ],
-  "updated_at": "2026-07-14T05:41:05.354553+00:00"
+  "updated_at": "2026-07-14T18:46:18.572928+00:00"
 }
