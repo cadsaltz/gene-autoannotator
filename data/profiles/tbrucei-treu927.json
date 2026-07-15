@@ -1,0 +1,110 @@
+{
+  "annotation_fields": [
+    {
+      "description": "Impact on {species_name} drug susceptibility (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "drug_susc_impact",
+      "label": "Drug susceptibility impact",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "string"
+    },
+    {
+      "description": "Impact on {species_name} infection (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "infection_impact",
+      "label": "Infection impact",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "string"
+    }
+  ],
+  "canonical_name": "Trypanosoma brucei brucei TREU927",
+  "created_at": "2026-07-14T22:47:28.951682+00:00",
+  "custom_fields": [
+    {
+      "description": "Impact on {species_name} drug susceptibility (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "drug_susc_impact",
+      "label": "Drug susceptibility impact",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "string"
+    },
+    {
+      "description": "Impact on {species_name} infection (one or two concise sentences). Only state effects explicitly reported in the excerpt. Use null otherwise.",
+      "inference_strategy": "paper_llm",
+      "key": "infection_impact",
+      "label": "Infection impact",
+      "ortholog_allowed": true,
+      "required": false,
+      "type": "string"
+    }
+  ],
+  "default_field_ortholog": {
+    "function": true,
+    "functional_category": true
+  },
+  "excluded_species_patterns": [],
+  "kegg_organism_code": "tbr",
+  "locus_regex": "^Tb927\\.[0-9]+\\.[0-9]+$",
+  "off_target_patterns": [
+    "\\bEscherichia\\s+coli\\b",
+    "\\bE\\.?\\s*coli\\b",
+    "Trypanosoma\\scruzi",
+    "T\\.\\scruzi"
+  ],
+  "profile_id": "tbrucei-treu927",
+  "search_terms": [
+    "Trypanosoma brucei",
+    "T. brucei",
+    "T brucei",
+    "Trypanosoma brucei brucei",
+    "T. brucei brucei",
+    "T brucei brucei",
+    "TREU927",
+    "927/4 GUTat10.1"
+  ],
+  "species_name": "Trypanosoma brucei",
+  "species_synonyms": [
+    "t brucei",
+    "t. brucei",
+    "trypanosoma brucei",
+    "t brucei brucei",
+    "t. brucei brucei",
+    "trypanosoma brucei brucei",
+    "t b brucei",
+    "t. b. brucei"
+  ],
+  "strain": "TREU927",
+  "strain_synonyms": [
+    "TREU927",
+    "treu927",
+    "927",
+    "927/4",
+    "927/4 GUTat10.1",
+    "GUTat10.1"
+  ],
+  "synonyms": [
+    "tbrucei-treu927",
+    "t brucei treu927",
+    "t. brucei treu927",
+    "trypanosoma brucei treu927",
+    "trypanosoma brucei brucei treu927",
+    "trypanosoma brucei brucei",
+    "Trypanosoma brucei brucei (strain TREU927)",
+    "Trypanosoma brucei brucei (TREU927)",
+    "Trypanosoma brucei (strain TREU927)",
+    "Trypanosoma brucei (TREU927)",
+    "Trypanosoma brucei brucei (strain 927/4 GUTat10.1)",
+    "Trypanosoma brucei brucei (927/4 GUTat10.1)",
+    "Trypanosoma brucei (strain 927/4 GUTat10.1)",
+    "Trypanosoma brucei (927/4 GUTat10.1)"
+  ],
+  "target_patterns": [
+    "Trypanosoma\\sbrucei",
+    "T\\.\\sbrucei",
+    "T\\sbrucei"
+  ],
+  "updated_at": "2026-07-14T22:47:28.951682+00:00"
+}
