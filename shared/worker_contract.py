@@ -46,6 +46,12 @@ class ClaimResponse(BaseModel):
 
 class JobProgress(BaseModel):
     current_step: str = Field(min_length=1)
+    phase: str | None = None
+    sections_done: int | None = Field(default=None, ge=0)
+    sections_total: int | None = Field(default=None, ge=0)
+    papers_done: int | None = Field(default=None, ge=0)
+    papers_total: int | None = Field(default=None, ge=0)
+    pass_name: str | None = None
 
 
 class JobComplete(BaseModel):
