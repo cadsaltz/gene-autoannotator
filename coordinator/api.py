@@ -880,7 +880,14 @@ def create_app(
         job_id: str, request: JobProgress, authorization: str | None = Header(default=None)
     ):
         _require_worker_token(authorization)
-        store.mark_step(job_id, request.current_step)
+        store.mark_step(
+            job_id,
+            request.current_step,
+            phase=request.phase,
+            sections_done=request.sections_done,
+            sections_total=request.sections_total,
+            pass_name=request.pass_name,
+        )
         store.renew_lease(job_id, lease_seconds=lease_seconds)
         return Response(status_code=204)
 

@@ -1355,6 +1355,47 @@ def test_register_claim_complete_flow():
     assert store.get_job(job_id)["status"] == "completed"
 
 
+def test_report_progress_persists_structured_fields():
+    client, store = _make_worker_client()
+    headers = {"Authorization": "Bearer test-token"}
+
+    reg = client.post("/workers/register", json=_register_body(), headers=headers)
+    worker_id = reg.json()["worker_id"]
+
+    store.create_job(
+        {"profile": "mtb-h37rv", "locus": "Rv0001", "cache_dir": "./.cache", "output_dir": "gen_json"}
+    )
+    claim = client.post(f"/workers/{worker_id}/claim", json={"free_slots": 2}, headers=headers)
+    job_id = claim.json()["job_id"]
+
+    progress = client.patch(
+        f"/jobs/{job_id}/progress",
+        json={
+            "current_step": "extracting 3/12 sections (target)",
+            "phase": "extracting",
+            "sections_done": 3,
+            "sections_total": 12,
+            "pass_name": "target",
+        },
+        headers=headers,
+    )
+    assert progress.status_code == 204
+
+    job = store.get_job(job_id)
+    assert job["current_step"] == "extracting 3/12 sections (target)"
+    assert job["progress_phase"] == "extracting"
+    assert job["sections_done"] == 3
+    assert job["sections_total"] == 12
+    assert job["pass_name"] == "target"
+
+    listed = client.get("/jobs", headers=headers).json()["jobs"]
+    listed_job = next(item for item in listed if item["id"] == job_id)
+    assert listed_job["progress_phase"] == "extracting"
+    assert listed_job["sections_done"] == 3
+    assert listed_job["sections_total"] == 12
+    assert listed_job["pass_name"] == "target"
+
+
 def test_claim_returns_204_when_queue_empty():
     client, _ = _make_worker_client()
     headers = {"Authorization": "Bearer test-token"}

@@ -63,6 +63,10 @@ class JobStore:
             self._ensure_column(connection, "worker_id", "TEXT")
             self._ensure_column(connection, "lease_expires_at", "TEXT")
             self._ensure_column(connection, "attempts", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(connection, "progress_phase", "TEXT")
+            self._ensure_column(connection, "sections_done", "INTEGER")
+            self._ensure_column(connection, "sections_total", "INTEGER")
+            self._ensure_column(connection, "pass_name", "TEXT")
 
     def _ensure_column(self, connection, column_name, column_type):
         columns = {
@@ -110,15 +114,25 @@ class JobStore:
                 ("running", "running", _now_iso(), job_id),
             )
 
-    def mark_step(self, job_id, current_step):
+    def mark_step(
+        self,
+        job_id,
+        current_step,
+        *,
+        phase=None,
+        sections_done=None,
+        sections_total=None,
+        pass_name=None,
+    ):
         with self._connect() as connection:
             connection.execute(
                 """
                 UPDATE annotation_jobs
-                SET current_step = ?
+                SET current_step = ?, progress_phase = ?, sections_done = ?,
+                    sections_total = ?, pass_name = ?
                 WHERE id = ?
                 """,
-                (current_step, job_id),
+                (current_step, phase, sections_done, sections_total, pass_name, job_id),
             )
 
     def mark_completed(self, job_id, result: dict[str, Any], output_path=None):
@@ -437,6 +451,10 @@ class JobStore:
             "id": row["id"],
             "status": row["status"],
             "current_step": row["current_step"],
+            "progress_phase": row["progress_phase"],
+            "sections_done": row["sections_done"],
+            "sections_total": row["sections_total"],
+            "pass_name": row["pass_name"],
             "batch_id": row["batch_id"],
             "worker_id": row["worker_id"],
             "lease_expires_at": row["lease_expires_at"],

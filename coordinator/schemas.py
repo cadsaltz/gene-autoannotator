@@ -303,6 +303,10 @@ class JobRecordResponse(BaseModel):
     id: str
     status: str
     current_step: str = "queued"
+    progress_phase: str | None = None
+    sections_done: int | None = None
+    sections_total: int | None = None
+    pass_name: str | None = None
     request: dict[str, Any]
     result: dict[str, Any] | None = None
     error: str | None = None
