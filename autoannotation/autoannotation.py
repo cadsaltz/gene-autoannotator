@@ -21,6 +21,7 @@ from . import targets
 from . import utils
 
 from .models import MODEL_SUMMARY, MODEL_AGGREGATION, MODEL_CONSENSUS
+from shared.job_progress import JobProgressEvent
 
 logging.basicConfig(format='%(asctime)s %(levelname).1s | %(message)s')
 log = logging.getLogger(__name__)
@@ -50,6 +51,43 @@ def _pmc_mapping_cache_key(profile, target):
         return identifier
     profile_component = _safe_mapping_component(profile.profile_id)
     return f'{profile_component}__{identifier}'
+
+
+def collect_paper_sections(paper_manager, pmc_id):
+    """Gather the (label, text) sections available for a paper with no LLM calls.
+
+    Used both to build the section work list and to pre-scan totals for
+    progress reporting before any inference happens.
+    """
+    sections = []
+    abstract = paper_manager.get_abstract(pmc_id)
+    if abstract is not None:
+        sections.append(('abstract', abstract))
+    results = paper_manager.get_results(pmc_id)
+    if results is not None:
+        sections.append(('results', results))
+    discussion = paper_manager.get_discussion(pmc_id)
+    if discussion is not None and discussion != results:
+        sections.append(('discussion', discussion))
+    return sections
+
+
+_PASS_PHASES = {
+    'target': {'fetching': 'fetching', 'extracting': 'extracting', 'aggregating': 'aggregating'},
+    'ortholog': {
+        'fetching': 'ortholog_fetching',
+        'extracting': 'ortholog_extracting',
+        'aggregating': 'ortholog_aggregating',
+    },
+}
+
+
+def _emit_progress(progress_cb, evidence_mode, phase_key, **fields):
+    if progress_cb is None:
+        return
+    pass_name = 'ortholog' if evidence_mode == 'ortholog' else 'target'
+    phase = _PASS_PHASES[pass_name][phase_key]
+    progress_cb(JobProgressEvent(phase=phase, pass_name=pass_name, **fields))
 
 
 def _profile_lookup_from_config(profile_config):
@@ -104,7 +142,10 @@ def run_paper_annotation_pass(
     ortholog_context=None,
     save_pmc_mapping=True,
     field_defs_profile=None,
+    progress_cb=None,
 ):
+    _emit_progress(progress_cb, evidence_mode, 'fetching', sections_done=0, sections_total=None)
+
     ranked_papers = paper_manager.get_ranked_papers(gene, name)
     pmc_ids = [record.pmc_id for record in ranked_papers]
     if save_pmc_mapping and cache_key is not None:
@@ -138,8 +179,20 @@ def run_paper_annotation_pass(
     section_distillations = []
     relevance_by_pmc_id = {record.pmc_id: record for record in ranked_papers}
 
-    for pmc_id in papers_to_analyze:
-        sections = []
+    # Pre-scan section availability for every selected paper before any LLM
+    # call so progress totals are known up front.
+    papers_sections = [
+        (pmc_id, collect_paper_sections(paper_manager, pmc_id))
+        for pmc_id in papers_to_analyze
+    ]
+    sections_total = sum(len(sections) for _, sections in papers_sections)
+    sections_done = 0
+    _emit_progress(
+        progress_cb, evidence_mode, 'extracting',
+        sections_done=sections_done, sections_total=sections_total,
+    )
+
+    for pmc_id, sections in papers_sections:
         relevance_record = relevance_by_pmc_id.get(pmc_id)
         relevance_score = relevance_record.score if relevance_record is not None else 0.0
         log.info(
@@ -147,16 +200,6 @@ def run_paper_annotation_pass(
             f'(relevance score {relevance_score:.3f})'
         )
         used.append(pmc_id)
-
-        abstract = paper_manager.get_abstract(pmc_id)
-        if abstract is not None:
-            sections.append(('abstract', abstract))
-        results = paper_manager.get_results(pmc_id)
-        if results is not None:
-            sections.append(('results', results))
-        discussion = paper_manager.get_discussion(pmc_id)
-        if discussion is not None and discussion != results:
-            sections.append(('discussion', discussion))
 
         for label, section in sections:
             section_distillation_candidates_cur = []
@@ -190,6 +233,11 @@ def run_paper_annotation_pass(
                 f'PMC{pmc_id}', label, MODEL_CONSENSUS, llm_gene, llm_name,
                 section_distillation, duration_sec,
             ))
+            sections_done += 1
+            _emit_progress(
+                progress_cb, evidence_mode, 'extracting',
+                sections_done=sections_done, sections_total=sections_total,
+            )
 
     section_distillation_df = pd.DataFrame(
         section_distillations,
@@ -236,6 +284,10 @@ def run_paper_annotation_pass(
             return record.score if record is not None else None
 
         relevance_scores = section_distillation_filtered_df['PmcId'].map(_relevance_for_pmc_label)
+        _emit_progress(
+            progress_cb, evidence_mode, 'aggregating',
+            sections_done=sections_done, sections_total=sections_total,
+        )
         gene_distillation, _duration_sec = llm_handler.get_llm_aggregate_json(
             section_distillation_filtered_df['Response'],
             section_distillation_filtered_df['PMID'],
@@ -329,6 +381,7 @@ def get_gene_annotation(
     cache_supplied_name=False,
     allow_ortholog_fallback=False, ortholog_override=None,
     ortholog_catalog=None,
+    progress_cb=None,
 ):
     if locus is None and gene is not None:
         locus = gene
@@ -400,6 +453,7 @@ def get_gene_annotation(
         paper_manager=paper_manager,
         cache_key=_pmc_mapping_cache_key(profile_context, target),
         evidence_mode='target',
+        progress_cb=progress_cb,
     )
 
     duration = time.time() - start
@@ -532,6 +586,7 @@ def get_gene_annotation(
             ortholog_context=ortholog_context,
             save_pmc_mapping=False,
             field_defs_profile=profile_context,
+            progress_cb=progress_cb,
         )
         if ortholog_pass.gene_distillation is None:
             ortholog_pass_metadata = metadata.build_ortholog_pass_metadata(
