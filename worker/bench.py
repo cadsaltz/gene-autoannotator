@@ -7,6 +7,7 @@ import os
 import shutil
 import signal
 import sys
+import threading
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,7 @@ import ollama
 
 from shared.job_contract import AnnotationJobRequest
 from worker import executor
+from worker.bench_dashboard import BenchDashboard
 from worker.bootstrap import ensure_worker_env
 from worker.config import load_config
 from worker.fleet.models import required_model_names
@@ -29,19 +31,67 @@ from worker.router.server import start_router_server, stop_router_server
 from worker.runtime import WorkerRuntime
 from worker.sources.batch import BatchJobSource
 
+DEFAULT_LOG_FILENAME = "worker-bench.log"
+
 log = logging.getLogger(__name__)
 
 _interrupt_count = 0
 _runtime_for_shutdown: WorkerRuntime | None = None
 
 
-def _configure_logging() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s | %(message)s",
-        stream=sys.stdout,
-        force=True,
-    )
+def configure_bench_logging(*, log_file: Path | None = None, dashboard: bool = False) -> None:
+    """Configure root logging for bench runs.
+
+    When `dashboard` is active and a log file is available, verbose logs go
+    only to that file so they don't corrupt the in-place `rich.Live` render.
+    Otherwise (or with no log file), logs stream to stdout as before, with
+    an optional file handler alongside for `--log-file`.
+    """
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.setLevel(logging.DEBUG if dashboard else logging.INFO)
+
+    if dashboard and log_file is not None:
+        root.addHandler(_file_handler(log_file))
+        return
+
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s | %(message)s"))
+    root.addHandler(stream_handler)
+
+    if log_file is not None:
+        root.addHandler(_file_handler(log_file))
+
+
+def _file_handler(log_file: Path) -> logging.Handler:
+    log_file = Path(log_file)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(log_file, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s | %(message)s"))
+    return handler
+
+
+def _dashboard_enabled(args: argparse.Namespace) -> bool:
+    no_dashboard = bool(getattr(args, "no_dashboard", False))
+    env_flag = os.getenv("WORKER_BENCH_DASHBOARD", "1")
+    return sys.stdout.isatty() and not no_dashboard and env_flag != "0"
+
+
+def _resolve_log_file(
+    *,
+    args: argparse.Namespace,
+    dashboard: bool,
+    report_path: Path,
+) -> Path | None:
+    explicit = getattr(args, "log_file", None) or os.getenv("WORKER_LOG_FILE")
+    if explicit:
+        return Path(explicit)
+    if not dashboard:
+        return None
+    output_dir = getattr(args, "output_dir", None)
+    if output_dir:
+        return Path(output_dir).expanduser().resolve().parent / DEFAULT_LOG_FILENAME
+    return report_path.parent / DEFAULT_LOG_FILENAME
 
 
 def _progress(message: str) -> None:
@@ -62,9 +112,14 @@ def _purge_llm_cache() -> None:
         shutil.rmtree(cache_root / rel, ignore_errors=True)
 
 
-def _execute_job(request_dict: dict[str, Any], *, job_id: str | None = None) -> dict[str, Any]:
+def _execute_job(
+    request_dict: dict[str, Any],
+    *,
+    job_id: str | None = None,
+    on_progress=None,
+) -> dict[str, Any]:
     request = AnnotationJobRequest(**request_dict)
-    return executor.run_annotation_job(request, job_id=job_id)
+    return executor.run_annotation_job(request, job_id=job_id, on_progress=on_progress)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -99,6 +154,19 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "using saved or recommended values. Requires an interactive terminal."
         ),
     )
+    parser.add_argument(
+        "--no-dashboard",
+        action="store_true",
+        help="Disable the live in-place dashboard even on a TTY; use linear logs instead.",
+    )
+    parser.add_argument(
+        "--log-file",
+        default=None,
+        help=(
+            "Write verbose logs to this file (default: alongside --report, or "
+            "WORKER_LOG_FILE, when the dashboard is active)."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -113,6 +181,31 @@ def _apply_output_dir(output_dir: str | None) -> None:
     path = Path(output_dir).expanduser().resolve()
     path.mkdir(parents=True, exist_ok=True)
     os.environ["WORKER_OUTPUT_DIR"] = str(path)
+
+
+def _run_with_dashboard(
+    runtime: WorkerRuntime,
+    *,
+    dashboard: bool,
+    meta: dict[str, Any],
+) -> dict[str, Any] | None:
+    if not dashboard:
+        return runtime.run()
+
+    stop_event = threading.Event()
+    dashboard_thread = threading.Thread(
+        target=BenchDashboard().run_live,
+        args=(runtime, stop_event),
+        kwargs={"meta": meta},
+        name="worker-bench-dashboard",
+        daemon=True,
+    )
+    dashboard_thread.start()
+    try:
+        return runtime.run()
+    finally:
+        stop_event.set()
+        dashboard_thread.join(timeout=5)
 
 
 def _install_shutdown_handlers(runtime: WorkerRuntime) -> None:
@@ -136,13 +229,18 @@ def _install_shutdown_handlers(runtime: WorkerRuntime) -> None:
 
 
 def main(argv=None):
-    _configure_logging()
     if isinstance(argv, argparse.Namespace):
         args = argv
     elif argv is None:
         args = _parse_args(None)
     else:
         args = _parse_args(list(argv))
+
+    dashboard = _dashboard_enabled(args)
+    report_path = _report_path(getattr(args, "report", None))
+    log_file = _resolve_log_file(args=args, dashboard=dashboard, report_path=report_path)
+    configure_bench_logging(log_file=log_file, dashboard=dashboard)
+
     configure_fleet = bool(getattr(args, "configure_fleet", False))
     if configure_fleet and not sys.stdin.isatty():
         print(
@@ -275,7 +373,16 @@ def main(argv=None):
             metrics_collector=getattr(router_thread, "_metrics", None),
         )
         _install_shutdown_handlers(runtime)
-        report = runtime.run()
+        report = _run_with_dashboard(
+            runtime,
+            dashboard=dashboard,
+            meta={
+                "mode": "bench",
+                "fleet": f"{runtime_fleet.num_servers}x{runtime_fleet.parallel}",
+                "slots": selected_slots,
+                "tier": runtime_fleet.memory_tier,
+            },
+        )
         if runtime.shutdown_requested:
             _progress("Bench interrupted.")
             return 130
@@ -297,7 +404,6 @@ def main(argv=None):
                     model_mode=os.getenv("AUTOANNOTATION_MODEL_MODE", "performance"),
                 )
 
-        report_path = _report_path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         batch = report.get("batch", {})

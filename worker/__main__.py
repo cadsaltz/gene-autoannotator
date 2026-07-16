@@ -43,6 +43,16 @@ def main():
         action="store_true",
         help="Prompt for Ollama fleet settings (servers, parallel, slots)",
     )
+    bench_parser.add_argument(
+        "--no-dashboard",
+        action="store_true",
+        help="Disable the live in-place dashboard even on a TTY; use linear logs instead",
+    )
+    bench_parser.add_argument(
+        "--log-file",
+        default=None,
+        help="Write verbose logs to this file (default: alongside --report when dashboard is active)",
+    )
 
     args = parser.parse_args()
     command = args.command or "serve"

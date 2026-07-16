@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -44,6 +45,25 @@ def _spec():
         cpu_physical=8,
         cpu_logical=16,
     )
+
+
+def test_configure_bench_logging_to_file(tmp_path):
+    log_path = tmp_path / "worker.log"
+    bench.configure_bench_logging(log_file=log_path, dashboard=True)
+    try:
+        logging.getLogger("autoannotation").info("hello-file")
+    finally:
+        logging.getLogger().handlers.clear()
+    assert "hello-file" in log_path.read_text()
+
+
+def test_configure_bench_logging_without_dashboard_streams_to_stdout(tmp_path, capsys):
+    bench.configure_bench_logging(log_file=None, dashboard=False)
+    try:
+        logging.getLogger("autoannotation").info("hello-stdout")
+    finally:
+        logging.getLogger().handlers.clear()
+    assert "hello-stdout" in capsys.readouterr().out
 
 
 def test_batch_job_source_assigns_ids_and_exhaustion(tmp_path):
@@ -93,7 +113,7 @@ def test_bench_completes_and_writes_report(tmp_path, monkeypatch):
     monkeypatch.setattr(
         bench.executor,
         "run_annotation_job",
-        lambda request, *, job_id=None: {"job_id": job_id, "locus": request.locus},
+        lambda request, *, job_id=None, on_progress=None: {"job_id": job_id, "locus": request.locus},
     )
 
     jobs = Path("tests/fixtures/bench_jobs_2.jsonl")
@@ -172,7 +192,7 @@ def test_bench_output_dir_sets_worker_output_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(bench, "load_config", lambda: SimpleNamespace(max_slots=2, heartbeat_seconds=1))
     captured = {}
 
-    def fake_run(request, *, job_id=None):
+    def fake_run(request, *, job_id=None, on_progress=None):
         captured["output_dir"] = os.environ.get("WORKER_OUTPUT_DIR")
         return {"job_id": job_id}
 
