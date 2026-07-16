@@ -21,6 +21,7 @@ def main(
     ortholog_override=None,
     ortholog_catalog=None,
     quiet=None,
+    progress_cb=None,
 ):
     if quiet is None:
         quiet = bool(os.getenv('ANNOTATION_JOB_ID'))
@@ -42,6 +43,7 @@ def main(
         allow_ortholog_fallback=allow_ortholog_fallback,
         ortholog_override=ortholog_override,
         ortholog_catalog=ortholog_catalog,
+        progress_cb=progress_cb,
     )
 
     if result is None:

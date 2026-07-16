@@ -82,10 +82,14 @@ def test_subprocess_executor_rejects_polluted_stdout(monkeypatch):
     )
 
     class FakePopen:
-        def communicate(self):
-            return (polluted_stdout, "")
+        def __init__(self):
+            self.stdout = io.StringIO(polluted_stdout)
+            self.stderr = io.StringIO("")
+            self.returncode = None
 
-        returncode = 0
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return self.returncode
 
     monkeypatch.setattr(executor.subprocess, "Popen", lambda *a, **k: FakePopen())
 
@@ -102,10 +106,14 @@ def test_subprocess_executor_accepts_clean_stdout(monkeypatch):
     )
 
     class FakePopen:
-        def communicate(self):
-            return (clean_stdout, "")
+        def __init__(self):
+            self.stdout = io.StringIO(clean_stdout)
+            self.stderr = io.StringIO("")
+            self.returncode = None
 
-        returncode = 0
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return self.returncode
 
     monkeypatch.setattr(executor.subprocess, "Popen", lambda *a, **k: FakePopen())
 

@@ -6,7 +6,10 @@ import tempfile
 import threading
 import time
 
+from pydantic import ValidationError
+
 from shared.job_contract import AnnotationJobRequest
+from shared.job_progress import JobProgressEvent
 
 _SUBPROCESS_ENV_KEYS = (
     "OLLAMA_ROUTER_URL",
@@ -15,6 +18,11 @@ _SUBPROCESS_ENV_KEYS = (
     "WORKER_CACHE_DIR",
     "WORKER_OUTPUT_DIR",
 )
+
+# Cap on how much non-progress stderr we keep in memory for failure
+# diagnostics. This is a tail buffer, not a log sink; annotation logs are
+# never dumped to the live terminal by default (see WORKER_JOB_CAPTURE_STDERR).
+_STDERR_LOG_TAIL_LIMIT_CHARS = 8000
 
 _active_lock = threading.Lock()
 _active_processes: dict[str, subprocess.Popen] = {}
@@ -62,13 +70,14 @@ def terminate_active_jobs() -> None:
             pass
 
 
-def _run_inprocess(request: AnnotationJobRequest, annotation_main=None):
+def _run_inprocess(request: AnnotationJobRequest, annotation_main=None, progress_cb=None):
     main = annotation_main or _load_annotation_main()
     # Override paths from worker env, ignoring coordinator-sent paths for security.
     cache_dir = os.getenv("WORKER_CACHE_DIR", "./.cache")
     output_dir = os.getenv("WORKER_OUTPUT_DIR", "gen_json")
     return main(
         gene=None,
+        progress_cb=progress_cb,
         profile=request.profile,
         profile_config=request.profile_config,
         organism=request.organism,
@@ -122,31 +131,124 @@ def _subprocess_env(*, job_id: str | None) -> dict[str, str]:
     return env
 
 
-def _communicate_with_optional_timeout(
+def parse_progress_stderr_line(line: str) -> JobProgressEvent | None:
+    """Parse one subprocess stderr line as a progress NDJSON record.
+
+    Returns None for blank lines, non-JSON log noise, JSON that isn't a
+    `{"type": "progress", ...}` object, or a progress object whose fields
+    fail `JobProgressEvent` validation.
+    """
+    text = line.strip()
+    if not text:
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict) or payload.get("type") != "progress":
+        return None
+    fields = {key: value for key, value in payload.items() if key != "type"}
+    try:
+        return JobProgressEvent(**fields)
+    except ValidationError:
+        return None
+
+
+def _drain_subprocess_streams(
     proc: subprocess.Popen,
     *,
-    timeout_sec: float | None,
-) -> tuple[str, str | None]:
-    if timeout_sec is None:
-        return proc.communicate()
+    on_progress,
+    on_log,
+    capture_stderr: bool,
+):
+    """Start background readers for stdout/stderr while the process runs.
 
-    deadline = time.monotonic() + timeout_sec
-    while True:
+    stdout is buffered verbatim for the final result JSON. stderr is read
+    line-by-line: progress NDJSON records are dispatched to `on_progress`;
+    everything else is forwarded to `on_log` (if given) and/or kept in a
+    bounded tail buffer for failure diagnostics when `capture_stderr` is
+    True. Non-progress stderr is never written to the live terminal here.
+    """
+    stdout_chunks: list[str] = []
+    stderr_tail: list[str] = []
+    stderr_tail_len = 0
+
+    def _read_stdout() -> None:
+        assert proc.stdout is not None
         try:
-            return proc.communicate(timeout=max(0.1, deadline - time.monotonic()))
-        except subprocess.TimeoutExpired:
-            if time.monotonic() >= deadline:
-                proc.kill()
-                stdout, stderr = proc.communicate()
-                detail = (stderr or "").strip()
-                raise RuntimeError(
-                    f"annotation subprocess exceeded WORKER_JOB_WALL_TIMEOUT_SEC="
-                    f"{timeout_sec:g}s"
-                    + (f": {detail}" if detail else "")
-                ) from None
+            while True:
+                chunk = proc.stdout.read(65536)
+                if not chunk:
+                    break
+                stdout_chunks.append(chunk)
+        finally:
+            try:
+                proc.stdout.close()
+            except (OSError, ValueError):
+                pass
+
+    def _read_stderr() -> None:
+        nonlocal stderr_tail_len
+        assert proc.stderr is not None
+        try:
+            for raw_line in proc.stderr:
+                line = raw_line.rstrip("\n")
+                if not line:
+                    continue
+                event = parse_progress_stderr_line(line)
+                if event is not None:
+                    if on_progress is not None:
+                        try:
+                            on_progress(event)
+                        except Exception:
+                            pass
+                    continue
+                if on_log is not None:
+                    try:
+                        on_log(line)
+                    except Exception:
+                        pass
+                if capture_stderr:
+                    stderr_tail.append(line)
+                    stderr_tail_len += len(line) + 1
+                    while stderr_tail_len > _STDERR_LOG_TAIL_LIMIT_CHARS and len(stderr_tail) > 1:
+                        removed = stderr_tail.pop(0)
+                        stderr_tail_len -= len(removed) + 1
+        finally:
+            try:
+                proc.stderr.close()
+            except (OSError, ValueError):
+                pass
+
+    stdout_thread = threading.Thread(target=_read_stdout, daemon=True)
+    stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
+    stdout_thread.start()
+    stderr_thread.start()
+    return stdout_thread, stderr_thread, stdout_chunks, stderr_tail
 
 
-def _run_subprocess(request: AnnotationJobRequest, *, job_id: str | None):
+def _wait_with_optional_timeout(proc: subprocess.Popen, *, timeout_sec: float | None) -> bool:
+    """Wait for process exit. Returns True if it was killed for exceeding timeout_sec."""
+    if timeout_sec is None:
+        proc.wait()
+        return False
+    deadline = time.monotonic() + timeout_sec
+    try:
+        proc.wait(timeout=max(0.1, deadline - time.monotonic()))
+        return False
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        return True
+
+
+def _run_subprocess(
+    request: AnnotationJobRequest,
+    *,
+    job_id: str | None = None,
+    on_progress=None,
+    on_log=None,
+):
     request_path = None
     proc: subprocess.Popen | None = None
     capture_stderr = _capture_subprocess_stderr()
@@ -168,26 +270,46 @@ def _run_subprocess(request: AnnotationJobRequest, *, job_id: str | None):
                 request_path,
             ],
             env=_subprocess_env(job_id=job_id),
+            # stderr is always piped (not inherited) so progress NDJSON can
+            # be parsed; non-progress lines are never dumped to the live
+            # terminal by default. stdout stays the single JSON result.
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE if capture_stderr else None,
+            stderr=subprocess.PIPE,
             text=True,
         )
         _register_job_process(job_id, proc)
-        stdout, stderr = _communicate_with_optional_timeout(
+
+        stdout_thread, stderr_thread, stdout_chunks, stderr_tail = _drain_subprocess_streams(
             proc,
-            timeout_sec=_job_wall_timeout_sec(),
+            on_progress=on_progress,
+            on_log=on_log,
+            capture_stderr=capture_stderr,
         )
+
+        wall_timeout_sec = _job_wall_timeout_sec()
+        timed_out = _wait_with_optional_timeout(proc, timeout_sec=wall_timeout_sec)
+        stdout_thread.join(timeout=5)
+        stderr_thread.join(timeout=5)
+
+        stdout = "".join(stdout_chunks).strip()
+        stderr_detail = "\n".join(stderr_tail).strip()
+
+        if timed_out:
+            raise RuntimeError(
+                f"annotation subprocess exceeded WORKER_JOB_WALL_TIMEOUT_SEC="
+                f"{wall_timeout_sec:g}s"
+                + (f": {stderr_detail}" if stderr_detail else "")
+            )
         if proc.returncode != 0:
-            stderr_text = (stderr or "").strip()
-            if not stderr_text and not capture_stderr:
-                stderr_text = (
-                    "subprocess stderr is inherited; scroll up for annotation logs"
+            if not stderr_detail and not capture_stderr:
+                stderr_detail = (
+                    "annotation subprocess stderr was not captured; "
+                    "set WORKER_JOB_CAPTURE_STDERR=1 to capture failure diagnostics"
                 )
             raise RuntimeError(
                 f"annotation subprocess failed with exit code {proc.returncode}"
-                + (f": {stderr_text}" if stderr_text else "")
+                + (f": {stderr_detail}" if stderr_detail else "")
             )
-        stdout = stdout.strip()
         if not stdout:
             raise RuntimeError("annotation subprocess produced no stdout")
         try:
@@ -210,7 +332,9 @@ def run_annotation_job(
     *,
     job_id: str | None = None,
     annotation_main=None,
+    on_progress=None,
+    on_log=None,
 ):
     if os.getenv("WORKER_JOB_EXECUTION", "subprocess") == "inprocess":
-        return _run_inprocess(request, annotation_main=annotation_main)
-    return _run_subprocess(request, job_id=job_id)
+        return _run_inprocess(request, annotation_main=annotation_main, progress_cb=on_progress)
+    return _run_subprocess(request, job_id=job_id, on_progress=on_progress, on_log=on_log)

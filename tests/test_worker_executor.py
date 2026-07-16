@@ -1,4 +1,6 @@
+import io
 import json
+import threading
 
 from shared.job_contract import AnnotationJobRequest
 from worker import executor
@@ -58,19 +60,20 @@ def test_run_annotation_job_subprocess_sets_job_env(monkeypatch):
         def __init__(self, cmd, **kwargs):
             captured["cmd"] = cmd
             captured["env"] = kwargs["env"]
-
-        def communicate(self):
-            return (
+            self.stdout = io.StringIO(
                 json.dumps(
                     {
                         "annotation": {"gene_id": "Rv0001"},
                         "output_path": "gen_json/gen_Rv0001.json",
                     }
-                ),
-                "",
+                )
             )
+            self.stderr = io.StringIO("")
+            self.returncode = None
 
-        returncode = 0
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return self.returncode
 
     monkeypatch.setattr(executor.subprocess, "Popen", FakePopen)
 
@@ -90,7 +93,8 @@ def test_run_annotation_job_subprocess_sets_job_env(monkeypatch):
     assert result["output_path"] == "gen_json/gen_Rv0001.json"
 
 
-def test_run_annotation_job_subprocess_inherits_stderr_by_default(monkeypatch):
+def test_run_annotation_job_subprocess_always_pipes_stderr_for_progress(monkeypatch):
+    """stderr is always piped (never inherited/live) so progress NDJSON can be parsed."""
     monkeypatch.setenv("WORKER_JOB_EXECUTION", "subprocess")
     monkeypatch.delenv("WORKER_JOB_CAPTURE_STDERR", raising=False)
 
@@ -98,43 +102,48 @@ def test_run_annotation_job_subprocess_inherits_stderr_by_default(monkeypatch):
 
     class FakePopen:
         def __init__(self, cmd, **kwargs):
+            captured["stdout"] = kwargs.get("stdout")
             captured["stderr"] = kwargs.get("stderr")
+            self.stdout = io.StringIO(json.dumps({"ok": True}))
+            self.stderr = io.StringIO("")
+            self.returncode = None
 
-        def communicate(self):
-            return (json.dumps({"ok": True}), None)
-
-        returncode = 0
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return self.returncode
 
     monkeypatch.setattr(executor.subprocess, "Popen", FakePopen)
 
     request = AnnotationJobRequest(profile="mtb-h37rv", locus="Rv0001")
     executor.run_annotation_job(request, job_id="job-123")
 
-    assert captured["stderr"] is None
+    assert captured["stdout"] is executor.subprocess.PIPE
+    assert captured["stderr"] is executor.subprocess.PIPE
 
 
 def test_terminate_active_jobs_kills_running_subprocess(monkeypatch):
-    import threading
     import time
 
     monkeypatch.setenv("WORKER_JOB_EXECUTION", "subprocess")
 
     class BlockingPopen:
         def __init__(self, cmd, **kwargs):
-            self._terminated = False
-
-        def communicate(self):
-            while not self._terminated:
-                time.sleep(0.01)
-            return ("", "stopped")
-
-        def terminate(self):
-            self._terminated = True
+            self._event = threading.Event()
+            self.stdout = io.StringIO("")
+            self.stderr = io.StringIO("stopped")
+            self.returncode = None
 
         def wait(self, timeout=None):
-            return 0
+            if not self._event.wait(timeout=timeout):
+                raise executor.subprocess.TimeoutExpired(cmd="job_main", timeout=timeout)
+            self.returncode = -15
+            return self.returncode
 
-        returncode = -15
+        def terminate(self):
+            self._event.set()
+
+        def kill(self):
+            self._event.set()
 
     monkeypatch.setattr(executor.subprocess, "Popen", BlockingPopen)
 
