@@ -3,8 +3,10 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import os
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,6 +47,28 @@ class CpuRamStat:
     cpu_percent: float | None
     total_bytes: int
     available_bytes: int
+
+
+@dataclass(frozen=True)
+class OllamaCpuSample:
+    """Sum of utime+stime jiffies across matching Ollama processes."""
+
+    jiffies: int
+    process_count: int
+    monotonic: float
+
+
+@dataclass(frozen=True)
+class OllamaCpuStat:
+    """Ollama fleet CPU use over a refresh interval.
+
+    ``percent`` matches ``top``/``htop`` style (can exceed 100 on multi-core).
+    ``cores`` is ``percent / 100`` — approximate logical cores in use.
+    """
+
+    percent: float
+    cores: float
+    process_count: int
 
 
 def parse_nvidia_smi_csv(raw: str) -> list[GpuStat] | GpuUnavailable:
@@ -181,11 +205,107 @@ def probe_cpu_ram(*, prev_stat_sample: ProcStatSample | None = None) -> CpuRamSt
     )
 
 
-def probe_ollama_cpu_percent() -> float | None:
-    """Approximate Ollama CPU usage from /proc (v1: not implemented).
+def _clock_ticks_per_sec() -> int:
+    try:
+        return int(os.sysconf("SC_CLK_TCK"))
+    except (AttributeError, ValueError, OSError):
+        return 100
 
-    A future version would scan /proc/[pid]/comm for names containing ``ollama``,
-    read utime/stime from /proc/[pid]/stat, and sum deltas across processes over
-    a refresh interval. Returns ``None`` when unavailable or not yet sampled.
+
+def _read_proc_comm(pid: int) -> str | None:
+    try:
+        return (_PROC_ROOT / str(pid) / "comm").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+
+def _read_proc_stat_jiffies(pid: int) -> int | None:
+    try:
+        stat = (_PROC_ROOT / str(pid) / "stat").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    rparen = stat.rfind(")")
+    if rparen == -1:
+        return None
+    fields = stat[rparen + 2 :].split()
+    if len(fields) < 13:
+        return None
+    try:
+        utime = int(fields[11])
+        stime = int(fields[12])
+    except ValueError:
+        return None
+    return utime + stime
+
+
+def _ollama_pids() -> list[int]:
+    pids: list[int] = []
+    try:
+        entries = _PROC_ROOT.iterdir()
+    except OSError:
+        return pids
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        comm = _read_proc_comm(pid)
+        if comm == "ollama":
+            pids.append(pid)
+    return pids
+
+
+def read_ollama_cpu_sample() -> OllamaCpuSample:
+    jiffies = 0
+    count = 0
+    for pid in _ollama_pids():
+        proc_jiffies = _read_proc_stat_jiffies(pid)
+        if proc_jiffies is None:
+            continue
+        jiffies += proc_jiffies
+        count += 1
+    return OllamaCpuSample(
+        jiffies=jiffies,
+        process_count=count,
+        monotonic=time.monotonic(),
+    )
+
+
+def ollama_cpu_from_samples(
+    prev: OllamaCpuSample,
+    curr: OllamaCpuSample,
+) -> OllamaCpuStat | None:
+    delta_t = curr.monotonic - prev.monotonic
+    if delta_t <= 0:
+        return None
+    delta_jiffies = curr.jiffies - prev.jiffies
+    if delta_jiffies < 0:
+        return None
+    clk_tck = _clock_ticks_per_sec()
+    percent = 100.0 * delta_jiffies / (delta_t * clk_tck)
+    percent = max(0.0, percent)
+    return OllamaCpuStat(
+        percent=percent,
+        cores=percent / 100.0,
+        process_count=curr.process_count,
+    )
+
+
+def probe_ollama_cpu(
+    *,
+    prev_sample: OllamaCpuSample | None = None,
+) -> tuple[OllamaCpuStat | None, OllamaCpuSample]:
+    """Measure Ollama CPU from ``/proc`` (no Ollama CLI/HTTP).
+
+    Returns the current sample always; ``OllamaCpuStat`` only when ``prev_sample``
+    is provided and the interval is valid. First dashboard tick is usually ``None``.
     """
-    return None
+    current = read_ollama_cpu_sample()
+    if prev_sample is None:
+        return None, current
+    return ollama_cpu_from_samples(prev_sample, current), current
+
+
+def probe_ollama_cpu_percent() -> float | None:
+    """Backward-compatible helper; prefer :func:`probe_ollama_cpu`."""
+    stat, _ = probe_ollama_cpu()
+    return stat.percent if stat is not None else None

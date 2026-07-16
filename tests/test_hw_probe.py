@@ -111,6 +111,54 @@ def test_probe_cpu_ram_with_previous_sample(tmp_path, monkeypatch):
     assert stat.cpu_percent == 50.0
 
 
+def test_ollama_cpu_from_samples_uses_top_style_percent():
+    prev = hw_probe.OllamaCpuSample(jiffies=1000, process_count=2, monotonic=0.0)
+    curr = hw_probe.OllamaCpuSample(jiffies=1000 + 200, process_count=2, monotonic=1.0)
+    stat = hw_probe.ollama_cpu_from_samples(prev, curr)
+    assert stat is not None
+    assert stat.percent == 200.0
+    assert stat.cores == 2.0
+    assert stat.process_count == 2
+
+
+def test_read_ollama_cpu_sample_sums_matching_procs(tmp_path, monkeypatch):
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    (proc / "1").mkdir()
+    (proc / "1" / "comm").write_text("ollama\n", encoding="utf-8")
+    (proc / "1" / "stat").write_text("1 (ollama) S 0 0 0 0 0 0 0 0 0 0 1000 200\n", encoding="utf-8")
+    (proc / "2").mkdir()
+    (proc / "2" / "comm").write_text("python\n", encoding="utf-8")
+    (proc / "999").mkdir()
+    (proc / "999" / "comm").write_text("ollama\n", encoding="utf-8")
+    (proc / "999" / "stat").write_text("999 (ollama) S 0 0 0 0 0 0 0 0 0 0 50 25\n", encoding="utf-8")
+    monkeypatch.setattr(hw_probe, "_PROC_ROOT", proc)
+    sample = hw_probe.read_ollama_cpu_sample()
+    assert sample.process_count == 2
+    assert sample.jiffies == 1275
+
+
+def test_probe_ollama_cpu_first_tick_is_none_second_computes(tmp_path, monkeypatch):
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    (proc / "42").mkdir()
+    (proc / "42" / "comm").write_text("ollama\n", encoding="utf-8")
+    (proc / "42" / "stat").write_text("42 (ollama) S 0 0 0 0 0 0 0 0 0 0 0 0\n", encoding="utf-8")
+    monkeypatch.setattr(hw_probe, "_PROC_ROOT", proc)
+
+    stat0, sample0 = hw_probe.probe_ollama_cpu()
+    assert stat0 is None
+    assert sample0.process_count == 1
+
+    (proc / "42" / "stat").write_text("42 (ollama) R 0 0 0 0 0 0 0 0 0 0 100 50\n", encoding="utf-8")
+    monkeypatch.setattr(hw_probe.time, "monotonic", lambda: sample0.monotonic + 1.0)
+    stat1, _ = hw_probe.probe_ollama_cpu(prev_sample=sample0)
+    assert stat1 is not None
+    assert stat1.percent == 150.0
+    assert stat1.cores == 1.5
+
+
 def test_probe_ollama_cpu_percent_returns_none_or_float():
-    result = hw_probe.probe_ollama_cpu_percent()
-    assert result is None or isinstance(result, float)
+    stat, sample = hw_probe.probe_ollama_cpu()
+    assert stat is None
+    assert isinstance(sample, hw_probe.OllamaCpuSample)

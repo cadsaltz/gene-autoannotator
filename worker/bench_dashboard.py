@@ -10,7 +10,7 @@ from rich.live import Live
 from rich.text import Text
 
 from worker import hw_probe
-from worker.hw_probe import CpuRamStat, GpuStat, GpuUnavailable, ProcStatSample
+from worker.hw_probe import CpuRamStat, GpuStat, GpuUnavailable, OllamaCpuStat, OllamaCpuSample, ProcStatSample
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +45,15 @@ def _format_percent(value: float | None) -> str:
     if value is None:
         return "—"
     return f"{value:.0f}%"
+
+
+def _format_ollama_cpu(stat: OllamaCpuStat | None) -> str:
+    if stat is None:
+        return "—"
+    if stat.process_count == 0:
+        return "0% (no processes)"
+    cores_label = f"{stat.cores:.1f}".rstrip("0").rstrip(".")
+    return f"{stat.percent:.0f}% (~{cores_label} cores)"
 
 
 def _progress_sections(progress: dict[str, Any] | None) -> str:
@@ -100,7 +109,9 @@ def _build_lines(
     lines = [
         " │ ".join(str(bit) for bit in header_bits),
         f"BATCH  {jobs_done}/{total_display} │ {jobs_failed} failed │ {running} running │ {queued} queued",
+        "",
         _SEPARATOR,
+        "",
         "JOBS",
     ]
 
@@ -112,14 +123,16 @@ def _build_lines(
                 f"{spinner_frame} "
                 f"{job.get('job_id', '?')} "
                 f"{job.get('locus', '?')}  "
-                f"{_job_phase(progress)}  "
-                f"{_progress_sections(progress)}  "
-                f"{_format_job_elapsed(float(job.get('elapsed_s') or 0.0))}"
+                f"phase {_job_phase(progress)}  "
+                f"sections {_progress_sections(progress)}  "
+                f"elapsed {_format_job_elapsed(float(job.get('elapsed_s') or 0.0))}"
             )
     else:
         lines.append("  (no active jobs)")
 
+    lines.append("")
     lines.append(_SEPARATOR)
+    lines.append("")
 
     gpus = hw.get("gpus")
     gpu_error = hw.get("gpu_error")
@@ -128,32 +141,35 @@ def _build_lines(
             if isinstance(gpu, GpuStat):
                 lines.append(
                     f"GPU {gpu.index}: {gpu.name}  "
-                    f"{gpu.util_percent:.0f}%  "
-                    f"{gpu.mem_used_mb}/{gpu.mem_total_mb} MB  "
-                    f"{gpu.temp_c:.0f}°C"
+                    f"util {gpu.util_percent:.0f}%  "
+                    f"mem {gpu.mem_used_mb}/{gpu.mem_total_mb} MB  "
+                    f"temp {gpu.temp_c:.0f}°C"
                 )
             elif isinstance(gpu, dict):
                 lines.append(
                     f"GPU {gpu.get('index', '?')}: {gpu.get('name', '?')}  "
-                    f"{gpu.get('util_percent', '?')}%  "
-                    f"{gpu.get('mem_used_mb', '?')}/{gpu.get('mem_total_mb', '?')} MB"
+                    f"util {gpu.get('util_percent', '?')}%  "
+                    f"mem {gpu.get('mem_used_mb', '?')}/{gpu.get('mem_total_mb', '?')} MB"
                 )
     elif gpu_error:
         lines.append(f"GPU unavailable: {gpu_error}")
     else:
         lines.append("GPU unavailable")
 
-    ollama_cpu = hw.get("ollama_cpu_percent")
+    ollama_cpu = hw.get("ollama_cpu")
+    if not isinstance(ollama_cpu, OllamaCpuStat):
+        ollama_cpu = None
     lines.append(
-        "CPU "
-        f"{_format_percent(hw.get('cpu_percent'))} │ "
-        f"Ollama {_format_percent(ollama_cpu)} │ "
+        f"CPU util {_format_percent(hw.get('cpu_percent'))} │ "
+        f"Ollama CPU {_format_ollama_cpu(ollama_cpu)} │ "
         f"RAM {hw.get('ram', '—')}"
     )
+    lines.append("")
     lines.append(_SEPARATOR)
 
     footer = meta.get("status") or meta.get("last_error")
     if footer:
+        lines.append("")
         lines.append(str(footer))
 
     return lines
@@ -184,7 +200,10 @@ def _format_ram(stat: CpuRamStat) -> str:
     return f"{used_gb:.0f}/{total_gb:.0f} GB"
 
 
-def _probe_hw(prev_sample: ProcStatSample | None) -> tuple[dict[str, Any], ProcStatSample | None]:
+def _probe_hw(
+    prev_sample: ProcStatSample | None,
+    prev_ollama_sample: OllamaCpuSample | None,
+) -> tuple[dict[str, Any], ProcStatSample | None, OllamaCpuSample | None]:
     gpus: list[GpuStat] | None = None
     gpu_error: str | None = None
     try:
@@ -208,21 +227,29 @@ def _probe_hw(prev_sample: ProcStatSample | None) -> tuple[dict[str, Any], ProcS
     except Exception as exc:
         log.debug("CPU/RAM probe failed", exc_info=exc)
 
-    ollama_cpu_percent: float | None = None
+    ollama_cpu: OllamaCpuStat | None = None
+    next_ollama_sample = prev_ollama_sample
     try:
-        ollama_cpu_percent = hw_probe.probe_ollama_cpu_percent()
+        ollama_cpu, next_ollama_sample = hw_probe.probe_ollama_cpu(
+            prev_sample=prev_ollama_sample,
+        )
     except Exception as exc:
         log.debug("Ollama CPU probe failed", exc_info=exc)
+        try:
+            _, next_ollama_sample = hw_probe.probe_ollama_cpu()
+        except Exception:
+            pass
 
     return (
         {
             "gpus": gpus,
             "gpu_error": gpu_error,
             "cpu_percent": cpu_percent,
-            "ollama_cpu_percent": ollama_cpu_percent,
+            "ollama_cpu": ollama_cpu,
             "ram": ram,
         },
         next_sample,
+        next_ollama_sample,
     )
 
 
@@ -247,11 +274,12 @@ class BenchDashboard:
         runtime: Any,
         stop_event: threading.Event,
         *,
-        refresh_sec: float = 1.0,
+        refresh_sec: float = 0.5,
         meta: dict[str, Any] | None = None,
         meta_provider: Any | None = None,
     ) -> None:
         prev_sample: ProcStatSample | None = None
+        prev_ollama_sample: OllamaCpuSample | None = None
         frame_idx = 0
         started_at = time.monotonic()
         live: Live | None = None
@@ -274,7 +302,10 @@ class BenchDashboard:
                         "active": [],
                     }
 
-                hw, prev_sample = _probe_hw(prev_sample)
+                hw, prev_sample, prev_ollama_sample = _probe_hw(
+                    prev_sample,
+                    prev_ollama_sample,
+                )
 
                 live_meta = dict(meta or {})
                 if meta_provider is not None:
