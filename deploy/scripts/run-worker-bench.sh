@@ -151,8 +151,12 @@ if [[ -n "$ENV_FILE" ]]; then
   fi
 fi
 
+# -t allocates a pseudo-TTY so worker bench can enable the live dashboard
+# (sys.stdout.isatty()). Without it, Docker pipes stdout and the dashboard
+# falls back to scrolling logs. Use --no-dashboard / WORKER_BENCH_DASHBOARD=0
+# inside the container if you need linear logs (e.g. Slurm capture).
 DOCKER_CMD=(
-  docker run --rm --gpus "$GPUS"
+  docker run --rm -t --gpus "$GPUS"
   -v "$JOBS:/jobs/batch.jsonl:ro"
   -v "$OUTPUT_DIR:/out/annotations"
   -v "$REPORT_DIR:/out/reports"
