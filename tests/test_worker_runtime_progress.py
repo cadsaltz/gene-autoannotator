@@ -90,6 +90,7 @@ def test_runtime_stores_progress_for_active_job():
 
 def test_runtime_wires_on_progress_into_execute_fn():
     progress_seen = threading.Event()
+    snapshot_checked = threading.Event()
     job = JobSpec(job_id="j1", request={"profile": "mtb-h37rv", "locus": "Rv0002"})
     source = FakeJobSource([job])
 
@@ -104,12 +105,29 @@ def test_runtime_wires_on_progress_into_execute_fn():
             )
         )
         progress_seen.set()
+        # Block here so the test can read snapshot() while the job is still
+        # active, proving the progress event emitted via the wired
+        # on_progress callback is actually visible mid-flight (not just that
+        # the callback was called).
+        assert snapshot_checked.wait(timeout=2)
         return {"job_id": job_id}
 
     runtime = _runtime(source, fake_execute)
-    runtime.run()
+    thread = threading.Thread(target=runtime.run)
+    thread.start()
 
-    assert progress_seen.is_set()
+    assert progress_seen.wait(timeout=2)
+    snap = runtime.snapshot()
+    assert len(snap["active"]) == 1
+    active = snap["active"][0]
+    assert active["job_id"] == "j1"
+    assert active["progress"]["phase"] == "fetching"
+    assert active["progress"]["sections_done"] == 0
+    assert active["progress"]["sections_total"] == 4
+    snapshot_checked.set()
+
+    thread.join(timeout=5)
+    assert not thread.is_alive()
     assert runtime.active_jobs == {}
 
 

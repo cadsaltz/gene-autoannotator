@@ -51,8 +51,8 @@ class JobSource(Protocol):
 @dataclass
 class ActiveJob:
     job_id: str
-    future: Future[Any]
     started_at: float
+    future: Future[Any] | None = None
     locus: str | None = None
     progress: JobProgressEvent | None = None
 
@@ -230,14 +230,20 @@ class WorkerRuntime:
     def _start_job(self, job: JobSpec) -> None:
         locus = job.request.get("locus") or job.request.get("name") or "?"
         log.info("Started job %s (locus=%s)", job.job_id, locus)
-        future = self._pool.submit(self._execute, job)
+        # Register the job before submitting it to the pool so that an
+        # on_progress callback invoked immediately after the worker thread
+        # starts can never find _active_jobs missing the entry (see
+        # _on_job_progress). The lock is only held for the dict insert, not
+        # across the submit() call, so it cannot deadlock with
+        # _on_job_progress's own brief lock acquisition.
+        active = ActiveJob(
+            job_id=job.job_id,
+            started_at=time.monotonic(),
+            locus=locus,
+        )
         with self._jobs_lock:
-            self._active_jobs[job.job_id] = ActiveJob(
-                job_id=job.job_id,
-                future=future,
-                started_at=time.monotonic(),
-                locus=locus,
-            )
+            self._active_jobs[job.job_id] = active
+        active.future = self._pool.submit(self._execute, job)
 
     def _execute(self, job: JobSpec) -> Any:
         kwargs: dict[str, Any] = {}
@@ -253,7 +259,7 @@ class WorkerRuntime:
         finished: list[tuple[str, Future[Any]]] = []
         with self._jobs_lock:
             for job_id, active in self._active_jobs.items():
-                if active.future.done():
+                if active.future is not None and active.future.done():
                     finished.append((job_id, active.future))
 
         for job_id, future in finished:
