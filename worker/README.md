@@ -101,6 +101,27 @@ python -m worker bench \
 See [`docs/worker-bench-protocol.md`](../docs/worker-bench-protocol.md) for the
 standard scenario matrix, cold-cache requirements, and report field definitions.
 
+### Live dashboard and logs
+
+On an interactive terminal (TTY), bench shows an in-place dashboard: batch
+counts, per-slot job progress (phase and `sections_done` / `sections_total`),
+and GPU/CPU/RAM snapshots. Verbose logs go to a file so stdout stays readable.
+
+| Flag / env | Purpose |
+| --- | --- |
+| `--no-dashboard` | Force linear `_progress` lines on stdout instead of the TUI |
+| `WORKER_BENCH_DASHBOARD=0` | Same as `--no-dashboard` (default is on when stdout is a TTY) |
+| `--log-file PATH` | Verbose log destination (default when dashboard is on: `worker-bench.log` next to `--report` or `--output-dir`) |
+| `WORKER_LOG_FILE` | Same as `--log-file` |
+
+Non-TTY runs (Slurm log files, pipes) skip the dashboard automatically and log
+to stdout at INFO as before.
+
+Job subprocesses emit structured `JobProgressEvent` updates (phase, section
+counts, optional ortholog pass) on stderr as NDJSON; the dashboard consumes
+these for per-job lines. The same contract extends `JobProgress` for future
+coordinator/API wiring.
+
 ## Fleet setup
 
 On first run (or when fleet env vars are missing), the worker probes hardware

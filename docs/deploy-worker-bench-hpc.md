@@ -166,3 +166,11 @@ Edit [`deploy/slurm/worker-bench.sbatch`](../deploy/slurm/worker-bench.sbatch) f
 - Uncomment `module load docker` if your cluster requires it
 
 The script invokes `deploy/scripts/run-worker-bench.sh`, which runs `docker run --rm --gpus …` with read-only jobs, writable outputs/cache, and the shared models directory.
+
+**Dashboard vs Slurm logs:** batch jobs usually have no TTY, so the live bench
+dashboard is off and stdout is linear. If you run with a pseudo-TTY or need
+guaranteed linear `#SBATCH --output` logs, pass `--no-dashboard` through the
+wrapper (append to the `python -m worker bench …` args in
+`run-worker-bench.sh` or the sbatch script). Verbose debug logs still land in
+`worker-bench.log` under the run directory when `--log-file` is set or the
+dashboard would have been active.
