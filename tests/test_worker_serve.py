@@ -187,12 +187,15 @@ def test_run_with_dashboard_enabled_starts_and_stops_dashboard_thread(monkeypatc
 
 
 class _FakeCoordinatorClient:
-    def __init__(self):
+    def __init__(self, *, progress_raises=False):
         self.calls = []
         self.completed = []
         self.failed = []
+        self.progress_raises = progress_raises
 
     def progress(self, job_id, current_step, **fields):
+        if self.progress_raises:
+            raise RuntimeError("PATCH /jobs/{id}/progress failed")
         self.calls.append({"job_id": job_id, "current_step": current_step, **fields})
 
     def complete(self, job_id, result):
@@ -250,3 +253,27 @@ def test_drain_aware_source_flushes_reporter_on_complete_and_fail():
     source.on_fail("j-2", "boom", True)
     assert client.calls[-1]["job_id"] == "j-2"
     assert client.calls[-1]["sections_done"] == 9
+
+
+def test_drain_aware_source_on_complete_and_on_fail_survive_flush_failure():
+    """Even if the final progress PATCH would raise, on_complete/on_fail must
+    still report completion/failure to the coordinator (Important #1)."""
+    client = _FakeCoordinatorClient(progress_raises=True)
+    reporter = ProgressReporter(client, debounce_sec=10.0)
+    source = serve._DrainAwareCoordinatorSource(
+        client,
+        free_slots_fn=lambda: 1,
+        drain_signal=serve._DrainSignal(),
+        reporter=reporter,
+    )
+
+    reporter.report("j-1", JobProgressEvent(phase="extracting", sections_done=1, sections_total=5))
+    reporter.report("j-1", JobProgressEvent(phase="extracting", sections_done=2, sections_total=5))
+    assert client.calls == []  # every send failed
+
+    source.on_complete("j-1", {"ok": True})  # flush's failed PATCH must not raise
+    assert client.completed == [("j-1", {"ok": True})]
+
+    reporter.report("j-2", JobProgressEvent(phase="extracting", sections_done=1, sections_total=5))
+    source.on_fail("j-2", "boom", True)  # flush's failed PATCH must not raise
+    assert client.failed == [("j-2", "boom", True)]

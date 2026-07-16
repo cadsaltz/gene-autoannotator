@@ -120,10 +120,11 @@ update.
 
 The coordinator persists these fields on the job record and exposes them via
 `GET /jobs`; the frontend Jobs page renders them on each job tile as
-`<phase> · <done>/<total> sections` with an ortholog-aware progress bar (target
-pass fills `0–50%`, then the ortholog pass fills `50–100%` once it starts),
-falling back to the coarse status-based label/percent for jobs without
-structured fields.
+`<phase> · <done>/<total> sections` with an ortholog-aware progress bar
+(target-only jobs fill the full bar until an ortholog progress event is
+confirmed, at which point the bar remaps to target `0–50%` then ortholog
+`50–100%`), falling back to the coarse status-based label/percent for jobs
+without structured fields.
 
 ## Bench mode
 
