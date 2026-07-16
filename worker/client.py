@@ -50,9 +50,21 @@ class CoordinatorClient:
         response.raise_for_status()
         return response.json()
 
-    def progress(self, job_id, current_step):
+    def progress(self, job_id, current_step, **fields):
+        payload = {"current_step": current_step}
+        for key in (
+            "phase",
+            "sections_done",
+            "sections_total",
+            "papers_done",
+            "papers_total",
+            "pass_name",
+        ):
+            value = fields.get(key)
+            if value is not None:
+                payload[key] = value
         self._http.patch(
-            f"/jobs/{job_id}/progress", headers=self._auth, json={"current_step": current_step}
+            f"/jobs/{job_id}/progress", headers=self._auth, json=payload
         ).raise_for_status()
 
     def complete(self, job_id, result):

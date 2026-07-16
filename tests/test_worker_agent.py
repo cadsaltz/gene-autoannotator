@@ -17,8 +17,8 @@ class FakeClient:
         self.claim_calls.append(free_slots)
         return self._claim_job
 
-    def progress(self, job_id, current_step):
-        self.progress_calls.append((job_id, current_step))
+    def progress(self, job_id, current_step, **fields):
+        self.progress_calls.append((job_id, current_step, fields))
 
     def complete(self, job_id, result):
         self.completed.append((job_id, result))
