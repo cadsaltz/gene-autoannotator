@@ -8,6 +8,11 @@ def _add_serve_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--coordinator-url", dest="coordinator_url")
     parser.add_argument("--token", dest="token")
     parser.add_argument("--memory-gb", dest="memory_gb", type=float)
+    parser.add_argument(
+        "--no-dashboard",
+        action="store_true",
+        help="Disable the live in-place dashboard even on a TTY (default on when stdout is a TTY)",
+    )
 
 
 def main():

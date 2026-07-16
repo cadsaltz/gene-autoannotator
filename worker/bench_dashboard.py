@@ -88,6 +88,8 @@ def _build_lines(
     spinner_frame: str = SPINNER_FRAMES[0],
 ) -> list[str]:
     meta = meta or {}
+    mode = meta.get("mode", "bench")
+    is_serve = mode == "serve"
     jobs_done = _jobs_done(snapshot)
     jobs_total = snapshot.get("jobs_total")
     jobs_failed = int(snapshot.get("jobs_failed") or 0)
@@ -98,18 +100,27 @@ def _build_lines(
     if isinstance(jobs_total, int):
         queued = max(0, jobs_total - jobs_done - jobs_failed - running)
 
+    product = "gene-autoannotator serve" if is_serve else "gene-autoannotator bench"
+    time_label = "uptime" if is_serve else "elapsed"
     header_bits = [
-        "gene-autoannotator bench",
-        meta.get("mode", "bench"),
+        product,
+        mode,
         f"fleet {meta.get('fleet', '—')}",
         f"slots {meta.get('slots', '—')}",
         f"tier {meta.get('tier', '—')}",
-        f"elapsed {_format_elapsed(meta.get('elapsed_s'))}",
+        f"{time_label} {_format_elapsed(meta.get('elapsed_s'))}",
     ]
+    if is_serve:
+        summary_line = f"SERVE  {jobs_done} done │ {jobs_failed} failed │ {running} running"
+    else:
+        summary_line = (
+            f"BATCH  {jobs_done}/{total_display} │ {jobs_failed} failed │ "
+            f"{running} running │ {queued} queued"
+        )
     lines = [
         "",
         " │ ".join(str(bit) for bit in header_bits),
-        f"BATCH  {jobs_done}/{total_display} │ {jobs_failed} failed │ {running} running │ {queued} queued",
+        summary_line,
         "",
         _SEPARATOR,
         "",

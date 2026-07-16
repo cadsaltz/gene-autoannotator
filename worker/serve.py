@@ -4,8 +4,10 @@ import argparse
 import logging
 import os
 import sys
+import threading
 from dataclasses import replace
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import ollama
@@ -13,6 +15,8 @@ import ollama
 from shared.job_contract import AnnotationJobRequest
 from shared.job_progress import JobProgressEvent
 from worker import capacity, executor
+from worker.bench import configure_bench_logging
+from worker.bench_dashboard import BenchDashboard
 from worker.bootstrap import ensure_worker_env
 from worker.client import CoordinatorClient
 from worker.config import load_config
@@ -27,18 +31,61 @@ from worker.router.server import start_router_server
 from worker.runtime import WorkerRuntime
 from worker.sources.coordinator import CoordinatorJobSource
 
+DEFAULT_LOG_FILENAME = "worker-serve.log"
+
 log = logging.getLogger(__name__)
 
 
-def _configure_logging() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s | %(message)s",
-        stream=sys.stdout,
-        force=True,
-    )
+def _configure_logging(*, log_file: Path | None = None, dashboard: bool = False) -> None:
+    configure_bench_logging(log_file=log_file, dashboard=dashboard)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+
+def _dashboard_enabled(args: argparse.Namespace) -> bool:
+    no_dashboard = bool(getattr(args, "no_dashboard", False))
+    env_flag = os.getenv("WORKER_SERVE_DASHBOARD", "1")
+    return sys.stdout.isatty() and not no_dashboard and env_flag != "0"
+
+
+def _resolve_log_file(*, args: argparse.Namespace, dashboard: bool) -> Path | None:
+    explicit = getattr(args, "log_file", None) or os.getenv("WORKER_LOG_FILE")
+    if explicit:
+        return Path(explicit)
+    if not dashboard:
+        return None
+    output_dir = os.getenv("WORKER_OUTPUT_DIR")
+    if output_dir:
+        return Path(output_dir).expanduser().resolve() / DEFAULT_LOG_FILENAME
+    return Path.cwd() / DEFAULT_LOG_FILENAME
+
+
+def _run_with_dashboard(
+    runtime: WorkerRuntime,
+    *,
+    dashboard: bool,
+    meta: dict[str, Any],
+) -> None:
+    if not dashboard:
+        runtime.run()
+        return
+
+    # Blank line between setup logs and the live dashboard panel.
+    print(flush=True)
+    stop_event = threading.Event()
+    dashboard_thread = threading.Thread(
+        target=BenchDashboard().run_live,
+        args=(runtime, stop_event),
+        kwargs={"meta": meta},
+        name="worker-serve-dashboard",
+        daemon=True,
+    )
+    dashboard_thread.start()
+    try:
+        runtime.run()
+    finally:
+        stop_event.set()
+        dashboard_thread.join(timeout=5)
 
 
 def _memory_available_bytes() -> int:
@@ -144,7 +191,6 @@ def _coordinator_overrides_from_args(parsed_args: argparse.Namespace) -> dict[st
 
 
 def main(args=None):
-    _configure_logging()
     if args is None:
         parsed_args = argparse.Namespace()
     elif isinstance(args, argparse.Namespace):
@@ -153,6 +199,10 @@ def main(args=None):
         parsed_args = argparse.Namespace(**args)
     else:
         parsed_args = argparse.Namespace()
+
+    dashboard = _dashboard_enabled(parsed_args)
+    log_file = _resolve_log_file(args=parsed_args, dashboard=dashboard)
+    _configure_logging(log_file=log_file, dashboard=dashboard)
 
     cli_overrides = _coordinator_overrides_from_args(parsed_args)
     bootstrap_env = bool(getattr(parsed_args, "bootstrap_env", True))
@@ -273,5 +323,14 @@ def main(args=None):
         heartbeat_fn=heartbeat_fn,
     )
     runtime_holder["runtime"] = runtime
-    runtime.run()
+    _run_with_dashboard(
+        runtime,
+        dashboard=dashboard,
+        meta={
+            "mode": "serve",
+            "fleet": f"{fleet.num_servers}x{fleet.parallel}",
+            "slots": config.max_slots,
+            "tier": fleet.memory_tier,
+        },
+    )
 

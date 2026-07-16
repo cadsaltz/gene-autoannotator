@@ -1,4 +1,6 @@
+import argparse
 import os
+import threading
 
 from shared.job_progress import JobProgressEvent
 from worker.config import WorkerConfig
@@ -122,6 +124,66 @@ def test_execute_fn_forwards_on_progress(monkeypatch):
     sentinel = object()
     serve._execute_job({"profile": "mtb-h37rv", "locus": "Rv0001"}, job_id="j-1", on_progress=sentinel)
     assert captured["on_progress"] is sentinel
+
+
+def test_dashboard_enabled_requires_tty_and_respects_flags(monkeypatch):
+    monkeypatch.setattr(serve.sys.stdout, "isatty", lambda: True)
+    monkeypatch.delenv("WORKER_SERVE_DASHBOARD", raising=False)
+    assert serve._dashboard_enabled(argparse.Namespace()) is True
+    assert serve._dashboard_enabled(argparse.Namespace(no_dashboard=True)) is False
+
+    monkeypatch.setenv("WORKER_SERVE_DASHBOARD", "0")
+    assert serve._dashboard_enabled(argparse.Namespace()) is False
+
+    monkeypatch.setattr(serve.sys.stdout, "isatty", lambda: False)
+    monkeypatch.delenv("WORKER_SERVE_DASHBOARD", raising=False)
+    assert serve._dashboard_enabled(argparse.Namespace()) is False
+
+
+def test_resolve_log_file_defaults_to_output_dir_then_cwd(tmp_path, monkeypatch):
+    monkeypatch.delenv("WORKER_LOG_FILE", raising=False)
+    monkeypatch.delenv("WORKER_OUTPUT_DIR", raising=False)
+
+    assert serve._resolve_log_file(args=argparse.Namespace(), dashboard=False) is None
+
+    monkeypatch.chdir(tmp_path)
+    log_file = serve._resolve_log_file(args=argparse.Namespace(), dashboard=True)
+    assert log_file == tmp_path / "worker-serve.log"
+
+    output_dir = tmp_path / "out"
+    monkeypatch.setenv("WORKER_OUTPUT_DIR", str(output_dir))
+    log_file = serve._resolve_log_file(args=argparse.Namespace(), dashboard=True)
+    assert log_file == output_dir / "worker-serve.log"
+
+
+def test_run_with_dashboard_disabled_calls_runtime_run_directly():
+    calls = []
+
+    class FakeRuntime:
+        def run(self):
+            calls.append("run")
+
+    serve._run_with_dashboard(FakeRuntime(), dashboard=False, meta={})
+    assert calls == ["run"]
+
+
+def test_run_with_dashboard_enabled_starts_and_stops_dashboard_thread(monkeypatch):
+    started = threading.Event()
+    stopped = threading.Event()
+
+    def fake_run_live(self, runtime, stop_event, *, meta=None):
+        started.set()
+        stop_event.wait(timeout=2)
+        stopped.set()
+
+    monkeypatch.setattr(serve.BenchDashboard, "run_live", fake_run_live)
+
+    class FakeRuntime:
+        def run(self):
+            assert started.wait(timeout=2)
+
+    serve._run_with_dashboard(FakeRuntime(), dashboard=True, meta={"mode": "serve"})
+    assert stopped.is_set()
 
 
 class _FakeCoordinatorClient:

@@ -42,6 +42,18 @@ def test_render_dashboard_includes_batch_and_gpu_unavailable():
     assert "CPU util 10%" in text
 
 
+def test_render_dashboard_serve_mode_uses_uptime_and_no_total():
+    text = render_dashboard(
+        snapshot={"jobs_completed": 12, "jobs_failed": 1, "jobs_total": None, "active": []},
+        hw={"gpus": None, "gpu_error": "nvidia-smi not found", "cpu_percent": 10.0, "ram": "1/16 GB"},
+        meta={"mode": "serve", "fleet": "1x2", "slots": 2, "tier": "warm_stack", "elapsed_s": 3661},
+    )
+    assert "serve" in text
+    assert "uptime" in text.lower() or "1:01:01" in text
+    assert "SERVE" in text or "12 done" in text
+    assert "/100" not in text  # no fake batch total
+
+
 def test_render_dashboard_accepts_jobs_completed_alias():
     text = render_dashboard(
         snapshot={"jobs_completed": 3, "jobs_total": 10, "jobs_failed": 0, "active": []},
