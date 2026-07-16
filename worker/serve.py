@@ -11,6 +11,7 @@ from typing import Any
 import ollama
 
 from shared.job_contract import AnnotationJobRequest
+from shared.job_progress import JobProgressEvent
 from worker import capacity, executor
 from worker.bootstrap import ensure_worker_env
 from worker.client import CoordinatorClient
@@ -20,6 +21,7 @@ from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, re
 from worker.fleet.supervisor import FleetSupervisor
 from worker.ollama_bootstrap import ensure_models, warm_all_models
 from worker.probe import probe_system
+from worker.progress_reporter import ProgressReporter
 from worker.router import Backend, ModelRouter
 from worker.router.server import start_router_server
 from worker.runtime import WorkerRuntime
@@ -64,9 +66,32 @@ def _should_drain(heartbeat_response: dict[str, Any], config) -> bool:
     return required_version is not None and required_version != config.agent_version
 
 
-def _execute_job(request_dict: dict[str, Any], *, job_id: str | None = None) -> dict[str, Any]:
+def _execute_job(
+    request_dict: dict[str, Any],
+    *,
+    job_id: str | None = None,
+    on_progress=None,
+) -> dict[str, Any]:
     request = AnnotationJobRequest(**request_dict)
-    return executor.run_annotation_job(request, job_id=job_id)
+    return executor.run_annotation_job(request, job_id=job_id, on_progress=on_progress)
+
+
+def _make_execute_fn(reporter: ProgressReporter):
+    """Wrap `_execute_job` so every progress event is both reported to the
+    coordinator (debounced) and forwarded to the runtime's own on_progress
+    hook (used for in-memory job snapshots), regardless of which caller
+    passes `on_progress` down through `WorkerRuntime`.
+    """
+
+    def execute(request_dict: dict[str, Any], *, job_id=None, on_progress=None) -> dict[str, Any]:
+        def combined_progress(event: JobProgressEvent) -> None:
+            reporter.report(job_id, event)
+            if on_progress is not None:
+                on_progress(event)
+
+        return _execute_job(request_dict, job_id=job_id, on_progress=combined_progress)
+
+    return execute
 
 
 @dataclass
@@ -75,9 +100,16 @@ class _DrainSignal:
 
 
 class _DrainAwareCoordinatorSource(CoordinatorJobSource):
-    def __init__(self, *args, drain_signal: _DrainSignal, **kwargs) -> None:
+    def __init__(
+        self,
+        *args,
+        drain_signal: _DrainSignal,
+        reporter: ProgressReporter | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self._drain_signal = drain_signal
+        self._reporter = reporter
 
     def claim_one(self):
         if self._drain_signal.draining:
@@ -88,6 +120,16 @@ class _DrainAwareCoordinatorSource(CoordinatorJobSource):
 
     def is_exhausted(self) -> bool:
         return self._drain_signal.draining
+
+    def on_complete(self, job_id: str, result: Any) -> None:
+        if self._reporter is not None:
+            self._reporter.flush(job_id)
+        super().on_complete(job_id, result)
+
+    def on_fail(self, job_id: str, error: str, retryable: bool) -> None:
+        if self._reporter is not None:
+            self._reporter.flush(job_id)
+        super().on_fail(job_id, error, retryable)
 
 
 def _coordinator_overrides_from_args(parsed_args: argparse.Namespace) -> dict[str, Any]:
@@ -178,6 +220,7 @@ def main(args=None):
     )
 
     drain_signal = _DrainSignal()
+    reporter = ProgressReporter(client)
     runtime_holder: dict[str, WorkerRuntime] = {}
 
     def free_slots() -> int:
@@ -197,6 +240,7 @@ def main(args=None):
         free_slots_fn=free_slots,
         drain_signal=drain_signal,
         active_jobs_fn=active_jobs,
+        reporter=reporter,
     )
 
     def heartbeat_fn(*, active_jobs: int, free_slots: int) -> None:
@@ -225,7 +269,7 @@ def main(args=None):
         config=config,
         fleet_config=fleet,
         job_source=source,
-        execute_fn=_execute_job,
+        execute_fn=_make_execute_fn(reporter),
         heartbeat_fn=heartbeat_fn,
     )
     runtime_holder["runtime"] = runtime

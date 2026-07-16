@@ -1,8 +1,10 @@
 import os
 
+from shared.job_progress import JobProgressEvent
 from worker.config import WorkerConfig
 from worker.fleet.config import FleetConfig
 from worker.probe import SystemSpec
+from worker.progress_reporter import ProgressReporter
 from worker import serve
 
 
@@ -93,13 +95,96 @@ def test_main_wires_runtime_router_and_heartbeat(monkeypatch):
 def test_execute_fn_passes_job_id(monkeypatch):
     captured = {}
 
-    def fake_run_annotation_job(request, *, job_id=None):
+    def fake_run_annotation_job(request, *, job_id=None, on_progress=None):
         captured["profile"] = request.profile
         captured["locus"] = request.locus
         captured["job_id"] = job_id
+        captured["on_progress"] = on_progress
         return {"ok": True}
 
     monkeypatch.setattr(serve.executor, "run_annotation_job", fake_run_annotation_job)
     result = serve._execute_job({"profile": "mtb-h37rv", "locus": "Rv0001"}, job_id="j-1")
     assert result == {"ok": True}
-    assert captured == {"profile": "mtb-h37rv", "locus": "Rv0001", "job_id": "j-1"}
+    assert captured["profile"] == "mtb-h37rv"
+    assert captured["locus"] == "Rv0001"
+    assert captured["job_id"] == "j-1"
+    assert captured["on_progress"] is None
+
+
+def test_execute_fn_forwards_on_progress(monkeypatch):
+    captured = {}
+
+    def fake_run_annotation_job(request, *, job_id=None, on_progress=None):
+        captured["on_progress"] = on_progress
+        return {"ok": True}
+
+    monkeypatch.setattr(serve.executor, "run_annotation_job", fake_run_annotation_job)
+    sentinel = object()
+    serve._execute_job({"profile": "mtb-h37rv", "locus": "Rv0001"}, job_id="j-1", on_progress=sentinel)
+    assert captured["on_progress"] is sentinel
+
+
+class _FakeCoordinatorClient:
+    def __init__(self):
+        self.calls = []
+        self.completed = []
+        self.failed = []
+
+    def progress(self, job_id, current_step, **fields):
+        self.calls.append({"job_id": job_id, "current_step": current_step, **fields})
+
+    def complete(self, job_id, result):
+        self.completed.append((job_id, result))
+
+    def fail(self, job_id, error, retryable):
+        self.failed.append((job_id, error, retryable))
+
+
+def test_make_execute_fn_reports_progress_and_forwards_to_runtime(monkeypatch):
+    client = _FakeCoordinatorClient()
+    reporter = ProgressReporter(client, debounce_sec=10.0)
+    runtime_seen = []
+
+    def fake_run_annotation_job(request, *, job_id=None, on_progress=None):
+        on_progress(JobProgressEvent(phase="fetching", sections_done=0, sections_total=3))
+        return {"ok": True}
+
+    monkeypatch.setattr(serve.executor, "run_annotation_job", fake_run_annotation_job)
+    execute = serve._make_execute_fn(reporter)
+    result = execute(
+        {"profile": "mtb-h37rv", "locus": "Rv0001"},
+        job_id="j-1",
+        on_progress=runtime_seen.append,
+    )
+
+    assert result == {"ok": True}
+    assert len(client.calls) == 1
+    assert client.calls[0]["job_id"] == "j-1"
+    assert client.calls[0]["phase"] == "fetching"
+    assert len(runtime_seen) == 1
+    assert runtime_seen[0].phase == "fetching"
+
+
+def test_drain_aware_source_flushes_reporter_on_complete_and_fail():
+    client = _FakeCoordinatorClient()
+    reporter = ProgressReporter(client, debounce_sec=10.0)
+    source = serve._DrainAwareCoordinatorSource(
+        client,
+        free_slots_fn=lambda: 1,
+        drain_signal=serve._DrainSignal(),
+        reporter=reporter,
+    )
+
+    reporter.report("j-1", JobProgressEvent(phase="extracting", sections_done=1, sections_total=5))
+    reporter.report("j-1", JobProgressEvent(phase="extracting", sections_done=2, sections_total=5))
+    assert len(client.calls) == 1
+
+    source.on_complete("j-1", {"ok": True})
+    assert len(client.calls) == 2
+    assert client.calls[-1]["sections_done"] == 2
+
+    reporter.report("j-2", JobProgressEvent(phase="extracting", sections_done=1, sections_total=5))
+    reporter.report("j-2", JobProgressEvent(phase="extracting", sections_done=9, sections_total=5))
+    source.on_fail("j-2", "boom", True)
+    assert client.calls[-1]["job_id"] == "j-2"
+    assert client.calls[-1]["sections_done"] == 9
