@@ -74,6 +74,57 @@ Heartbeats include `state="ready"` until the coordinator signals drain (or a
 version mismatch). Active subprocesses finish; no new jobs are claimed; state
 switches to `"draining"`.
 
+### Live dashboard and logs
+
+Like bench, `worker serve` shows an in-place terminal dashboard on a TTY:
+fleet/slot summary, one line per active job (phase, `sections_done` /
+`sections_total`, elapsed), and GPU/CPU/RAM snapshots — using `uptime` instead
+of a fixed batch total/queued count, since serve claims jobs indefinitely.
+
+| Flag / env | Purpose |
+| --- | --- |
+| `--no-dashboard` | Force linear log lines on stdout instead of the TUI |
+| `WORKER_SERVE_DASHBOARD=0` | Same as `--no-dashboard` (default is on when stdout is a TTY) |
+| `WORKER_LOG_FILE` | Verbose log destination override |
+
+When the dashboard is on and no explicit log file is set, verbose logs default
+to `worker-serve.log` under `WORKER_OUTPUT_DIR` (or the current directory) so
+stdout stays reserved for the dashboard.
+
+Non-TTY runs (systemd, Docker without `-t`, nohup, redirected output) skip the
+dashboard automatically and log to stdout at INFO as before. **Docker and
+systemd deployments that want the live dashboard must allocate a TTY** — pass
+`-t` (and typically `-i`) to `docker run`/`docker exec`, or set
+`StandardOutput=tty` / run under a pty for the systemd unit; otherwise
+`sys.stdout.isatty()` is `False` and the dashboard is disabled (which is the
+correct, expected behavior for a background service — logs go to stdout/the
+unit journal instead).
+
+### Progress reporting to the coordinator
+
+Per-job progress (phase, `sections_done`/`sections_total`, ortholog
+`pass_name`) is **not** carried on heartbeats. Heartbeats stay scoped to
+worker-level health: `state`/slots/drain signaling only.
+
+Structured progress is sent on its own path: each `WorkerRuntime` progress
+event for a job is debounced per-job by `ProgressReporter` and forwarded via
+`PATCH /jobs/{id}/progress` (`CoordinatorClient.progress`), which also renews
+the job's lease. The first event for a job and every phase change are sent
+immediately; same-phase section updates are coalesced to at most one send per
+debounce window; job completion/failure always flushes the latest pending
+update.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `WORKER_PROGRESS_DEBOUNCE_SEC` | `1.5` | Minimum seconds between progress PATCHes for the same job while its phase is unchanged. |
+
+The coordinator persists these fields on the job record and exposes them via
+`GET /jobs`; the frontend Jobs page renders them on each job tile as
+`<phase> · <done>/<total> sections` with an ortholog-aware progress bar (target
+pass fills `0–50%`, then the ortholog pass fills `50–100%` once it starts),
+falling back to the coarse status-based label/percent for jobs without
+structured fields.
+
 ## Bench mode
 
 Bench mode reads a JSONL file of `AnnotationJobRequest` objects, runs the batch
