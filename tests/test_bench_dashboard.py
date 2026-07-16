@@ -67,15 +67,40 @@ def test_run_live_does_not_raise_when_probes_fail(monkeypatch):
     monkeypatch.setattr(hw_probe, "read_proc_stat_sample", lambda: (_ for _ in ()).throw(OSError("boom")))
     monkeypatch.setattr(hw_probe, "probe_ollama_cpu_percent", lambda: (_ for _ in ()).throw(OSError("boom")))
 
-    runtime = MagicMock()
-    runtime.snapshot.return_value = {
-        "jobs_completed": 0,
-        "jobs_total": 1,
-        "jobs_failed": 0,
-        "active": [],
-    }
     stop = threading.Event()
-    stop.set()
+    loop_ran = threading.Event()
+    rendered = threading.Event()
+
+    def snapshot():
+        loop_ran.set()
+        return {
+            "jobs_completed": 0,
+            "jobs_total": 1,
+            "jobs_failed": 0,
+            "active": [],
+        }
+
+    runtime = MagicMock()
+    runtime.snapshot.side_effect = snapshot
+
+    original_render = render_dashboard
+
+    def tracking_render(*args, **kwargs):
+        rendered.set()
+        stop.set()
+        return original_render(*args, **kwargs)
+
+    monkeypatch.setattr("worker.bench_dashboard.render_dashboard", tracking_render)
 
     dashboard = BenchDashboard()
-    dashboard.run_live(runtime, stop, refresh_sec=0.01)
+    thread = threading.Thread(
+        target=dashboard.run_live,
+        args=(runtime, stop),
+        kwargs={"refresh_sec": 0.01},
+    )
+    thread.start()
+    thread.join(timeout=2)
+
+    assert not thread.is_alive()
+    assert loop_ran.is_set()
+    assert rendered.is_set()
