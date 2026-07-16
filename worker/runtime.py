@@ -9,6 +9,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from shared.job_progress import JobProgressEvent
 from worker import executor
 
 PERMANENT_ERROR_MARKERS = ("locus_schema_mismatch", "profile or organism", "name or locus")
@@ -52,9 +53,11 @@ class ActiveJob:
     job_id: str
     future: Future[Any]
     started_at: float
+    locus: str | None = None
+    progress: JobProgressEvent | None = None
 
 
-def _supports_job_id(execute_fn: Any) -> bool:
+def _supports_kwarg(execute_fn: Any, name: str) -> bool:
     try:
         sig = inspect.signature(execute_fn)
     except (TypeError, ValueError):
@@ -62,13 +65,21 @@ def _supports_job_id(execute_fn: Any) -> bool:
     for param in sig.parameters.values():
         if param.kind == inspect.Parameter.VAR_KEYWORD:
             return True
-    job_id_param = sig.parameters.get("job_id")
-    if job_id_param is None:
+    param = sig.parameters.get(name)
+    if param is None:
         return False
-    return job_id_param.kind in (
+    return param.kind in (
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
         inspect.Parameter.KEYWORD_ONLY,
     )
+
+
+def _supports_job_id(execute_fn: Any) -> bool:
+    return _supports_kwarg(execute_fn, "job_id")
+
+
+def _supports_on_progress(execute_fn: Any) -> bool:
+    return _supports_kwarg(execute_fn, "on_progress")
 
 
 def _is_retryable(error_message: str) -> bool:
@@ -102,12 +113,16 @@ class WorkerRuntime:
 
         self._pool = ThreadPoolExecutor(max_workers=max(1, self._max_slots))
         self._active_jobs: dict[str, ActiveJob] = {}
+        self._jobs_lock = threading.Lock()
+        self._jobs_completed = 0
+        self._jobs_failed = 0
 
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
         self._shutdown_requested = threading.Event()
 
         self._execute_supports_job_id = _supports_job_id(execute_fn)
+        self._execute_supports_on_progress = _supports_on_progress(execute_fn)
 
         self._stall_warn_after_sec = _float_env(
             "WORKER_STALL_WARN_AFTER_SEC",
@@ -128,7 +143,43 @@ class WorkerRuntime:
         return self._shutdown_requested.is_set()
 
     def free_slots(self) -> int:
-        return max(0, self._max_slots - len(self._active_jobs))
+        with self._jobs_lock:
+            return max(0, self._max_slots - len(self._active_jobs))
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._jobs_lock:
+            now = time.monotonic()
+            active = []
+            for job_id, job in self._active_jobs.items():
+                progress = None
+                if job.progress is not None:
+                    progress = job.progress.model_dump(exclude_none=True)
+                active.append(
+                    {
+                        "job_id": job_id,
+                        "locus": job.locus,
+                        "elapsed_s": max(0.0, now - job.started_at),
+                        "progress": progress,
+                    }
+                )
+            jobs_total = None
+            for attr in ("jobs_submitted", "jobs_total"):
+                value = getattr(self._job_source, attr, None)
+                if isinstance(value, int):
+                    jobs_total = value
+                    break
+            return {
+                "jobs_completed": self._jobs_completed,
+                "jobs_failed": self._jobs_failed,
+                "jobs_total": jobs_total,
+                "active": active,
+            }
+
+    def _on_job_progress(self, job_id: str, event: JobProgressEvent) -> None:
+        with self._jobs_lock:
+            active = self._active_jobs.get(job_id)
+            if active is not None:
+                active.progress = event
 
     def request_shutdown(self) -> None:
         self._shutdown_requested.set()
@@ -180,25 +231,34 @@ class WorkerRuntime:
         locus = job.request.get("locus") or job.request.get("name") or "?"
         log.info("Started job %s (locus=%s)", job.job_id, locus)
         future = self._pool.submit(self._execute, job)
-        self._active_jobs[job.job_id] = ActiveJob(
-            job_id=job.job_id,
-            future=future,
-            started_at=time.monotonic(),
-        )
+        with self._jobs_lock:
+            self._active_jobs[job.job_id] = ActiveJob(
+                job_id=job.job_id,
+                future=future,
+                started_at=time.monotonic(),
+                locus=locus,
+            )
 
     def _execute(self, job: JobSpec) -> Any:
+        kwargs: dict[str, Any] = {}
         if self._execute_supports_job_id:
-            return self._execute_fn(job.request, job_id=job.job_id)
+            kwargs["job_id"] = job.job_id
+        if self._execute_supports_on_progress:
+            kwargs["on_progress"] = lambda event: self._on_job_progress(job.job_id, event)
+        if kwargs:
+            return self._execute_fn(job.request, **kwargs)
         return self._execute_fn(job.request)
 
     def _reap_finished(self) -> None:
         finished: list[tuple[str, Future[Any]]] = []
-        for job_id, active in self._active_jobs.items():
-            if active.future.done():
-                finished.append((job_id, active.future))
+        with self._jobs_lock:
+            for job_id, active in self._active_jobs.items():
+                if active.future.done():
+                    finished.append((job_id, active.future))
 
         for job_id, future in finished:
-            active = self._active_jobs.pop(job_id, None)
+            with self._jobs_lock:
+                active = self._active_jobs.pop(job_id, None)
             wall_ms = 0
             if active is not None:
                 wall_ms = max(0, int((time.monotonic() - active.started_at) * 1000))
@@ -208,10 +268,14 @@ class WorkerRuntime:
                 error = str(exc)
                 log.warning("Failed job %s after %dms: %s", job_id, wall_ms, error)
                 self._job_source.on_fail(job_id, error, _is_retryable(error))
+                with self._jobs_lock:
+                    self._jobs_failed += 1
                 self._metrics_record_job_done(job_id, wall_ms=wall_ms, failed=True)
             else:
                 log.info("Completed job %s in %dms", job_id, wall_ms)
                 self._job_source.on_complete(job_id, result)
+                with self._jobs_lock:
+                    self._jobs_completed += 1
                 self._metrics_record_job_done(job_id, wall_ms=wall_ms, failed=False)
 
     def _maybe_warn_stalled_jobs(self) -> None:
