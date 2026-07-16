@@ -12,6 +12,11 @@ function isOrthologPhase(job) {
 // target owns the full bar until an ortholog progress event appears, then
 // target holds 0-50% and ortholog owns 50-100%. See design doc "Progress bar
 // (ortholog-aware)".
+//
+// Fetching / pre-extraction holds at FETCH_BASE% so the bar isn't empty while
+// papers load; extraction then fills the remaining (100 - FETCH_BASE)%.
+const FETCH_BASE = 5;
+
 export function progressPercent(job) {
   if (job.status === "completed" || job.status === "failed") {
     return 100;
@@ -29,16 +34,21 @@ export function progressPercent(job) {
   }
 
   if (sectionsTotal) {
-    return Math.round(clampRunning(100 * (sectionsDone / sectionsTotal)));
+    // Extraction maps into the band after the fetch placeholder.
+    return Math.round(
+      clampRunning(FETCH_BASE + (100 - FETCH_BASE) * (sectionsDone / sectionsTotal)),
+    );
   }
 
   if (job.progress_phase === "aggregating") {
     return Math.round(clampRunning(97));
   }
 
-  // Coarse fallback for jobs without structured progress fields.
-  if (job.current_step === "saving_result") return 85;
-  if (job.status === "running") return 55;
+  // Fetching / running with no section totals yet — small placeholder.
+  if (job.progress_phase === "fetching" || job.status === "running") {
+    if (job.current_step === "saving_result") return 85;
+    return FETCH_BASE;
+  }
   return 12;
 }
 

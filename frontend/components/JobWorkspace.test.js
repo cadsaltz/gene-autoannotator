@@ -92,9 +92,26 @@ test("formatJobStepLabel falls back to legacy step labels without structured fie
   );
 });
 
-test("progressPercent maps target-only progress across the full bar", () => {
-  // No ortholog progress has appeared yet, so target pass uses the full bar.
-  // 3/12 target → 25%.
+test("progressPercent maps target-only extraction after the 5% fetch placeholder", () => {
+  // No ortholog progress has appeared yet. Fetching holds at 5%; extraction
+  // fills the remaining 95%. 3/12 target → 5 + 95*(3/12) = 29%.
+  assert.equal(
+    progressPercent({
+      status: "running",
+      pass_name: "target",
+      progress_phase: "fetching",
+    }),
+    5,
+  );
+  assert.equal(
+    progressPercent({
+      status: "running",
+      pass_name: "target",
+      sections_done: 0,
+      sections_total: 12,
+    }),
+    5,
+  );
   assert.equal(
     progressPercent({
       status: "running",
@@ -102,7 +119,7 @@ test("progressPercent maps target-only progress across the full bar", () => {
       sections_done: 3,
       sections_total: 12,
     }),
-    25,
+    29,
   );
 });
 
@@ -134,6 +151,7 @@ test("progressPercent holds at 50 while ortholog total unknown", () => {
 });
 
 test("progressPercent clamps running progress below 100 and completes at 100", () => {
+  // 12/12 → 5 + 95 = 100, clamped to 99 while still running.
   assert.equal(
     progressPercent({
       status: "running",
@@ -152,6 +170,6 @@ test("progressPercent clamps running progress below 100 and completes at 100", (
 
 test("progressPercent falls back to coarse heuristic without structured fields", () => {
   assert.equal(progressPercent({ status: "queued" }), 12);
-  assert.equal(progressPercent({ status: "running" }), 55);
+  assert.equal(progressPercent({ status: "running" }), 5);
   assert.equal(progressPercent({ status: "running", current_step: "saving_result" }), 85);
 });
