@@ -27,6 +27,7 @@ import {
   shouldShowRunningSpinner,
 } from "../lib/jobQueue";
 import { buildJobsHealthDisplay } from "../lib/healthFormat";
+import { formatJobStepLabel, progressPercent } from "../lib/jobProgress";
 
 function JobsHealthBanner({ health, annotationHealth }) {
   const display = buildJobsHealthDisplay(health, annotationHealth);
@@ -86,16 +87,6 @@ function statusTone(status) {
   if (status === "failed") return "job-card-failed";
   if (status === "running") return "job-card-running";
   return "job-card-queued";
-}
-
-function progressPercent(job) {
-  // Progress is deliberately coarse because the backend currently exposes only
-  // queue lifecycle states, not per-paper or per-model annotation progress.
-  if (job.status === "completed") return 100;
-  if (job.status === "failed") return 100;
-  if (job.current_step === "saving_result") return 85;
-  if (job.status === "running") return 55;
-  return 12;
 }
 
 function summarizeJobStatuses(jobs) {
@@ -176,7 +167,7 @@ function JobTile({ job }) {
     request.target_preflight?.resolved_name ||
     request.target_preflight?.primary_identifier ||
     "";
-  const step = stepLabels[job.current_step] || stepLabels[job.status] || job.status;
+  const step = formatJobStepLabel(job, stepLabels);
   const showSpinner = shouldShowRunningSpinner(job);
 
   return (
