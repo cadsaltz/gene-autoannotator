@@ -107,6 +107,7 @@ def _build_lines(
         f"elapsed {_format_elapsed(meta.get('elapsed_s'))}",
     ]
     lines = [
+        "",
         " │ ".join(str(bit) for bit in header_bits),
         f"BATCH  {jobs_done}/{total_display} │ {jobs_failed} failed │ {running} running │ {queued} queued",
         "",
@@ -121,10 +122,10 @@ def _build_lines(
             lines.append(
                 "  "
                 f"{spinner_frame} "
-                f"{job.get('job_id', '?')} "
-                f"{job.get('locus', '?')}  "
-                f"phase {_job_phase(progress)}  "
-                f"sections {_progress_sections(progress)}  "
+                f"{job.get('job_id', '?')}  |  "
+                f"{job.get('locus', '?')}  |  "
+                f"phase {_job_phase(progress)}  |  "
+                f"sections {_progress_sections(progress)}  |  "
                 f"elapsed {_format_job_elapsed(float(job.get('elapsed_s') or 0.0))}"
             )
     else:
@@ -140,16 +141,16 @@ def _build_lines(
         for gpu in gpus:
             if isinstance(gpu, GpuStat):
                 lines.append(
-                    f"GPU {gpu.index}: {gpu.name}  "
-                    f"util {gpu.util_percent:.0f}%  "
-                    f"mem {gpu.mem_used_mb}/{gpu.mem_total_mb} MB  "
+                    f"GPU {gpu.index}  |  {gpu.name}  |  "
+                    f"util {gpu.util_percent:.0f}%  |  "
+                    f"mem {gpu.mem_used_mb}/{gpu.mem_total_mb} MB VRAM  |  "
                     f"temp {gpu.temp_c:.0f}°C"
                 )
             elif isinstance(gpu, dict):
                 lines.append(
-                    f"GPU {gpu.get('index', '?')}: {gpu.get('name', '?')}  "
-                    f"util {gpu.get('util_percent', '?')}%  "
-                    f"mem {gpu.get('mem_used_mb', '?')}/{gpu.get('mem_total_mb', '?')} MB"
+                    f"GPU {gpu.get('index', '?')}  |  {gpu.get('name', '?')}  |  "
+                    f"util {gpu.get('util_percent', '?')}%  |  "
+                    f"mem {gpu.get('mem_used_mb', '?')}/{gpu.get('mem_total_mb', '?')} MB VRAM"
                 )
     elif gpu_error:
         lines.append(f"GPU unavailable: {gpu_error}")

@@ -192,6 +192,8 @@ def _run_with_dashboard(
     if not dashboard:
         return runtime.run()
 
+    # Blank line between setup logs and the live dashboard panel.
+    print(flush=True)
     stop_event = threading.Event()
     dashboard_thread = threading.Thread(
         target=BenchDashboard().run_live,

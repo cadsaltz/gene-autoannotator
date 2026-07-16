@@ -37,6 +37,7 @@ def test_render_dashboard_includes_batch_and_gpu_unavailable():
     assert "sections 2/9" in text
     assert "phase extracting" in text
     assert "elapsed 12s" in text
+    assert " |  " in text
     assert "nvidia-smi not found" in text
     assert "CPU util 10%" in text
 
@@ -64,9 +65,10 @@ def test_render_dashboard_shows_gpu_stats():
     )
     assert "NVIDIA A100" in text
     assert "util 72%" in text
-    assert "mem 61234/81920 MB" in text
+    assert "mem 61234/81920 MB VRAM" in text
     assert "temp 64°C" in text
     assert "CPU util 50%" in text
+    assert "GPU 0  |  NVIDIA A100" in text
 
 
 def test_render_dashboard_shows_ollama_cpu_cores():
