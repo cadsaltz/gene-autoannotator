@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   filterJobsByBatch,
   getHiddenJobCount,
+  getJobDisplayName,
   getVisibleJobs,
   shouldShowRunningSpinner,
 } from "./jobQueue.js";
@@ -57,4 +58,39 @@ test("filterJobsByBatch returns only jobs matching batch_id", () => {
     filterJobsByBatch(batchJobs, "batch-1").map((job) => job.id),
     ["a", "c"],
   );
+});
+
+test("getJobDisplayName prefers submitted name over preflight and locus", () => {
+  assert.equal(
+    getJobDisplayName({
+      request: {
+        name: "supplied",
+        locus: "Rv0001",
+        target_preflight: { resolved_name: "dnaA" },
+      },
+    }),
+    "supplied",
+  );
+});
+
+test("getJobDisplayName uses preflight resolved name when name was not submitted", () => {
+  assert.equal(
+    getJobDisplayName({
+      request: {
+        locus: "Rv0001",
+        target_preflight: { resolved_name: "dnaA" },
+      },
+    }),
+    "dnaA",
+  );
+});
+
+test("getJobDisplayName falls back to locus then unknown", () => {
+  assert.equal(
+    getJobDisplayName({ request: { locus: "Rv0001" } }),
+    "Rv0001",
+  );
+  assert.equal(getJobDisplayName({ request: {} }), "Unknown locus");
+  assert.equal(getJobDisplayName({}), "Unknown locus");
+  assert.equal(getJobDisplayName(null), "Unknown locus");
 });

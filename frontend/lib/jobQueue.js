@@ -23,3 +23,13 @@ export function filterJobsByBatch(jobs, batchId) {
   }
   return normalizedJobs.filter((job) => job.batch_id === batchId);
 }
+
+export function getJobDisplayName(job) {
+  const request = job?.request || {};
+  return (
+    request.name ||
+    request.target_preflight?.resolved_name ||
+    request.locus ||
+    "Unknown locus"
+  );
+}
