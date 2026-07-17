@@ -439,6 +439,80 @@ def test_job_submission_stores_target_preflight_warnings(tmp_path):
     }
 
 
+def test_job_create_preflight_honors_allow_online_name_lookup(tmp_path, monkeypatch):
+    from autoannotation import gene_names
+
+    calls = {}
+
+    def fake_resolve_gene_name(profile, locus, **kwargs):
+        calls["allow_online_lookup"] = kwargs.get("allow_online_lookup")
+        calls["locus"] = locus
+        return gene_names.GeneNameLookupResult(
+            gene_name="dnaA",
+            source="ncbi_gene",
+            source_detail="stub",
+            confidence="clear",
+        )
+
+    monkeypatch.setattr(gene_names, "resolve_gene_name", fake_resolve_gene_name)
+
+    app = create_app(
+        job_store=JobStore(tmp_path / "jobs.sqlite3"),
+        run_job=lambda request: {"annotation": {"gene_id": request.locus}},
+        run_jobs_inline=False,
+        start_worker=False,
+    )
+    client = TestClient(app)
+
+    created = client.post(
+        "/jobs",
+        json={
+            "profile": "mtb-h37rv",
+            "locus": "Rv0001",
+            "allow_online_name_lookup": True,
+        },
+    )
+    assert created.status_code == 201
+    job = client.get(f"/jobs/{created.json()['job_id']}").json()
+
+    assert calls.get("allow_online_lookup") is True
+    assert calls.get("locus") == "Rv0001"
+    assert job["request"]["name"] is None
+    assert job["request"]["target_preflight"]["resolved_name"] == "dnaA"
+    assert job["request"]["target_preflight"]["resolved_locus"] == "Rv0001"
+
+
+def test_validate_preflight_keeps_online_name_lookup_off(tmp_path, monkeypatch):
+    from autoannotation import gene_names
+
+    calls = {}
+
+    def fake_resolve_gene_name(profile, locus, **kwargs):
+        calls["allow_online_lookup"] = kwargs.get("allow_online_lookup")
+        return gene_names.GeneNameLookupResult(
+            gene_name="dnaA",
+            source="ncbi_gene",
+            source_detail="stub",
+            confidence="clear",
+        )
+
+    monkeypatch.setattr(gene_names, "resolve_gene_name", fake_resolve_gene_name)
+
+    app = create_app(
+        job_store=JobStore(tmp_path / "jobs.sqlite3"),
+        run_jobs_inline=False,
+        start_worker=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/validate",
+        json={"profile": "mtb-h37rv", "locus": "Rv0001"},
+    )
+    assert response.status_code == 200
+    assert calls.get("allow_online_lookup") is False
+
+
 def test_job_submission_executes_inferred_builtin_profile(tmp_path):
     captured_request = {}
 

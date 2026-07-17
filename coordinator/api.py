@@ -324,6 +324,7 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     def _resolve_target_for_request(request):
+        allow_online_name_lookup = getattr(request, "allow_online_name_lookup", False)
         try:
             return targets.resolve_annotation_target(
                 profile_identifier=_profile_identifier_for_request(request),
@@ -332,7 +333,7 @@ def create_app(
                 locus=request.locus,
                 name=request.name,
                 profile_lookup=_get_profile_for_target if request.profile else None,
-                allow_online_name_lookup=False,
+                allow_online_name_lookup=allow_online_name_lookup,
                 locus_regex=request.locus_regex,
                 search_terms=request.search_terms,
                 target_patterns=request.target_patterns,
