@@ -23,6 +23,7 @@ import {
 import {
   filterJobsByBatch,
   getHiddenJobCount,
+  getJobDisplayName,
   getVisibleJobs,
   shouldShowRunningSpinner,
 } from "../lib/jobQueue";
@@ -175,7 +176,7 @@ function JobTile({ job }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="workbench-foreground text-lg font-bold tracking-[-0.02em]">
-            {request.name || request.locus || "Unknown locus"}
+            {getJobDisplayName(job)}
           </p>
           <p className="workbench-muted mt-1 text-sm">
             {request.profile || request.organism || "default profile"} · {request.locus}

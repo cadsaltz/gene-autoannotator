@@ -62,6 +62,17 @@ test("JobWorkspace sources tile label and progress bar from lib/jobProgress", as
   assert.match(workspace, /progressPercent\(job\)/);
 });
 
+test("JobWorkspace titles job tiles with getJobDisplayName", async () => {
+  const workspace = await readProjectFile("components/JobWorkspace.js");
+
+  assert.match(workspace, /getJobDisplayName/);
+  assert.match(workspace, /getJobDisplayName\(job\)/);
+  assert.doesNotMatch(
+    workspace,
+    /\{request\.name \|\| request\.locus \|\| "Unknown locus"\}/,
+  );
+});
+
 test("job tile shows sections progress when structured fields present", () => {
   const label = formatJobStepLabel(
     {
