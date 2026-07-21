@@ -22,7 +22,10 @@ def test_field_specs_from_profile_includes_identity_and_llm_fields():
     assert specs[1].kind == 'identity'
     assert 'function' in keys
     assert 'functional_category' in keys
-    assert 'essential_in_vitro' in keys
+    assert 'drug_susc_impact' in keys
+    assert 'infection_impact' in keys
+    # mtb-h37rv no longer includes essential_* in its active annotation field set.
+    assert 'essential_in_vitro' not in keys
     function_spec = next(spec for spec in specs if spec.key == 'function')
     assert function_spec.kind == 'string'
     category_spec = next(spec for spec in specs if spec.key == 'functional_category')

@@ -139,7 +139,11 @@ export default function FleetDashboard() {
   }
 
   useEffect(() => {
-    refreshFleet();
+    async function loadInitialData() {
+      await refreshFleet();
+    }
+
+    loadInitialData();
     const timer = window.setInterval(refreshFleet, 12000);
     return () => window.clearInterval(timer);
   }, []);

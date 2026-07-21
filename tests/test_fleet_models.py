@@ -24,7 +24,7 @@ def test_estimate_w_all_sums_manifest_sizes(monkeypatch):
     monkeypatch.setattr(
         models,
         "_model_size_bytes",
-        lambda name: {"a": 1_000_000_000, "b": 500_000_000}[name],
+        lambda name, **_kwargs: {"a": 1_000_000_000, "b": 500_000_000}[name],
     )
     assert models.estimate_w_all_bytes(["a", "b"]) == 1_500_000_000
 
@@ -33,7 +33,7 @@ def test_estimate_w_peak_uses_largest_model(monkeypatch):
     monkeypatch.setattr(
         models,
         "_model_size_bytes",
-        lambda name: {"a": 1_000_000_000, "b": 500_000_000}[name],
+        lambda name, **_kwargs: {"a": 1_000_000_000, "b": 500_000_000}[name],
     )
     assert models.estimate_w_peak_bytes(["a", "b"]) == 1_000_000_000
 
@@ -103,7 +103,7 @@ def test_resolve_footprints_falls_back_to_estimate_without_host(monkeypatch):
 
 
 def test_estimate_w_all_uses_mode_fallback_when_probes_empty(monkeypatch):
-    monkeypatch.setattr(models, "_model_size_bytes", lambda _name: 0)
+    monkeypatch.setattr(models, "_model_size_bytes", lambda _name, **_kwargs: 0)
     monkeypatch.setenv("AUTOANNOTATION_MODEL_MODE", "nano")
     # sum of zeros triggers mode-level fallback
     assert models.estimate_w_all_bytes(["a", "b"]) == models._MODE_W_ALL_ESTIMATE_BYTES["nano"]

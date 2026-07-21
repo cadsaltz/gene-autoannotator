@@ -133,14 +133,14 @@ def test_fields_eligible_for_ortholog_returns_all_allowed_in_schema():
 
     profile = organisms.resolve_profile("mtb-h37rv")
     defs = field_defs.resolve_annotation_field_defs(profile)
-    # mtb-h37rv marks only `function` as ortholog_allowed, and it is in the LLM schema.
+    # Eligible ortholog fields follow the live profile's ortholog_allowed flags.
     eligible = metadata.fields_eligible_for_ortholog(defs)
-    assert eligible == ["function"]
     expected = {
         d.key for d in defs
         if d.ortholog_allowed and field_defs.include_in_llm_schema(d)
     }
     assert set(eligible) == expected
+    assert "function" in eligible
     for key in eligible:
         matching = next(d for d in defs if d.key == key)
         assert matching.ortholog_allowed is True

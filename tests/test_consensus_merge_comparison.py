@@ -580,9 +580,11 @@ def test_acknowledgment_only_excerpt_prefers_nulls():
         design_b_backend='simulator batch (generative — shows merge risk)',
         batch_merger=generative_batch_llm_simulator,
     )
+    # Conflicting invented claims stay unresolved and are not escalated to the
+    # consensus LLM, so both rules-only and generative paths prefer null.
     assert design_a['drug_susc_impact'] is None
     assert design_b_cons['drug_susc_impact'] is None
-    assert design_b_gen['drug_susc_impact'] is not None
+    assert design_b_gen['drug_susc_impact'] is None
 
 
 def _ollama_model_available(model: str) -> bool:

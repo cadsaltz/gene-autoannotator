@@ -105,10 +105,12 @@ def test_job_submission_stores_kegg_and_field_ortholog_for_builtin_override(tmp_
 
 
 def test_extra_profiles_make_ssdb_hits_selectable():
+    # Use an organism code that is not a saved profile and not a KEGG hint,
+    # so support requires the runtime ortholog catalog.
     hit = orthology.OrthologHit(
-        source_organism_code="cgb",
-        source_organism_name="Corynebacterium glutamicum",
-        source_gene_id="NCgl0001",
+        source_organism_code="xyz",
+        source_organism_name="Exampleia fictionalis",
+        source_gene_id="XYZ0001",
         source_gene_name="dnaA",
         score=200.0,
         identity=0.55,
@@ -116,19 +118,19 @@ def test_extra_profiles_make_ssdb_hits_selectable():
     )
     assert orthology.supports_ortholog_literature_pass(hit) is False
     catalog = [{
-        "profile_id": "cglutamicum-atcc13032",
-        "canonical_name": "Corynebacterium glutamicum ATCC 13032",
-        "species_name": "Corynebacterium glutamicum",
-        "kegg_organism_code": "cgb",
-        "locus_regex": r"^NCgl\d+$",
-        "search_terms": ["Corynebacterium glutamicum"],
-        "target_patterns": [r"Corynebacterium\s+glutamicum"],
+        "profile_id": "exampleia-fictionalis",
+        "canonical_name": "Exampleia fictionalis",
+        "species_name": "Exampleia fictionalis",
+        "kegg_organism_code": "xyz",
+        "locus_regex": r"^XYZ\d+$",
+        "search_terms": ["Exampleia fictionalis"],
+        "target_patterns": [r"Exampleia\s+fictionalis"],
         "custom_fields": [],
         "default_field_ortholog": {},
     }]
     assert orthology.supports_ortholog_literature_pass(hit, extra_profiles=catalog) is True
     selected = orthology.select_best_profiled_ortholog([hit], extra_profiles=catalog)
-    assert selected.source_gene_id == "NCgl0001"
+    assert selected.source_gene_id == "XYZ0001"
 
 
 def test_mmi_marinum_hint_is_supported():

@@ -1,4 +1,5 @@
 from worker.fleet.config import FleetConfig
+from worker.fleet.sizing import FleetRecommendation
 from worker.fleet.supervisor import FleetSupervisor
 from worker.fleet import setup
 from worker.probe import SystemSpec
@@ -36,7 +37,7 @@ def test_prompt_fleet_accepts_valid_config(monkeypatch):
         cpu_physical=6,
         cpu_logical=12,
     )
-    recommendation = FleetConfig(
+    recommendation = FleetRecommendation(
         num_servers=2,
         parallel=1,
         max_slots=2,

@@ -57,13 +57,12 @@ def test_llm_handler_keeps_legacy_cached_responses_compatible(tmp_path):
     handler = llms.LlmHandler(cache_dir=tmp_path)
     profile = organisms.resolve_profile("mtb-h37rv")
     schema = llms.build_json_schema(profile)
-    prompt = llms.prompt1_tmpl.format(
+    prompt = llms.build_section_prompt(
         "Rv0001",
         "dnaA",
         "Cached text.",
-        "abstract",
-        llms.SECTION_HINTS["abstract"],
-        profile.canonical_name,
+        section_type="abstract",
+        organism_profile=profile,
     )
     cache_path = Path(handler._get_file("fake-model", prompt, schema))
     cache_path.parent.mkdir(parents=True, exist_ok=True)

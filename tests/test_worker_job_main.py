@@ -38,8 +38,10 @@ def test_job_main_stdout_is_valid_json(monkeypatch, tmp_path):
 
     monkeypatch.setenv("ANNOTATION_JOB_ID", "bench-001")
     monkeypatch.setenv("WORKER_OUTPUT_DIR", str(tmp_path / "out"))
+    # Patch the CLI binding used by the in-process executor, not only the
+    # defining module (from-import keeps a local reference).
     monkeypatch.setattr(
-        "autoannotation.autoannotation.get_gene_annotation",
+        "autoannotation.__main__.get_gene_annotation",
         lambda **_kwargs: _minimal_annotation_result(),
     )
 
@@ -57,7 +59,7 @@ def test_job_main_stdout_is_valid_json(monkeypatch, tmp_path):
 def test_annotation_main_prints_cli_output_without_job_id(capsys, monkeypatch):
     monkeypatch.delenv("ANNOTATION_JOB_ID", raising=False)
     monkeypatch.setattr(
-        "autoannotation.autoannotation.get_gene_annotation",
+        "autoannotation.__main__.get_gene_annotation",
         lambda **_kwargs: _minimal_annotation_result(locus="Rv2612c"),
     )
 
