@@ -152,7 +152,8 @@ flowchart TD
 - **Key commits:** `814e257`, `1537eb3`, `76f9991`, `ba0daaf` (+ README polish if useful)
 - **Include:** `autoannotation/models.py`, related mode-switching in `autoannotation/llms.py` / `autoannotation/autoannotation.py` as of tip; README notes for modes
 - **Exclude:** generated annotations from early runs (`436a560` run outputs)
-- **Notes:** First PR to open. Keep focused on model definitions + switching. Compare URL (open PR manually): https://github.com/ethanbustad/gene-autoannotator/compare/master...cadsaltz:gene-autoannotator:upstream/UP-01-model-modes?expand=1
+- **Notes:** First PR to open. Keep focused on model definitions + switching.
+- **PR:** https://github.com/ethanbustad/gene-autoannotator/pull/2
 
 ### UP-02 — Add annotation comparison scoring harness
 
