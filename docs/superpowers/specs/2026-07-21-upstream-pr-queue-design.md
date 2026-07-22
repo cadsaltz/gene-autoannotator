@@ -115,7 +115,7 @@ flowchart TD
 
 | ID | Title | Era | Depends | Size vs UP-03 | Status |
 |----|-------|-----|---------|---------------|--------|
-| UP-01 | Lite/performance model modes | 2026-04-07 | — | smaller | in_progress |
+| UP-01 | Lite/performance model modes | 2026-04-07 | — | smaller | open |
 | UP-02 | Annotation comparison scoring harness | 2026-04-16 → 05-08 | UP-01 | ~1–2× | queued |
 | UP-03 | PMC relevance filter + paper budget | 2026-05-18 → 05-19 | UP-01 | **reference** | queued |
 | UP-04 | Multi-organism / strain validation + search | 2026-05-20 | UP-03 | ~1.5× | queued |
@@ -145,14 +145,14 @@ flowchart TD
 
 ### UP-01 — Add lite/performance model modes
 
-- **Status:** in_progress
+- **Status:** open
 - **Era:** 2026-04-07
 - **Depends on:** —
 - **Approx tip:** `ba0daaf` (*changed models for smaller models*)
 - **Key commits:** `814e257`, `1537eb3`, `76f9991`, `ba0daaf` (+ README polish if useful)
 - **Include:** `autoannotation/models.py`, related mode-switching in `autoannotation/llms.py` / `autoannotation/autoannotation.py` as of tip; README notes for modes
 - **Exclude:** generated annotations from early runs (`436a560` run outputs)
-- **Notes:** First PR to open. Keep focused on model definitions + switching.
+- **Notes:** First PR to open. Keep focused on model definitions + switching. Compare URL (open PR manually): https://github.com/ethanbustad/gene-autoannotator/compare/master...cadsaltz:gene-autoannotator:upstream/UP-01-model-modes?expand=1
 
 ### UP-02 — Add annotation comparison scoring harness
 
