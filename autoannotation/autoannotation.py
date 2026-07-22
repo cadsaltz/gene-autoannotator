@@ -7,6 +7,8 @@ import llms
 import pmc
 import utils
 
+from models import MODEL_SUMMARY, MODEL_AGGREGATION, MODEL_CONSENSUS
+
 logging.basicConfig(format='%(asctime)s %(levelname).1s | %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
@@ -65,7 +67,7 @@ def get_gene_annotation(gene, cache_dir='./.cache'):
         for label, section in sections:
             log.debug(f'Starting processing for PMC{pmc_id} {label}')
             section_distillation_candidates_cur = []
-            for model in ('mistral-nemo:12b', 'llama3:8b', 'gemma3:12b'):
+            for model in (MODEL_SUMMARY): #for model in ('mistral-nemo:12b', 'llama3:8b', 'gemma3:12b'):
                 section_distillation_candidate, duration_sec = llm_handler.get_llm_gene_info_json(
                     gene, name, section, model
                 )
@@ -76,10 +78,10 @@ def get_gene_annotation(gene, cache_dir='./.cache'):
                 ))
             section_distillation, duration_sec = llm_handler.get_llm_consensus_json(
                 section_distillation_candidates_cur[0], section_distillation_candidates_cur[1],
-                section_distillation_candidates_cur[2], model='phi4:14b'
+                section_distillation_candidates_cur[2], model=MODEL_CONSENSUS
             )
             section_distillations.append((
-                f'PMC{pmc_id}', label, 'phi4:14b', gene, name, section_distillation, duration_sec
+                f'PMC{pmc_id}', label, MODEL_CONSENSUS, gene, name, section_distillation, duration_sec
             ))
 
     section_distillation_candidate_df = pd.DataFrame(
@@ -116,7 +118,7 @@ def get_gene_annotation(gene, cache_dir='./.cache'):
         gene_distillation, duration_sec = llm_handler.get_llm_aggregate_json(
             section_distillation_filtered_df['Response'],
             section_distillation_filtered_df['PMID'],
-            model='gemma3:12b'
+            model=MODEL_AGGREGATION
         )
     elif len(section_distillation_filtered_df) == 1:
         gene_distillation = section_distillation_filtered_df['Response'].iat[0]
