@@ -115,7 +115,7 @@ flowchart TD
 
 | ID | Title | Era | Depends | Size vs UP-03 | Status |
 |----|-------|-----|---------|---------------|--------|
-| UP-01 | Lite/performance model modes | 2026-04-07 | — | smaller | queued |
+| UP-01 | Lite/performance model modes | 2026-04-07 | — | smaller | in_progress |
 | UP-02 | Annotation comparison scoring harness | 2026-04-16 → 05-08 | UP-01 | ~1–2× | queued |
 | UP-03 | PMC relevance filter + paper budget | 2026-05-18 → 05-19 | UP-01 | **reference** | queued |
 | UP-04 | Multi-organism / strain validation + search | 2026-05-20 | UP-03 | ~1.5× | queued |
@@ -145,7 +145,7 @@ flowchart TD
 
 ### UP-01 — Add lite/performance model modes
 
-- **Status:** queued
+- **Status:** in_progress
 - **Era:** 2026-04-07
 - **Depends on:** —
 - **Approx tip:** `ba0daaf` (*changed models for smaller models*)
