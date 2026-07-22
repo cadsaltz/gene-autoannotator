@@ -9,24 +9,24 @@
 ## Goals
 
 - Land the **full useful fork** into Ethan’s repo as a sequence of reviewable PRs.
-- Open PRs **chronologically** (earliest work first), **one open PR at a time**.
+- Open PRs **chronologically** (earliest work first), in **small stacked batches** (multiple open PRs OK when dependencies are clear).
 - Keep this file as the **source of truth** for what is queued, open, merged, or deferred — append new `UP-NN` entries as features land on the fork.
 
 ## Non-goals
 
 - Rewriting or force-pushing Ethan’s history.
 - Upstreaming noise (logs, local DBs, benchmark dumps, secrets, generated run artifacts).
-- Opening many PRs in one day / maintaining a long open stack.
+- Dumping the entire queue as open PRs at once.
 - Preserving every original merge commit; PRs use clean end-state snapshots.
 
 ## Workflow (locked)
 
 1. Develop normally on the fork (`master`).
-2. When ready to upstream the next queued item, create a branch from **Ethan’s current `master`**.
+2. When ready to upstream the next queued item(s), create a branch from **Ethan’s current `master`**, or from the previous open stack tip when stacking.
 3. Apply an **end-state file snapshot** for that feature’s paths (reconstruct from the chosen tip SHA on the fork), as 1–few clean commits. Prefer path-based reconstruction over cherry-picking merge-heavy ranges.
-4. Open **one** PR against `ethanbustad/gene-autoannotator`.
-5. Wait for merge (or address review). Then open the next.
-6. Optionally draft the *next* branch locally while waiting — do not open it yet.
+4. Open PRs against `ethanbustad/gene-autoannotator`. **Multiple PRs may be open at once** when they are a short stack or low-conflict siblings. Prefer small batches (a few at a time), not the whole queue.
+5. Stack dependent features (`UP-N` branch based on `UP-(N-1)` tip). In each PR body, note dependencies and which tip commit/files to review until earlier PRs merge.
+6. Avoid opening PRs that would force painful cross-merges; if two features heavily touch the same files, open them sequentially or explicitly stack.
 7. New features built on the fork after this queue was written go to **UP-23+** at the bottom (or merge into an unopened earlier UP if they are tiny fixes for that feature).
 
 ### Remotes (when executing)
@@ -116,8 +116,8 @@ flowchart TD
 | ID | Title | Era | Depends | Size vs UP-03 | Status |
 |----|-------|-----|---------|---------------|--------|
 | UP-01 | Lite/performance model modes | 2026-04-07 | — | smaller | open |
-| UP-02 | Annotation comparison scoring harness | 2026-04-16 → 05-08 | UP-01 | ~1–2× | queued |
-| UP-03 | PMC relevance filter + paper budget | 2026-05-18 → 05-19 | UP-01 | **reference** | queued |
+| UP-02 | Annotation comparison scoring harness | 2026-04-16 → 05-08 | UP-01 | ~1–2× | open |
+| UP-03 | PMC relevance filter + paper budget | 2026-05-18 → 05-19 | UP-01 | **reference** | open |
 | UP-04 | Multi-organism / strain validation + search | 2026-05-20 | UP-03 | ~1.5× | queued |
 | UP-05 | Next.js frontend + FastAPI backend scaffold | 2026-05-26 → 06-02 | UP-04 | ~2× | queued |
 | UP-06 | Next.js Mongo annotation read routes | 2026-06-05 | UP-05 | ~1× | queued |
@@ -157,25 +157,27 @@ flowchart TD
 
 ### UP-02 — Add annotation comparison scoring harness
 
-- **Status:** queued
+- **Status:** open
 - **Era:** 2026-04-16 → 2026-05-08
 - **Depends on:** UP-01
-- **Approx tip:** `23dad55` (*full pipeline and baseline score program*) — fold later compare polish through May 19 only if still compare-only
+- **Approx tip:** `bbbd5ce` (path snapshot for compare feature)
 - **Key commits:** `2caad32` … `23dad55`; later GO/category work `4e167c2`, `bbbd5ce`, `c5bf7ca` if still in compareannotations
 - **Include:** `compareannotations/`, `run_pipeline.py`, related tests, requirements needed for compare/scoring
 - **Exclude:** `gen_json/`, `trust_json/` bulk outputs, pipeline run logs
-- **Notes:** Do not upstream large generated JSON corpora.
+- **Notes:** Do not upstream large generated JSON corpora. Stacked on UP-01.
+- **PR:** https://github.com/ethanbustad/gene-autoannotator/pull/3
 
 ### UP-03 — Improve PMC relevance ranking and paper-selection budget
 
-- **Status:** queued
+- **Status:** open
 - **Era:** 2026-05-18 → 2026-05-19
 - **Depends on:** UP-01 (soft); after UP-02 chronologically
-- **Approx tip:** `8569f84` (*added handling for ncbi 503 responses*) or `b5a5ec5` if keeping organism-in-relevance tight
+- **Approx tip:** `8569f84` (*added handling for ncbi 503 responses*)
 - **Key commits:** `4d5724b` (*better relevance filter*), `b5a5ec5`, `8994159`, `8569f84`
 - **Include:** `autoannotation/pmc.py`, `autoannotation/autoannotation.py` (selection/budget hooks), `get_papers.py`, `tests/test_pmc_relevance.py`, `tests/test_autoannotation_relevance.py`, `tests/test_get_papers.py`; paper-selection metadata pieces if small
 - **Exclude:** add/remove PMC retry churn (`9dd64dd` / `840c1e0`) — ship the final behavior only
-- **Notes:** **Size reference PR.** Spec: none dedicated.
+- **Notes:** **Size reference PR.** Spec: none dedicated. Stacked on UP-02.
+- **PR:** https://github.com/ethanbustad/gene-autoannotator/pull/4
 
 ### UP-04 — Multi-organism validation and generalized organism search
 
@@ -407,5 +409,5 @@ Also add a summary-table row and update the mermaid diagram.
 ## First action when executing
 
 1. Add `upstream` remote if missing; `git fetch upstream`.
-2. Open **UP-01** only.
-3. Do not open UP-02 until UP-01 is merged (or Ethan explicitly asks to stack).
+2. Open a small batch (e.g. UP-01 → UP-03) as a stack when ready.
+3. Prefer low file-overlap siblings or explicit stacks; do not dump the entire queue at once.
