@@ -20,9 +20,9 @@ def _embedder_cache_key(embedder: Embedder) -> tuple:
     dim = getattr(embedder, 'dim', None)
     if dim is not None:
         return ('fake', dim)
-    model_name = getattr(embedder, '_model', None)
+    model_name = getattr(embedder, '_model_name', None)
     if model_name is not None:
-        return ('sentence_transformer', getattr(model_name, 'model_name', model_name))
+        return ('sentence_transformer', model_name)
     return (type(embedder).__name__,)
 
 
