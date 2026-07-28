@@ -13,10 +13,10 @@ def majority_go_ids(votes: list[list[str]], *, n_models: int | None = None):
     threshold = agreement_threshold(n)
     counts = Counter()
     for vote in votes:
-        for go_id in set(vote):  # per-model unique
+        for go_id in sorted(set(vote)):  # per-model unique, deterministic
             counts[go_id] += 1
     winners = []
-    for go_id, count in counts.most_common():
+    for go_id, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
         if count >= threshold:
             winners.append((go_id, f'{count}/{n}', count / n))
     return winners

@@ -110,8 +110,18 @@ def _load_inputs(args: argparse.Namespace) -> tuple[str | None, list[str] | None
         if not path.is_file():
             print(f'error: JSON file not found: {path}', file=sys.stderr)
             raise SystemExit(2)
-        with path.open(encoding='utf-8') as handle:
-            payload = json.load(handle)
+        try:
+            with path.open(encoding='utf-8') as handle:
+                payload = json.load(handle)
+        except json.JSONDecodeError as exc:
+            print(f'error: invalid JSON in {path}: {exc}', file=sys.stderr)
+            raise SystemExit(2) from exc
+        if not isinstance(payload, dict):
+            print(
+                f'error: JSON root must be an object, got {type(payload).__name__}',
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
         if function is None:
             raw_function = payload.get('function')
             function = raw_function.strip() if isinstance(raw_function, str) else None

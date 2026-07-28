@@ -110,6 +110,7 @@ When prototyping is validated, wire into `autoannotation.get_gene_annotation` af
 
 ```python
 # Future: after aggregation in autoannotation.get_gene_annotation
+import os
 from dataclasses import asdict
 
 from goresolve import resolve_go_terms, has_usable_text
