@@ -1,0 +1,64 @@
+format-version: 1.2
+
+[Term]
+id: GO:0007049
+name: cell cycle
+namespace: biological_process
+def: "The progression of biochemical and morphological phases and events that occur in a cell during successive cell replication or nuclear replication events." [GOC:go_curators]
+synonym: "cell-division cycle" EXACT []
+is_a: GO:0009987 ! cellular process
+
+[Term]
+id: GO:0000278
+name: mitotic cell cycle
+namespace: biological_process
+def: "Progression through the phases of the mitotic cell cycle." [GOC:ai]
+is_a: GO:0007049 ! cell cycle
+
+[Term]
+id: GO:0007067
+name: mitotic nuclear division
+namespace: biological_process
+def: "A cell cycle process that results in partitioning of nuclear contents." [GOC:ai]
+is_a: GO:0000278 ! mitotic cell cycle
+
+[Term]
+id: GO:0000910
+name: cytokinesis
+namespace: biological_process
+def: "The division of the cytoplasm of a cell and its separation into two daughter cells." [GOC:ai]
+is_a: GO:0009987 ! cellular process
+
+[Term]
+id: GO:0006412
+name: translation
+namespace: biological_process
+def: "The cellular metabolic process in which a protein is formed." [GOC:ai]
+synonym: "protein synthesis" EXACT []
+is_a: GO:0008152 ! metabolic process
+
+[Term]
+id: GO:0009987
+name: cellular process
+namespace: biological_process
+def: "Any process that is carried out at the cellular level." [GOC:ai]
+is_a: GO:0008150 ! biological_process
+
+[Term]
+id: GO:0008150
+name: biological_process
+namespace: biological_process
+def: "A biological process is the execution of a genetically-encoded biological module or pathway." [GOC:go_curators]
+
+[Term]
+id: GO:0008152
+name: metabolic process
+namespace: biological_process
+def: "The chemical reactions and pathways." [GOC:go_curators]
+is_a: GO:0008150 ! biological_process
+
+[Term]
+id: GO:9999999
+name: obsolete example
+namespace: biological_process
+is_obsolete: true
