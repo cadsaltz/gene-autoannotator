@@ -30,5 +30,6 @@ test_json/
 trust_json/
 
 bench_outputs/
+bench_out/
 reports/
 tests/fixtures/
