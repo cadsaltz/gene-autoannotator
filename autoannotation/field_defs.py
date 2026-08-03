@@ -40,7 +40,9 @@ REQUIRED_DEFAULT_FIELDS = (
         label='Function',
         description=(
             'What the gene product does for the cell (one or two concise sentences). '
-            'Use null if the excerpt does not support this.'
+            'State mechanism and whether it performs vs regulates a process. '
+            'Do not stuff category labels or citation IDs into this field; put citations '
+            'only if essential to the claim. Use null if the excerpt does not support this.'
         ),
         type='string',
         required=True,
@@ -51,8 +53,13 @@ REQUIRED_DEFAULT_FIELDS = (
         key='functional_category',
         label='Functional category',
         description=(
-            'One or more general cellular functions (e.g., cell wall, respiration, '
-            'virulence, DNA replication/repair). Use null if not supported.'
+            'One or more short functional labels (about 2–6 words each). Prefer '
+            'Gene-Ontology-friendly phrasing such as "regulation of translation", '
+            '"protein folding", "copper ion transport", "mRNA export from nucleus". '
+            'If the gene regulates a process, say "regulation of X" rather than bare "X". '
+            'One concept per list item. Do not include PMIDs, PMC IDs, locus IDs, or long '
+            'sentences. Prefer a small set of high-confidence labels over a long speculative '
+            'list. Use null if not supported.'
         ),
         type='array:string',
         required=True,
