@@ -38,6 +38,13 @@ synonym: "protein synthesis" EXACT []
 is_a: GO:0008152 ! metabolic process
 
 [Term]
+id: GO:0006417
+name: regulation of translation
+namespace: biological_process
+def: "Any process that modulates the frequency, rate or extent of translation." [GOC:go_curators]
+is_a: GO:0008150 ! biological_process
+
+[Term]
 id: GO:0009987
 name: cellular process
 namespace: biological_process

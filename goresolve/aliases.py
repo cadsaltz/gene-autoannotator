@@ -2,8 +2,8 @@
 CATEGORY_ALIASES = {
     'dna replication': {'GO:0006260'},
     'dna repair': {'GO:0006281'},
-    'transcription': {'GO:0006351'},
-    'translation': {'GO:0006412'},
+    'transcription': {'GO:0006351', 'GO:0006355'},
+    'translation': {'GO:0006412', 'GO:0006417'},
     'protein synthesis': {'GO:0006412'},
     'cell cycle': {'GO:0007049'},
     'mitosis': {'GO:0000278'},  # maps toward mitotic cell cycle in full OBO; mini has GO:0000278
