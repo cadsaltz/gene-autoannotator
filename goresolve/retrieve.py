@@ -1,4 +1,5 @@
 from goresolve.aliases import CATEGORY_ALIASES
+from goresolve.query_clean import clean_query_text
 from goresolve.embeddings import Embedder, cosine_topk
 from goresolve.ontology import GoOntology, _normalize_label
 from goresolve.types import GoCandidate
@@ -39,10 +40,14 @@ def build_queries(function, functional_category) -> tuple[str, ...]:
     queries = []
     if functional_category:
         for item in functional_category:
-            if isinstance(item, str) and item.strip():
-                queries.append(item.strip())
-    if isinstance(function, str) and function.strip():
-        queries.append(function.strip())
+            if isinstance(item, str):
+                cleaned = clean_query_text(item)
+                if cleaned:
+                    queries.append(cleaned)
+    if isinstance(function, str):
+        cleaned = clean_query_text(function)
+        if cleaned:
+            queries.append(cleaned)
     return tuple(queries)
 
 
