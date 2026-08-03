@@ -41,6 +41,30 @@ def test_resolve_with_injected_rankers_returns_majority_terms():
     assert calls == ['m1', 'm2', 'm3']
 
 
+def test_resolve_drops_ancestor_after_majority():
+    def rank_fn(prompt, model):
+        return {
+            'go_terms': [
+                {'id': 'GO:0007049'},
+                {'id': 'GO:0000278'},
+            ]
+        }
+
+    result = resolve_go_terms(
+        function='cell cycle and mitotic cell cycle',
+        functional_category=None,
+        ontology_path=str(FIXTURE),
+        embedder=FakeEmbedder(dim=64),
+        ranker_models=['m1', 'm2', 'm3'],
+        rank_fn=rank_fn,
+        top_k=10,
+        min_cosine=0.05,
+    )
+
+    assert [term.id for term in result.go_terms] == ['GO:0000278']
+    assert result.notes == 'Dropped 1 ancestor GO terms after majority.'
+
+
 def test_exact_only_skips_llm_when_rankers_are_disabled():
     result = resolve_go_terms(
         function=None,

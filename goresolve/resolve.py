@@ -1,4 +1,5 @@
 from goresolve.consensus import majority_go_ids
+from goresolve.hierarchy import drop_ancestor_terms
 from goresolve.ontology import load_go_ontology
 from goresolve.rank import rank_go_terms
 from goresolve.retrieve import build_queries, build_shortlist
@@ -91,6 +92,15 @@ def resolve_go_terms(*, function, functional_category, ontology_path, embedder,
         [vote['ids'] for vote in votes],
         n_models=len(ranker_models),
     )
+    winner_ids = [go_id for go_id, _, _ in winners]
+    compressed_ids = drop_ancestor_terms(winner_ids, ontology)
+    dropped_count = len(winner_ids) - len(compressed_ids)
+    kept_ids = set(compressed_ids)
+    winners = [
+        winner
+        for winner in winners
+        if winner[0] in kept_ids
+    ]
     candidates_by_id = {candidate.id: candidate for candidate in shortlist}
     go_terms = tuple(
         ResolvedGoTerm(
@@ -111,4 +121,9 @@ def resolve_go_terms(*, function, functional_category, ontology_path, embedder,
         queries=queries,
         shortlist=shortlist_tuple,
         votes=tuple(votes),
+        notes=(
+            f'Dropped {dropped_count} ancestor GO terms after majority.'
+            if dropped_count
+            else ''
+        ),
     )
