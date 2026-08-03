@@ -36,14 +36,23 @@ def _get_embedding_index(ontology: GoOntology, embedder: Embedder) -> OntologyEm
     return cached
 
 
-def build_queries(function, functional_category) -> tuple[str, ...]:
-    queries = []
+def build_queries(
+    function,
+    functional_category,
+    *,
+    max_categories: int | None = 8,
+) -> tuple[str, ...]:
+    categories: list[str] = []
     if functional_category:
         for item in functional_category:
             if isinstance(item, str):
                 cleaned = clean_query_text(item)
                 if cleaned:
-                    queries.append(cleaned)
+                    categories.append(cleaned)
+    if max_categories is not None and len(categories) > max_categories:
+        categories = categories[:max_categories]
+
+    queries = list(categories)
     if isinstance(function, str):
         cleaned = clean_query_text(function)
         if cleaned:

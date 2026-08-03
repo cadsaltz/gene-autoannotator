@@ -20,3 +20,11 @@ def test_build_queries_applies_cleaning_and_drops_empty():
         functional_category=['mRNA stability (PMID 38270449)', '  ', '(PMID 999)'],
     )
     assert queries == ('mRNA stability', 'does a thing')
+
+
+def test_build_queries_caps_categories_but_keeps_function():
+    cats = [f'cat{i}' for i in range(12)]
+    queries = build_queries('function text here', cats, max_categories=8)
+    assert queries[:8] == tuple(f'cat{i}' for i in range(8))
+    assert queries[-1] == 'function text here'
+    assert len(queries) == 9
