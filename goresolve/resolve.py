@@ -15,7 +15,18 @@ def has_usable_text(function, functional_category) -> bool:
 def resolve_go_terms(*, function, functional_category, ontology_path, embedder,
                      ranker_models, rank_fn=None, top_k=25, min_cosine=0.35,
                      max_categories: int | None = 8):
-    if not has_usable_text(function, functional_category):
+    cleaned_categories = list(
+        build_queries(
+            None,
+            functional_category,
+            max_categories=max_categories,
+        )
+    )
+    function_queries = build_queries(function, None)
+    cleaned_function = function_queries[0] if function_queries else None
+    queries = tuple(cleaned_categories) + function_queries
+
+    if not has_usable_text(cleaned_function, cleaned_categories):
         return GoResolutionResult(
             go_terms=(),
             method='skipped_no_text',
@@ -26,11 +37,6 @@ def resolve_go_terms(*, function, functional_category, ontology_path, embedder,
         )
 
     ontology = load_go_ontology(ontology_path)
-    queries = build_queries(
-        function,
-        functional_category,
-        max_categories=max_categories,
-    )
     shortlist = build_shortlist(
         ontology,
         queries=queries,
@@ -73,8 +79,8 @@ def resolve_go_terms(*, function, functional_category, ontology_path, embedder,
     votes = []
     for model in ranker_models:
         ids = rank_go_terms(
-            function=function,
-            functional_category=functional_category,
+            function=cleaned_function,
+            functional_category=cleaned_categories,
             shortlist=shortlist,
             model=model,
             rank_fn=rank_fn,

@@ -48,6 +48,13 @@ def build_ranker_prompt(
         '- ONLY choose GO IDs from the CANDIDATE LIST above.',
         '- Order selected terms from most to least relevant.',
         '- Omit terms that do not apply.',
+        '- Prefer the most specific term that is clearly supported by the function text.',
+        '- If the function says the gene regulates/modulates a process, prefer "regulation of …" terms over the bare process term.',
+        '- Do not select a broad process term merely because a functional_category string matches its name exactly; require support from the function description.',
+        '  An exact category label match is not sufficient evidence on its own.',
+        '- Prefer a molecular_function + biological_process pair when both are clearly supported (e.g. chaperone activity + protein folding; transporter activity + ion transport).',
+        '- Prefer fewer high-confidence terms over many weak or redundant ones.',
+        '- If both a general and a specific term apply, prefer the specific term (the pipeline may drop parents later).',
         '- Each go_terms entry must include id; supported_by and reason are optional but encouraged.',
     ])
     return '\n'.join(lines)
