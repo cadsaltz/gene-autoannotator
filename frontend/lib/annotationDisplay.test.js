@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
+import * as annotationDisplay from "./annotationDisplay.js";
+import { resolveProfileFieldsForDisplay } from "./profileStore.js";
+
+const {
   getGeneratedFieldRows,
   getMetadataRows,
   getPmcIdsAnalyzed,
-} from "./annotationDisplay.js";
-import { resolveProfileFieldsForDisplay } from "./profileStore.js";
+} = annotationDisplay;
 
 const annotation = {
   result: {
@@ -118,7 +120,9 @@ test("getGeneratedFieldRows marks ortholog-derived fields from field_provenance"
   const categoryRow = rows.find((row) => row.key === "functional_category");
 
   assert.equal(functionRow.orthologDerived, true);
+  assert.equal(functionRow.orthologOnly, true);
   assert.equal(categoryRow.orthologDerived, false);
+  assert.equal(categoryRow.orthologOnly, false);
   // Same text as canonical value — show source chip only, not a duplicate paragraph.
   assert.equal(functionRow.orthologBlock.value, null);
   assert.ok(functionRow.orthologBlock.sourceLabel.includes("MO_000001"));
@@ -177,6 +181,7 @@ test("getGeneratedFieldRows surfaces ortholog block when both values present", (
   const functionRow = rows.find((row) => row.key === "function");
   assert.equal(functionRow.value, "target function");
   assert.equal(functionRow.orthologDerived, true);
+  assert.equal(functionRow.orthologOnly, false);
   assert.equal(functionRow.orthologBlock.value, "ortholog function");
   assert.ok(functionRow.orthologBlock.sourceLabel.includes("MO_000001"));
   assert.ok(functionRow.orthologBlock.sourceLabel.includes("62%"));
@@ -189,4 +194,85 @@ test("getGeneratedFieldRows leaves orthologBlock null without ortholog_fields", 
   const row = getGeneratedFieldRows(targetOnly).find((r) => r.key === "function");
   assert.equal(row.orthologBlock, null);
   assert.equal(row.orthologDerived, false);
+});
+
+test("GO helpers read target and ortholog terms from their separate stores", () => {
+  assert.equal(typeof annotationDisplay.getTargetGoTerms, "function");
+  assert.equal(typeof annotationDisplay.getOrthologGoTerms, "function");
+  const withGoTerms = {
+    result: {
+      annotation: {
+        go_terms: [{ id: "GO:0006355", name: "regulation of DNA-templated transcription" }],
+        annotation_metadata: {
+          ortholog_go_terms: [{ id: "GO:0006260", name: "DNA replication" }],
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(annotationDisplay.getTargetGoTerms(withGoTerms), [
+    { id: "GO:0006355", name: "regulation of DNA-templated transcription" },
+  ]);
+  assert.deepEqual(annotationDisplay.getOrthologGoTerms(withGoTerms), [
+    { id: "GO:0006260", name: "DNA replication" },
+  ]);
+});
+
+test("GO helpers return empty lists when terms are absent or malformed", () => {
+  assert.equal(typeof annotationDisplay.getTargetGoTerms, "function");
+  assert.equal(typeof annotationDisplay.getOrthologGoTerms, "function");
+  assert.deepEqual(annotationDisplay.getTargetGoTerms(annotation), []);
+  assert.deepEqual(annotationDisplay.getOrthologGoTerms(annotation), []);
+  assert.deepEqual(
+    annotationDisplay.getTargetGoTerms({
+      result: { annotation: { go_terms: "GO:0006260" } },
+    }),
+    [],
+  );
+});
+
+test("formatGoTermLabel includes only GO id and name", () => {
+  assert.equal(typeof annotationDisplay.formatGoTermLabel, "function");
+  const term = {
+    id: "GO:0006260",
+    name: "DNA replication",
+    agreement: "3/3",
+    confidence: 0.98,
+    votes: [{ model: "ranker-a", selected: true }],
+  };
+
+  const label = annotationDisplay.formatGoTermLabel(term);
+  assert.equal(label, "GO:0006260 — DNA replication");
+  assert.equal(label.includes("3/3"), false);
+  assert.equal(label.includes("0.98"), false);
+  assert.equal(label.includes("ranker-a"), false);
+});
+
+test("hasOrthologColumn detects a ran pass, ortholog fields, or ortholog GO", () => {
+  assert.equal(typeof annotationDisplay.hasOrthologColumn, "function");
+  const wrapMetadata = (metadata) => ({
+    result: { annotation: { annotation_metadata: metadata } },
+  });
+
+  assert.equal(annotationDisplay.hasOrthologColumn(annotation), false);
+  assert.equal(
+    annotationDisplay.hasOrthologColumn(wrapMetadata({ ortholog_pass: { ran: true } })),
+    true,
+  );
+  assert.equal(
+    annotationDisplay.hasOrthologColumn(
+      wrapMetadata({ ortholog_fields: { function: { value: "ortholog" } } }),
+    ),
+    true,
+  );
+  assert.equal(
+    annotationDisplay.hasOrthologColumn(
+      wrapMetadata({ ortholog_go_terms: [{ id: "GO:0006260", name: "DNA replication" }] }),
+    ),
+    true,
+  );
+  assert.equal(
+    annotationDisplay.hasOrthologColumn(wrapMetadata({ ortholog_pass: { ran: false } })),
+    false,
+  );
 });

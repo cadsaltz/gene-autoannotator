@@ -86,6 +86,29 @@ export function getOrthologFields(annotation) {
   return getMetadata(annotation).ortholog_fields || {};
 }
 
+export function getTargetGoTerms(annotation) {
+  const terms = getAnnotationPayload(annotation).go_terms;
+  return Array.isArray(terms) ? terms : [];
+}
+
+export function getOrthologGoTerms(annotation) {
+  const terms = getMetadata(annotation).ortholog_go_terms;
+  return Array.isArray(terms) ? terms : [];
+}
+
+export function formatGoTermLabel(term) {
+  return `${term.id} — ${term.name}`;
+}
+
+export function hasOrthologColumn(annotation) {
+  const metadata = getMetadata(annotation);
+  return (
+    metadata.ortholog_pass?.ran === true ||
+    getOrthologGoTerms(annotation).length > 0 ||
+    Object.keys(getOrthologFields(annotation)).length > 0
+  );
+}
+
 export function formatOrthologSourceLabel(block) {
   if (!block) {
     return "";
@@ -137,6 +160,7 @@ export function getGeneratedFieldRows(annotation, profileFields = null) {
       label,
       value: formatAnnotationValue(payload[key]),
       orthologDerived,
+      orthologOnly: provenance === FIELD_PROVENANCE_ORTHolog_DERIVED,
       orthologBlock: showOrthologBlock
         ? {
             value: formatAnnotationValue(orthologEntry.value),

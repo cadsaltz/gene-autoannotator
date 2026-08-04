@@ -14,9 +14,13 @@ import {
   getVisibleMatches,
 } from "../lib/annotationMatches";
 import {
+  formatGoTermLabel,
   getGeneratedFieldRows,
   getMetadataRows,
+  getOrthologGoTerms,
   getPmcIdsAnalyzed,
+  getTargetGoTerms,
+  hasOrthologColumn,
 } from "../lib/annotationDisplay";
 import {
   annotationViewForVersion,
@@ -47,56 +51,107 @@ function EmptyState({ query }) {
   );
 }
 
+function AnnotationFieldCard({ row, value = row.value, sourceLabel = "" }) {
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        row.orthologDerived
+          ? "workbench-amber-bg border-[#d4c4a0]"
+          : "workbench-muted-bg workbench-border"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">
+          {row.label}
+        </dt>
+        {row.orthologDerived ? (
+          <span className="rounded-full border border-[#d4c4a0] bg-white/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#8a7340]">
+            Ortholog derived
+          </span>
+        ) : null}
+      </div>
+      <dd className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#3d463f]">
+        {value}
+      </dd>
+      {sourceLabel ? (
+        <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.08em] text-[#8a7340]">
+          From ortholog: {sourceLabel}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function GoTermList({ terms }) {
+  if (terms.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mt-5 border-t workbench-border pt-5">
+      <h4 className="workbench-foreground text-sm font-bold">Gene Ontology terms</h4>
+      <ul className="mt-3 grid gap-2 text-sm text-[#3d463f]">
+        {terms.map((term, index) => (
+          <li
+            key={`${term.id}-${index}`}
+            className="workbench-muted-bg rounded-lg border workbench-border px-3 py-2"
+          >
+            {formatGoTermLabel(term)}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function AnnotationContent({ annotation, profileFields }) {
   const generatedRows = getGeneratedFieldRows(annotation, profileFields);
+  const targetRows = generatedRows.filter((row) => !row.orthologOnly);
+  const orthologRows = generatedRows.filter((row) => row.orthologDerived);
+  const targetGoTerms = getTargetGoTerms(annotation);
+  const orthologGoTerms = getOrthologGoTerms(annotation);
+  const showOrtholog = hasOrthologColumn(annotation);
   const metadataRows = getMetadataRows(annotation);
   const pmcIdsAnalyzed = getPmcIdsAnalyzed(annotation);
 
   return (
     <div className="grid gap-4">
-      <section className="rounded-xl border workbench-border bg-[#fffefa] p-5">
-        <h3 className="workbench-foreground text-xl font-bold tracking-[-0.02em]">
-          Generated annotation fields
-        </h3>
-        <dl className="mt-5 grid gap-4">
-          {generatedRows.map((row) => (
-            <div
-              key={row.key}
-              className={`rounded-xl border p-4 ${
-                row.orthologDerived
-                  ? "workbench-amber-bg border-[#d4c4a0]"
-                  : "workbench-muted-bg workbench-border"
-              }`}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">
-                  {row.label}
-                </dt>
-                {row.orthologDerived ? (
-                  <span className="rounded-full border border-[#d4c4a0] bg-white/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#8a7340]">
-                    Ortholog derived
-                  </span>
-                ) : null}
-              </div>
-              <dd className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#3d463f]">
-                {row.value}
-              </dd>
-              {row.orthologBlock ? (
-                <div className="mt-3 rounded-lg border border-[#d4c4a0] bg-white/60 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#8a7340]">
-                    From ortholog: {row.orthologBlock.sourceLabel}
-                  </p>
-                  {row.orthologBlock.value ? (
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[#3d463f]">
-                      {row.orthologBlock.value}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </dl>
-      </section>
+      <div className={`grid items-start gap-4 ${showOrtholog ? "lg:grid-cols-2" : ""}`}>
+        <section className="rounded-xl border workbench-border bg-[#fffefa] p-5">
+          <h3 className="workbench-foreground text-xl font-bold tracking-[-0.02em]">
+            {showOrtholog ? "Target" : "Generated annotation fields"}
+          </h3>
+          <dl className="mt-5 grid gap-4">
+            {(showOrtholog ? targetRows : generatedRows).map((row) => (
+              <AnnotationFieldCard key={row.key} row={row} />
+            ))}
+          </dl>
+          <GoTermList terms={targetGoTerms} />
+        </section>
+
+        {showOrtholog ? (
+          <section className="rounded-xl border workbench-border bg-[#fffefa] p-5">
+            <h3 className="workbench-foreground text-xl font-bold tracking-[-0.02em]">
+              Ortholog
+            </h3>
+            <dl className="mt-5 grid gap-4">
+              {orthologRows.map((row) => (
+                <AnnotationFieldCard
+                  key={row.key}
+                  row={row}
+                  value={
+                    row.orthologOnly
+                      ? row.value
+                      : row.orthologBlock?.value || "No supported data"
+                  }
+                  sourceLabel={row.orthologBlock?.sourceLabel}
+                />
+              ))}
+            </dl>
+            <GoTermList terms={orthologGoTerms} />
+          </section>
+        ) : null}
+      </div>
 
       <details className="rounded-xl border workbench-border bg-[#fffefa] p-4">
         <summary className="workbench-foreground cursor-pointer text-sm font-bold">
