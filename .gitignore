@@ -14,6 +14,9 @@ coordinator/*.sqlite3-shm
 coordinator/*.sqlite3-wal
 
 creds/
+pipeline_scores.jsonl
+completed_genes.txt
+error_log.txt
 data/go-basic.obo
 !data/profiles/.gitkeep
 

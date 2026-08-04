@@ -28,7 +28,7 @@ Main generated fields are `gene_id`, `name`, `function`, `functional_category`, 
 - `compareannotations/`: trusted-vs-generated scoring tools using exact matching, GO/category graph logic, embeddings/NLI, and an Ollama judge.
 - `tests/`: mostly deterministic unit/API tests; some model-style tests require local model dependencies.
 - `gen_json/`, `trust_json/`, `test_json/`: generated examples, trusted annotation fixtures, and small comparison fixtures.
-- `run_pipeline.py`: manual benchmark script for a fixed MTB gene list plus Google Sheets logging.
+- `run_pipeline.py`: manual benchmark script for a fixed MTB gene list; appends scores to `pipeline_scores.jsonl`.
 - `get_papers.py`: diagnostic CLI for paper retrieval/ranking without running LLM annotation.
 
 ## Dependencies
@@ -50,12 +50,6 @@ source .venv/bin/activate
 pip install -r requirements.txt
 pip install -r requirements-web.txt
 pip install pandas cloudscraper
-```
-
-`run_pipeline.py` additionally requires Google client libraries and a local service-account credential file:
-
-```bash
-pip install google-auth google-api-python-client
 ```
 
 The pinned requirement files may need cleanup as the project settles.
@@ -111,7 +105,8 @@ Local/generated assets:
 - `coordinator/jobs.sqlite3` stores queued/completed web jobs and is ignored by git.
 - `frontend/.env.local` stores Next.js server configuration such as `MONGO_URI` for annotation reads and is ignored by git.
 - `Mycobacterium_tuberculosis_H37Rv_txt_v5.txt` is referenced for MTB annotation-table gene names but is not committed.
-- `creds/` is ignored and is only needed for the Google Sheets benchmark script.
+- `pipeline_scores.jsonl`, `completed_genes.txt`, and `error_log.txt` are local `run_pipeline.py` run artifacts (gitignored).
+- `creds/` remains gitignored for any local secrets; it is not required by the benchmark harness.
 
 ## Usage
 
