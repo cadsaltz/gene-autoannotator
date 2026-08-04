@@ -1,0 +1,5 @@
+{"type":"server-started","port":54985,"host":"0.0.0.0","url_host":"localhost","url":"http://localhost:54985/?key=4b3863a18a763e73b75d98362f1d8ff2e08a5db9fa3fe611c1cb3152b7074630","screen_dir":"/home/caden-saltzberg/projects/sch/gene-autoannotator/.superpowers/brainstorm/2379479-1785807166/content","state_dir":"/home/caden-saltzberg/projects/sch/gene-autoannotator/.superpowers/brainstorm/2379479-1785807166/state","idle_timeout_ms":14400000}
+{"type":"screen-added","file":"/home/caden-saltzberg/projects/sch/gene-autoannotator/.superpowers/brainstorm/2379479-1785807166/content/annotation-layout.html"}
+{"type":"screen-added","file":"/home/caden-saltzberg/projects/sch/gene-autoannotator/.superpowers/brainstorm/2379479-1785807166/content/annotation-layout-b-refined.html"}
+{"type":"screen-added","file":"/home/caden-saltzberg/projects/sch/gene-autoannotator/.superpowers/brainstorm/2379479-1785807166/content/waiting.html"}
+{"type":"server-stopped","reason":"idle timeout"}

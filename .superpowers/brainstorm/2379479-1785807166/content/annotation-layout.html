@@ -1,0 +1,88 @@
+<h2>Annotations page — how should GO + ortholog sit together?</h2>
+<p class="subtitle">Click the layout that feels clearest. Sample gene: CtpV with target GO and an ortholog-filled function.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Stacked sections</h3>
+      <p>Target free-text → Target GO → Ortholog (filled fields + ortholog GO). Closest to today’s page.</p>
+      <div class="mockup" style="margin-top:0.75rem">
+        <div class="mockup-header">A preview</div>
+        <div class="mockup-body" style="font-size:12px;line-height:1.4">
+          <div class="label">Target annotation</div>
+          <div style="margin:0.4rem 0;padding:0.5rem;border:1px solid #ccc;border-radius:6px">
+            <strong>Function</strong><br>P-type ATPase copper efflux pump…
+          </div>
+          <div style="margin:0.4rem 0;padding:0.5rem;border:1px solid #ccc;border-radius:6px">
+            <strong>Functional category</strong><br>heavy metal efflux
+          </div>
+          <div class="label" style="margin-top:0.8rem">Target GO terms</div>
+          <div style="margin:0.4rem 0;padding:0.5rem;border:1px solid #9bb;border-radius:6px;background:#f3fafb">
+            GO:0043682 P-type divalent copper transporter · 3/3<br>
+            GO:0060003 copper ion export · 2/3
+          </div>
+          <div class="label" style="margin-top:0.8rem">Ortholog evidence</div>
+          <div style="margin:0.4rem 0;padding:0.5rem;border:1px solid #c9a;border-radius:6px;background:#fff8ef">
+            Function (ortholog-derived) · From mmar:MMAR_1234<br>
+            Ortholog GO: GO:0005375 copper transporter · 2/3
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Two columns: Target | Ortholog</h3>
+      <p>Side-by-side passes. Each column has free-text + its own GO list. Best when comparing sources.</p>
+      <div class="mockup" style="margin-top:0.75rem">
+        <div class="mockup-header">B preview</div>
+        <div class="mockup-body" style="font-size:12px;line-height:1.35">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem">
+            <div style="padding:0.5rem;border:1px solid #9bb;border-radius:6px;background:#f3fafb">
+              <div class="label">Target</div>
+              <p><strong>Function</strong><br>copper efflux pump…</p>
+              <p><strong>GO</strong><br>GO:0043682 · 3/3<br>GO:0060003 · 2/3</p>
+            </div>
+            <div style="padding:0.5rem;border:1px solid #c9a;border-radius:6px;background:#fff8ef">
+              <div class="label">Ortholog</div>
+              <p><strong>Function</strong><br>Cu homeostasis…</p>
+              <p><strong>GO</strong><br>GO:0005375 · 2/3</p>
+              <p style="opacity:0.7">mmar:MMAR_1234</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Field-first with GO under categories</h3>
+      <p>Keep one field list; nest target GO under Functional category; put ortholog GO inside the existing amber ortholog blocks.</p>
+      <div class="mockup" style="margin-top:0.75rem">
+        <div class="mockup-header">C preview</div>
+        <div class="mockup-body" style="font-size:12px;line-height:1.4">
+          <div style="margin:0.4rem 0;padding:0.5rem;border:1px solid #ccc;border-radius:6px">
+            <strong>Functional category</strong><br>heavy metal efflux
+            <div style="margin-top:0.5rem;padding:0.4rem;border-left:3px solid #5a9;background:#f3fafb">
+              <span class="label">Mapped GO (target)</span><br>
+              GO:0043682 · GO:0060003
+            </div>
+          </div>
+          <div style="margin:0.4rem 0;padding:0.5rem;border:1px solid #d4c4a0;border-radius:6px;background:#fff8ef">
+            <strong>Function</strong> <span style="font-size:10px">ORTHOLOG DERIVED</span><br>
+            copper efflux…
+            <div style="margin-top:0.4rem;padding:0.4rem;background:#fff;border-radius:4px">
+              From ortholog mmar:MMAR_1234<br>
+              <em>Ortholog GO:</em> GO:0005375
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

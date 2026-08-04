@@ -1,0 +1,4 @@
+2026/08/03 18:32:28.195607 cmd_run.go:1594: WARNING: cannot create user data directory: cannot create snap home dir: mkdir /root/snap: permission denied
+snap-confine is packaged without necessary permissions and cannot continue
+required permitted capability cap_dac_override not found in current capabilities:
+  =
