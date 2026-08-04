@@ -52,6 +52,34 @@ _ENV_PASSTHROUGH_KEYS = (
     "OLLAMA_MAX_QUEUE",
 )
 
+# Per parallel slot. Ollama splits OLLAMA_CONTEXT_LENGTH across NUM_PARALLEL
+# (n_ctx_seq = n_ctx / parallel). 8192 covers observed ~6.3k prompts + headroom.
+DEFAULT_OLLAMA_SLOT_CTX = 8192
+
+
+def effective_ollama_context_length(*, parallel: int) -> int:
+    """Total runner ``-c`` / ``OLLAMA_CONTEXT_LENGTH`` for managed serve.
+
+    Explicit ``OLLAMA_CONTEXT_LENGTH`` (non-zero) wins. Otherwise
+    ``parallel * OLLAMA_FLEET_SLOT_CTX`` (default 8192 per slot) so prompts are
+    not truncated when ``OLLAMA_NUM_PARALLEL > 1``. Larger context may spill
+    layers/KV to system RAM when VRAM is tight — preferred over job failure.
+    """
+    raw = os.environ.get("OLLAMA_CONTEXT_LENGTH", "").strip()
+    if raw and raw != "0":
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass
+    slot_raw = os.environ.get("OLLAMA_FLEET_SLOT_CTX", "").strip()
+    slot = DEFAULT_OLLAMA_SLOT_CTX
+    if slot_raw:
+        try:
+            slot = max(1, int(slot_raw))
+        except ValueError:
+            pass
+    return max(1, parallel) * slot
+
 
 def _ollama_executable() -> str:
     path = shutil.which("ollama")
@@ -114,6 +142,7 @@ def _build_ollama_server_env(
             env[key] = value
     env["OLLAMA_HOST"] = f"127.0.0.1:{port}"
     env["OLLAMA_NUM_PARALLEL"] = str(parallel)
+    env["OLLAMA_CONTEXT_LENGTH"] = str(effective_ollama_context_length(parallel=parallel))
     if max_loaded_models is not None and max_loaded_models > 0:
         env["OLLAMA_MAX_LOADED_MODELS"] = str(max_loaded_models)
     if gpu_index is not None:
@@ -251,11 +280,13 @@ def start_ollama_server(
     binary = _ollama_serve_binary()
     log_path = ollama_server_log_path(port)
     log.info(
-        "Starting Ollama server on 127.0.0.1:%s (binary=%s, OLLAMA_HOST=%s, parallel=%s, gpu=%s, log=%s)",
+        "Starting Ollama server on 127.0.0.1:%s (binary=%s, OLLAMA_HOST=%s, "
+        "parallel=%s, context_length=%s, gpu=%s, log=%s)",
         port,
         binary,
         env["OLLAMA_HOST"],
         parallel,
+        env.get("OLLAMA_CONTEXT_LENGTH"),
         gpu_index,
         log_path,
     )

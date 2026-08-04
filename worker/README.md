@@ -312,6 +312,8 @@ setups should use the fleet configuration flow.
 | --- | --- | --- |
 | `OLLAMA_FLEET_SERVERS` | from sizing | Number of `ollama serve` processes. |
 | `OLLAMA_FLEET_PARALLEL` | from sizing | `OLLAMA_NUM_PARALLEL` per server. |
+| `OLLAMA_FLEET_SLOT_CTX` | `8192` | Per-slot context tokens; managed serve sets `OLLAMA_CONTEXT_LENGTH = slot × parallel`. |
+| `OLLAMA_CONTEXT_LENGTH` | computed | Total runner context (explicit non-zero override wins). Larger values may spill to RAM when VRAM is tight. |
 | `WORKER_MAX_SLOTS` | from sizing | Concurrent job subprocess cap. |
 | `OLLAMA_FLEET_W_ALL_BYTES` | measured/estimated | All-models-warm VRAM footprint per server. |
 | `OLLAMA_FLEET_C_SLOT_BYTES` | `429496729` (~0.4 GB) | Per-lane context VRAM estimate. |

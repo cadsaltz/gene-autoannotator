@@ -394,7 +394,9 @@ python -m worker serve \
 | `--memory-gb` | Annotation memory budget (GB) | Else `ANNOTATION_MEMORY_BUDGET_GB` |
 | `--no-dashboard` | Disable live TTY dashboard | Dashboard is on when stdout is a TTY |
 
-With the dashboard on, verbose worker logs go to `worker-serve.log` (or `--log-file` / `WORKER_LOG_FILE`). Managed `ollama serve` stdout/stderr is teed to `ollama-server-<port>.log` next to that log file (else cwd), and the dashboard **OLLAMA** strip shows process status plus a parsed summary (phase, last `/api/chat`, alerts such as prompt truncation). Offline: `python -m worker.fleet.diagnose_ollama_log ollama-server-11434.log`. A `truncating prompt N→M` alert usually means slot context is too small (often `OLLAMA_NUM_PARALLEL>1` splitting the server context); truncation fixes are separate from this diagnostics view.
+With the dashboard on, verbose worker logs go to `worker-serve.log` (or `--log-file` / `WORKER_LOG_FILE`). Managed `ollama serve` stdout/stderr is teed to `ollama-server-<port>.log` next to that log file (else cwd), and the dashboard **OLLAMA** strip shows process status plus a parsed summary (phase, last `/api/chat`, alerts such as prompt truncation). Offline: `python -m worker.fleet.diagnose_ollama_log ollama-server-11434.log`.
+
+Managed fleet sets `OLLAMA_CONTEXT_LENGTH` to **`OLLAMA_NUM_PARALLEL × OLLAMA_FLEET_SLOT_CTX`** (default slot **8192**) so each parallel slot keeps a full prompt window. Ollama splits total context across parallel slots; without this, `parallel=2` and `-c 8192` yields ~4096/slot and truncates ~6k-token extraction prompts. Larger context may spill weights/KV to system RAM when VRAM is tight (slower, but jobs should complete). Override total with `OLLAMA_CONTEXT_LENGTH`, or per-slot with `OLLAMA_FLEET_SLOT_CTX`.
 
 ### Bench options
 
@@ -430,6 +432,8 @@ python -m worker bench \
 | `JOB_MEMORY_ESTIMATE_GB` / `WORKER_MEMORY_HEADROOM_GB` | Sizing knobs |
 | `WORKER_CACHE_DIR` / `WORKER_OUTPUT_DIR` | Cache / output overrides |
 | `OLLAMA_HOST` / `OLLAMA_CHAT_TIMEOUT_SEC` / `OLLAMA_ROUTER_READ_TIMEOUT_SEC` | Ollama / router timeouts (`unset` = unlimited) |
+| `OLLAMA_FLEET_SLOT_CTX` | Per-parallel-slot context tokens (default `8192`); total = slot × `OLLAMA_FLEET_PARALLEL` |
+| `OLLAMA_CONTEXT_LENGTH` | Total runner context override (wins over slot×parallel) |
 
 Design / fleet details: `worker/README.md`.
 

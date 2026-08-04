@@ -87,10 +87,31 @@ def test_start_fleet_launches_one_process_per_server(monkeypatch):
 
 def test_build_ollama_server_env_does_not_inherit_parent_host(monkeypatch):
     monkeypatch.setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+    monkeypatch.delenv("OLLAMA_CONTEXT_LENGTH", raising=False)
+    monkeypatch.delenv("OLLAMA_FLEET_SLOT_CTX", raising=False)
     env = setup._build_ollama_server_env(port=11435, parallel=2, gpu_index=0)
     assert env["OLLAMA_HOST"] == "127.0.0.1:11435"
     assert env["OLLAMA_NUM_PARALLEL"] == "2"
+    assert env["OLLAMA_CONTEXT_LENGTH"] == "16384"  # 2 slots × 8192
     assert env["CUDA_VISIBLE_DEVICES"] == "0"
+
+
+def test_effective_ollama_context_length_scales_with_parallel(monkeypatch):
+    monkeypatch.delenv("OLLAMA_CONTEXT_LENGTH", raising=False)
+    monkeypatch.delenv("OLLAMA_FLEET_SLOT_CTX", raising=False)
+    assert setup.effective_ollama_context_length(parallel=2) == 16384
+    assert setup.effective_ollama_context_length(parallel=1) == 8192
+
+
+def test_effective_ollama_context_length_respects_explicit_total(monkeypatch):
+    monkeypatch.setenv("OLLAMA_CONTEXT_LENGTH", "32768")
+    assert setup.effective_ollama_context_length(parallel=2) == 32768
+
+
+def test_effective_ollama_context_length_respects_slot_override(monkeypatch):
+    monkeypatch.delenv("OLLAMA_CONTEXT_LENGTH", raising=False)
+    monkeypatch.setenv("OLLAMA_FLEET_SLOT_CTX", "12288")
+    assert setup.effective_ollama_context_length(parallel=2) == 24576
 
 
 def test_effective_max_loaded_models_defaults_to_one_for_swap_tier(monkeypatch):
