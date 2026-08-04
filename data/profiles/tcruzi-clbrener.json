@@ -82,8 +82,9 @@
     "functional_category": true
   },
   "excluded_species_patterns": [],
-  "kegg_organism_code": "tcr",
+  "go_resolution_enabled": true,
   "kegg_locus_regex": "^TcCLB\\.(.+)$",
+  "kegg_organism_code": "tcr",
   "locus_regex": "^TcCLB\\.\\d+\\.\\d+$",
   "off_target_patterns": [
     "\\bEscherichia\\s+coli\\b",
@@ -120,5 +121,5 @@
     "T.\\scruzi",
     "T\\scruzi"
   ],
-  "updated_at": "2026-07-15T19:02:22.804842+00:00"
+  "updated_at": "2026-08-04T14:43:06.018052+00:00"
 }
