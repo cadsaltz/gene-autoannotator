@@ -130,6 +130,20 @@ def _read_process_stderr(proc: subprocess.Popen) -> str:
         return ""
 
 
+def _startup_failure_detail(proc: subprocess.Popen, *, port: int) -> str:
+    from worker.fleet.ollama_log import get_buffer_for_port
+
+    buffer = get_buffer_for_port(port)
+    if buffer is not None:
+        recent = buffer.recent(20)
+        if recent:
+            return "\n".join(recent)
+    stderr = _read_process_stderr(proc).strip()
+    if stderr:
+        return stderr
+    return f"exit code {proc.returncode}"
+
+
 def _wait_for_ollama_server(
     proc: subprocess.Popen,
     *,
@@ -139,8 +153,7 @@ def _wait_for_ollama_server(
     deadline = time.monotonic() + timeout_sec
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            stderr = _read_process_stderr(proc).strip()
-            detail = stderr or f"exit code {proc.returncode}"
+            detail = _startup_failure_detail(proc, port=port)
             raise RuntimeError(f"ollama serve failed on port {port}: {detail}")
         if _port_is_open(port):
             return
@@ -222,6 +235,13 @@ def start_ollama_server(
     gpu_index: int | None,
     max_loaded_models: int | None = None,
 ) -> subprocess.Popen:
+    from worker.fleet.ollama_log import (
+        OllamaLogBuffer,
+        ollama_server_log_path,
+        register_buffer,
+        start_ollama_log_tee,
+    )
+
     env = _build_ollama_server_env(
         port=port,
         parallel=parallel,
@@ -229,20 +249,27 @@ def start_ollama_server(
         max_loaded_models=max_loaded_models,
     )
     binary = _ollama_serve_binary()
+    log_path = ollama_server_log_path(port)
     log.info(
-        "Starting Ollama server on 127.0.0.1:%s (binary=%s, OLLAMA_HOST=%s, parallel=%s, gpu=%s)",
+        "Starting Ollama server on 127.0.0.1:%s (binary=%s, OLLAMA_HOST=%s, parallel=%s, gpu=%s, log=%s)",
         port,
         binary,
         env["OLLAMA_HOST"],
         parallel,
         gpu_index,
+        log_path,
     )
+    buffer = OllamaLogBuffer()
+    buffer.port = port
+    register_buffer(port, buffer)
     proc = subprocess.Popen(
         [binary, "serve"],
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=0,
     )
+    start_ollama_log_tee(proc, buffer, log_path)
     _wait_for_ollama_server(proc, port=port)
     return proc
 

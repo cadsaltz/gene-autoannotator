@@ -171,7 +171,7 @@ def test_run_with_dashboard_enabled_starts_and_stops_dashboard_thread(monkeypatc
     started = threading.Event()
     stopped = threading.Event()
 
-    def fake_run_live(self, runtime, stop_event, *, meta=None):
+    def fake_run_live(self, runtime, stop_event, *, meta=None, meta_provider=None):
         started.set()
         stop_event.wait(timeout=2)
         stopped.set()

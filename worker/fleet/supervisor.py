@@ -4,10 +4,12 @@ import logging
 import subprocess
 import threading
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
 from worker.fleet.config import FleetConfig
+from worker.fleet.ollama_log import OllamaLogBuffer, get_buffer_for_port
 from worker.probe import SystemSpec
 
 log = logging.getLogger(__name__)
@@ -23,6 +25,7 @@ class _ManagedServer:
     gpu_index: int | None
     max_loaded_models: int | None
     proc: subprocess.Popen | None = None
+    log_buffer: OllamaLogBuffer | None = None
 
 
 def _api_reachable(host: str, *, timeout_sec: float = HEALTH_CHECK_TIMEOUT_SEC) -> bool:
@@ -33,20 +36,26 @@ def _api_reachable(host: str, *, timeout_sec: float = HEALTH_CHECK_TIMEOUT_SEC) 
         return False
 
 
-def _spawn_exit_watcher(host: str, proc: subprocess.Popen) -> None:
+def _spawn_exit_watcher(
+    host: str,
+    proc: subprocess.Popen,
+    *,
+    log_buffer: OllamaLogBuffer | None = None,
+) -> None:
     """Log when a managed Ollama child exits (OOM, segfault, etc.)."""
     if not hasattr(proc, "wait"):
         return
 
     def _watch() -> None:
         returncode = proc.wait()
-        log.error(
-            "Ollama server %s exited unexpectedly (code=%s). "
+        message = (
+            f"Ollama server {host} exited unexpectedly (code={returncode}). "
             "Check dmesg/journal for OOM kills; performance models need one model "
-            "in memory at a time on limited VRAM.",
-            host,
-            returncode,
+            "in memory at a time on limited VRAM."
         )
+        log.error("%s", message)
+        if log_buffer is not None:
+            log_buffer.append(f"*** {message} ***")
 
     threading.Thread(
         target=_watch,
@@ -77,7 +86,9 @@ class FleetSupervisor:
         gpu_index: int | None,
         max_loaded_models: int | None,
         proc: subprocess.Popen,
+        log_buffer: OllamaLogBuffer | None = None,
     ) -> None:
+        buffer = log_buffer if log_buffer is not None else get_buffer_for_port(port)
         with self._lock:
             self._servers[host] = _ManagedServer(
                 host=host,
@@ -86,8 +97,48 @@ class FleetSupervisor:
                 gpu_index=gpu_index,
                 max_loaded_models=max_loaded_models,
                 proc=proc,
+                log_buffer=buffer,
             )
-        _spawn_exit_watcher(host, proc)
+        _spawn_exit_watcher(host, proc, log_buffer=buffer)
+
+    def ollama_log_snapshot(self) -> list[dict[str, Any]]:
+        """Dashboard-friendly status + recent lines for each managed server."""
+        with self._lock:
+            entries = list(self._servers.values())
+        snapshots: list[dict[str, Any]] = []
+        for entry in entries:
+            proc = entry.proc
+            if proc is None:
+                status = "missing"
+                pid = None
+            elif proc.poll() is None:
+                status = "running"
+                pid = getattr(proc, "pid", None)
+            else:
+                status = "exited"
+                pid = getattr(proc, "pid", None)
+            buffer = entry.log_buffer or get_buffer_for_port(entry.port)
+            if buffer is not None:
+                snapshots.append(
+                    buffer.snapshot(
+                        host=entry.host,
+                        port=entry.port,
+                        pid=pid,
+                        status=status,
+                    )
+                )
+            else:
+                snapshots.append(
+                    {
+                        "host": entry.host,
+                        "port": entry.port,
+                        "pid": pid,
+                        "status": status,
+                        "log_path": None,
+                        "lines": [],
+                    }
+                )
+        return snapshots
 
     def is_healthy(self, host: str) -> bool:
         with self._lock:
@@ -151,8 +202,9 @@ class FleetSupervisor:
             gpu_index=entry.gpu_index,
             max_loaded_models=entry.max_loaded_models,
         )
+        entry.log_buffer = get_buffer_for_port(entry.port)
         log.info("Ollama server restarted at %s", entry.host)
-        _spawn_exit_watcher(entry.host, entry.proc)
+        _spawn_exit_watcher(entry.host, entry.proc, log_buffer=entry.log_buffer)
 
 
 def attach_fleet_to_supervisor(

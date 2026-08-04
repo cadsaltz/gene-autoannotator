@@ -394,6 +394,8 @@ python -m worker serve \
 | `--memory-gb` | Annotation memory budget (GB) | Else `ANNOTATION_MEMORY_BUDGET_GB` |
 | `--no-dashboard` | Disable live TTY dashboard | Dashboard is on when stdout is a TTY |
 
+With the dashboard on, verbose worker logs go to `worker-serve.log` (or `--log-file` / `WORKER_LOG_FILE`). Managed `ollama serve` stdout/stderr is teed to `ollama-server-<port>.log` next to that log file (else cwd), and the dashboard **OLLAMA** strip shows process status plus the last serve log lines.
+
 ### Bench options
 
 ```bash

@@ -188,6 +188,7 @@ def _run_with_dashboard(
     *,
     dashboard: bool,
     meta: dict[str, Any],
+    meta_provider: Any | None = None,
 ) -> dict[str, Any] | None:
     if not dashboard:
         return runtime.run()
@@ -198,7 +199,7 @@ def _run_with_dashboard(
     dashboard_thread = threading.Thread(
         target=BenchDashboard().run_live,
         args=(runtime, stop_event),
-        kwargs={"meta": meta},
+        kwargs={"meta": meta, "meta_provider": meta_provider},
         name="worker-bench-dashboard",
         daemon=True,
     )
@@ -242,6 +243,10 @@ def main(argv=None):
     report_path = _report_path(getattr(args, "report", None))
     log_file = _resolve_log_file(args=args, dashboard=dashboard, report_path=report_path)
     configure_bench_logging(log_file=log_file, dashboard=dashboard)
+    if log_file is not None:
+        from worker.fleet.ollama_log import set_ollama_log_dir
+
+        set_ollama_log_dir(log_file.parent)
 
     configure_fleet = bool(getattr(args, "configure_fleet", False))
     if configure_fleet and not sys.stdin.isatty():
@@ -375,6 +380,15 @@ def main(argv=None):
             metrics_collector=getattr(router_thread, "_metrics", None),
         )
         _install_shutdown_handlers(runtime)
+
+        def _dashboard_meta_provider() -> dict[str, Any]:
+            if fleet_supervisor is None:
+                return {}
+            try:
+                return {"ollama_servers": fleet_supervisor.ollama_log_snapshot()}
+            except Exception:
+                return {}
+
         report = _run_with_dashboard(
             runtime,
             dashboard=dashboard,
@@ -384,6 +398,7 @@ def main(argv=None):
                 "slots": selected_slots,
                 "tier": runtime_fleet.memory_tier,
             },
+            meta_provider=_dashboard_meta_provider,
         )
         if runtime.shutdown_requested:
             _progress("Bench interrupted.")

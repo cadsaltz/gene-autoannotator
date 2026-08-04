@@ -89,7 +89,10 @@ of a fixed batch total/queued count, since serve claims jobs indefinitely.
 
 When the dashboard is on and no explicit log file is set, verbose logs default
 to `worker-serve.log` under `WORKER_OUTPUT_DIR` (or the current directory) so
-stdout stays reserved for the dashboard.
+stdout stays reserved for the dashboard. Managed Ollama serve output is teed to
+`ollama-server-<port>.log` in the same directory; the dashboard **OLLAMA**
+section shows pid/status and recent serve lines (full file on disk for deeper
+debugging).
 
 Non-TTY runs (systemd, Docker without `-t`, nohup, redirected output) skip the
 dashboard automatically and log to stdout at INFO as before. **Docker and
