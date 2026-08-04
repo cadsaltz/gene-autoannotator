@@ -8,7 +8,49 @@ from autoannotation import orthology
 from coordinator.api import create_app
 from coordinator.job_store import JobStore
 from coordinator.profile_store import LocalProfileStore
+from coordinator.schemas import ProfilePayload
 from fastapi.testclient import TestClient
+
+
+def _minimal_profile_config(**overrides):
+    config = {
+        "profile_id": "example-profile",
+        "canonical_name": "Example organism",
+        "species_name": "Example organism",
+        "strain": None,
+        "synonyms": [],
+        "species_synonyms": [],
+        "strain_synonyms": [],
+        "locus_regex": r"^EX\d+$",
+        "search_terms": ["Example organism"],
+        "target_patterns": [],
+        "off_target_patterns": [],
+        "excluded_species_patterns": [],
+        "custom_fields": [],
+        "default_field_ortholog": {},
+    }
+    config.update(overrides)
+    return config
+
+
+def test_profile_config_preserves_go_resolution_enabled(tmp_path):
+    enabled_config = _minimal_profile_config(go_resolution_enabled=True)
+
+    assert ProfilePayload(**enabled_config).go_resolution_enabled is True
+    assert ProfilePayload(**_minimal_profile_config()).go_resolution_enabled is False
+    assert organisms.profile_from_mapping(enabled_config).go_resolution_enabled is True
+    assert organisms.profile_from_mapping(
+        _minimal_profile_config()
+    ).go_resolution_enabled is False
+
+    store = LocalProfileStore(tmp_path / "profiles", seed_catalog_dir=tmp_path / "empty")
+    created = store.create_profile(enabled_config)
+    assert created["go_resolution_enabled"] is True
+    assert store.get_profile("example-profile")["go_resolution_enabled"] is True
+
+    updated = store.update_profile("example-profile", _minimal_profile_config())
+    assert updated["go_resolution_enabled"] is False
+    assert store.get_profile("example-profile")["go_resolution_enabled"] is False
 
 
 def test_profile_lookup_uses_builtin_source_override():
@@ -26,6 +68,7 @@ def test_profile_lookup_uses_builtin_source_override():
         "off_target_patterns": [],
         "excluded_species_patterns": [],
         "kegg_organism_code": "mtu",
+        "go_resolution_enabled": True,
         "custom_fields": [
             {
                 "key": "drug_susc_impact",
@@ -44,6 +87,7 @@ def test_profile_lookup_uses_builtin_source_override():
     }
     lookup = annotation_pipeline._profile_lookup_from_config(config)
     assert lookup is not None
+    assert lookup("mtb-h37rv")["go_resolution_enabled"] is True
     assert lookup("mtb-h37rv")["default_field_ortholog"]["functional_category"] is True
 
 
@@ -56,6 +100,7 @@ def test_job_submission_stores_kegg_and_field_ortholog_for_builtin_override(tmp_
             "function": True,
             "functional_category": True,
         },
+        "go_resolution_enabled": True,
         "custom_fields": [
             {**field, "ortholog_allowed": True}
             for field in builtin["custom_fields"]
@@ -88,6 +133,7 @@ def test_job_submission_stores_kegg_and_field_ortholog_for_builtin_override(tmp_
     assert config["kegg_organism_code"] == "mtu"
     assert config["default_field_ortholog"]["function"] is True
     assert config["default_field_ortholog"]["functional_category"] is True
+    assert config["go_resolution_enabled"] is True
     assert all(field["ortholog_allowed"] for field in config["custom_fields"])
     assert stored["request"]["ortholog_profile_catalog"]
     assert any(

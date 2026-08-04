@@ -61,6 +61,9 @@ def _copy_document(document):
     )
     copied["annotation_fields"] = list(copied["custom_fields"])
     copied["default_field_ortholog"] = dict(copied.get("default_field_ortholog") or {})
+    copied["go_resolution_enabled"] = bool(
+        copied.get("go_resolution_enabled", False)
+    )
     return copied
 
 
@@ -239,6 +242,7 @@ def _normalize_profile_payload(payload):
         "species_name": species_name,
         "strain": _optional_text(payload, "strain"),
         "locus_regex": locus_regex,
+        "go_resolution_enabled": bool(payload.get("go_resolution_enabled", False)),
         "created_at": now,
         "updated_at": now,
     }

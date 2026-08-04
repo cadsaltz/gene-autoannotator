@@ -145,6 +145,7 @@ PROFILE_CONFIG_FIELDS = (
     "excluded_species_patterns",
     "kegg_organism_code",
     "kegg_locus_regex",
+    "go_resolution_enabled",
 )
 
 

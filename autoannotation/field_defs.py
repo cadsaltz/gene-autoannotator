@@ -1,7 +1,14 @@
 import re
 from dataclasses import asdict, dataclass
 
-RESERVED_FIELD_KEYS = frozenset({'gene_id', 'name', 'rv_id', 'annotation_notes', 'annotation_metadata'})
+RESERVED_FIELD_KEYS = frozenset({
+    'gene_id',
+    'name',
+    'rv_id',
+    'annotation_notes',
+    'annotation_metadata',
+    'go_terms',
+})
 FIELD_KEY_PATTERN = re.compile(r'^[a-z][a-z0-9_]*$')
 
 VALID_FIELD_TYPES = frozenset({'string', 'boolean', 'array:string'})

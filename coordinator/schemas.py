@@ -36,6 +36,7 @@ class ProfilePayload(BaseModel):
     excluded_species_patterns: list[str] = Field(default_factory=list)
     kegg_organism_code: str | None = None
     kegg_locus_regex: str | None = None
+    go_resolution_enabled: bool = False
     custom_fields: list[AnnotationFieldPayload] = Field(default_factory=list)
     annotation_fields: list[AnnotationFieldPayload] = Field(default_factory=list)
     default_field_ortholog: dict[str, bool] = Field(default_factory=dict)
@@ -235,6 +236,7 @@ class ProfileDetailResponse(ProfileResponse):
     excluded_species_patterns: list[str] = Field(default_factory=list)
     kegg_organism_code: str | None = None
     kegg_locus_regex: str | None = None
+    go_resolution_enabled: bool = False
     custom_fields: list[dict[str, Any]] = Field(default_factory=list)
     annotation_fields: list[dict[str, Any]] = Field(default_factory=list)
     default_field_ortholog: dict[str, bool] = Field(default_factory=dict)

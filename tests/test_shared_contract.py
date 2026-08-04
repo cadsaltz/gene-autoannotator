@@ -1,6 +1,25 @@
 from shared.job_contract import AnnotationJobRequest, OrthologOverride
 
 
+def test_go_terms_is_reserved_for_pipeline_output():
+    import pytest
+
+    from autoannotation.field_defs import AnnotationFieldDef, validate_custom_field
+
+    with pytest.raises(ValueError, match="reserved"):
+        validate_custom_field(
+            AnnotationFieldDef(
+                key="go_terms",
+                label="GO terms",
+                description="Resolved Gene Ontology terms",
+                type="array:string",
+                required=False,
+                inference_strategy="go_terms",
+                ortholog_allowed=False,
+            )
+        )
+
+
 def test_job_request_model_dump_keeps_profile_snapshots():
     """Worker subprocess serialization must retain Mongo field settings."""
     request = AnnotationJobRequest(

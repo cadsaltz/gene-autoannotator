@@ -45,6 +45,7 @@ class OrganismProfile:
     kegg_organism_code: str | None = None
     # Optional regex with one capture group: group 1 is the KEGG SSDB gene id.
     kegg_locus_regex: str | None = None
+    go_resolution_enabled: bool = False
     custom_fields: tuple = ()
     default_field_ortholog: tuple = ()
     annotation_fields: tuple = ()  # legacy alias; use custom_fields
@@ -262,6 +263,7 @@ def profile_from_mapping(payload):
         annotation_feature_value=payload.get("annotation_feature_value"),
         kegg_organism_code=kegg_code,
         kegg_locus_regex=_optional_stripped(payload.get("kegg_locus_regex")),
+        go_resolution_enabled=bool(payload.get("go_resolution_enabled", False)),
         custom_fields=custom_fields,
         default_field_ortholog=tuple(default_field_ortholog.items()),
         annotation_fields=custom_fields,
