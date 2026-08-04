@@ -65,33 +65,44 @@ def filter_ids_to_shortlist(ids: list[str], shortlist: list[GoCandidate]) -> lis
     return [go_id for go_id in ids if go_id in allowed]
 
 
+GO_RANK_JSON_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'go_terms': {
+            'type': 'array',
+            'items': {
+                'type': 'object',
+                'properties': {
+                    'id': {'type': 'string'},
+                    'supported_by': {'type': 'array', 'items': {'type': 'string'}},
+                    'reason': {'type': 'string'},
+                },
+                'required': ['id'],
+            },
+        }
+    },
+    'required': ['go_terms'],
+}
+
+
 def ollama_rank_fn(prompt: str, model: str) -> dict[str, Any]:
+    """Call Ollama directly for GO ranking.
+
+    This bare-``ollama.chat`` path is only appropriate for the standalone
+    ``python -m goresolve`` CLI, which has no worker/router process to go
+    through. The annotation pipeline (``autoannotation/go_resolution.py``)
+    must instead route ranking through ``autoannotation.llms.ollama_chat``
+    so requests use the worker's Ollama router (queueing, model
+    keep-alive, job tracking) like every other pipeline LLM call.
+    """
     import json
 
     import ollama
 
-    schema = {
-        'type': 'object',
-        'properties': {
-            'go_terms': {
-                'type': 'array',
-                'items': {
-                    'type': 'object',
-                    'properties': {
-                        'id': {'type': 'string'},
-                        'supported_by': {'type': 'array', 'items': {'type': 'string'}},
-                        'reason': {'type': 'string'},
-                    },
-                    'required': ['id'],
-                },
-            }
-        },
-        'required': ['go_terms'],
-    }
     response = ollama.chat(
         model=model,
         messages=[{'role': 'user', 'content': prompt}],
-        format=schema,
+        format=GO_RANK_JSON_SCHEMA,
         options={'temperature': 0},
     )
     return json.loads(response['message']['content'])
