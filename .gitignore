@@ -4,6 +4,7 @@ __pycache__/**
 .venv/
 .env
 .env.local
+./superpowers
 worker.env
 coordinator.env
 .worktrees/
