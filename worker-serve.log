@@ -1,0 +1,27 @@
+2026-08-04 07:40:28,483 WARNING worker.fleet.setup | Largest model (17.0 GB) exceeds VRAM; Ollama will spill layers into system RAM. Expect much slower inference.
+2026-08-04 07:40:28,483 WARNING worker.fleet.setup | Warm-stack footprint is 46.7 GB but only 17.0 GB peak is budgeted per request.
+2026-08-04 07:40:28,504 WARNING worker.fleet.setup | Largest model (17.0 GB) exceeds VRAM; Ollama will spill layers into system RAM. Expect much slower inference.
+2026-08-04 07:40:28,505 WARNING worker.fleet.setup | Warm-stack footprint is 46.7 GB but only 17.0 GB peak is budgeted per request.
+2026-08-04 07:40:28,676 INFO worker.fleet.setup | Stopping snap ollama service
+2026-08-04 07:40:29,344 INFO worker.fleet.setup | Stopping 2 existing Ollama-related process(es)
+2026-08-04 07:41:18,553 WARNING worker.fleet.setup | Largest model (17.0 GB) exceeds VRAM; Ollama will spill layers into system RAM. Expect much slower inference.
+2026-08-04 07:41:18,553 WARNING worker.fleet.setup | Warm-stack footprint is 46.7 GB but only 17.0 GB peak is budgeted per request.
+2026-08-04 07:41:18,575 WARNING worker.fleet.setup | Largest model (17.0 GB) exceeds VRAM; Ollama will spill layers into system RAM. Expect much slower inference.
+2026-08-04 07:41:18,575 WARNING worker.fleet.setup | Warm-stack footprint is 46.7 GB but only 17.0 GB peak is budgeted per request.
+2026-08-04 07:41:18,686 INFO worker.fleet.setup | Stopping snap ollama service
+2026-08-04 07:41:19,194 INFO worker.fleet.setup | Starting Ollama server on 127.0.0.1:11434 (binary=/snap/ollama/current/bin/ollama, OLLAMA_HOST=127.0.0.1:11434, parallel=2, gpu=0)
+2026-08-04 07:41:23,668 DEBUG worker.fleet.models | Model size probe failed for gemma3:12b: invalid literal for int() with base 10: '12.2B'
+2026-08-04 07:41:24,300 DEBUG worker.fleet.models | Model size probe failed for gemma3:27b: invalid literal for int() with base 10: '27.4B'
+2026-08-04 07:41:24,682 DEBUG worker.fleet.models | Model size probe failed for mistral-nemo:12b: invalid literal for int() with base 10: '12.2B'
+2026-08-04 07:41:25,058 DEBUG worker.fleet.models | Model size probe failed for qwen3:14b: invalid literal for int() with base 10: '14.8B'
+2026-08-04 07:41:25,451 DEBUG worker.fleet.models | Model size probe failed for qwen3:8b: invalid literal for int() with base 10: '8.2B'
+2026-08-04 07:41:25,686 INFO worker.fleet.models | Resolved footprints from manifest on http://127.0.0.1:11434: W_all=46.70 GB W_peak=17.00 GB
+2026-08-04 07:41:25,688 INFO worker.fleet.setup | Fleet footprints refreshed from manifest: tier=vram_overflow keep_alive=0
+2026-08-04 07:41:25,739 INFO worker.serve | Registered worker ethan-LAPQC71B (id=c387c424-32ce-4149-8a77-8c7b66428c47, max_slots=2)
+2026-08-04 07:41:25,746 INFO worker.sources.coordinator | Idle: no job in coordinator queue (local free_slots=2). Submit jobs via POST /jobs or check GET /workers for stale workers.
+2026-08-04 07:41:55,954 INFO worker.sources.coordinator | Idle: no job in coordinator queue (local free_slots=2). Submit jobs via POST /jobs or check GET /workers for stale workers.
+2026-08-04 07:42:26,151 INFO worker.sources.coordinator | Idle: no job in coordinator queue (local free_slots=2). Submit jobs via POST /jobs or check GET /workers for stale workers.
+2026-08-04 07:42:56,376 INFO worker.sources.coordinator | Idle: no job in coordinator queue (local free_slots=2). Submit jobs via POST /jobs or check GET /workers for stale workers.
+2026-08-04 07:43:26,601 INFO worker.sources.coordinator | Idle: no job in coordinator queue (local free_slots=2). Submit jobs via POST /jobs or check GET /workers for stale workers.
+2026-08-04 07:43:56,801 INFO worker.sources.coordinator | Idle: no job in coordinator queue (local free_slots=2). Submit jobs via POST /jobs or check GET /workers for stale workers.
+2026-08-04 07:44:26,998 INFO worker.sources.coordinator | Idle: no job in coordinator queue (local free_slots=2). Submit jobs via POST /jobs or check GET /workers for stale workers.

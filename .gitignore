@@ -34,3 +34,5 @@ bench_outputs/
 bench_out/
 reports/
 tests/fixtures/
+
+worker-serve.log

@@ -50,11 +50,8 @@
     "M.\\ssmegmatis",
     "M.\\ssmeg"
   ],
-  "annotation_table_path": "./Mycobacterium_tuberculosis_H37Rv_txt_v5.txt",
-  "annotation_id_column": "Locus",
-  "annotation_name_column": "Name",
-  "annotation_feature_column": "Feature",
-  "annotation_feature_value": "CDS",
+  "go_resolution_enabled": true,
+  "kegg_locus_regex": null,
   "kegg_organism_code": "mtu",
   "locus_regex": "^Rv\\d{4}[Ac]?$",
   "off_target_patterns": [
@@ -100,5 +97,5 @@
     "MTb",
     "mTB"
   ],
-  "updated_at": "2026-07-14T18:46:18.572928+00:00"
+  "updated_at": "2026-08-04T14:42:23.720986+00:00"
 }
