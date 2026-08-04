@@ -470,7 +470,7 @@ Pages: `/` usage, `/jobs` queue, `/profiles` local profiles, `/annotations` Mong
 
 ### `run_pipeline.py`
 
-Manual MTB benchmark harness: fixed gene list, compare vs trusted JSON, append scores to a Google Sheet. Needs `creds/` service-account JSON and Google client libs. Not the normal app entry point.
+Manual MTB benchmark harness: fixed gene list, compare vs trusted JSON, append scores to `pipeline_scores.jsonl`. No credentials or Google client libraries required. Not the normal app entry point.
 
 ```bash
 python -m run_pipeline 2>&1 | tee log.txt

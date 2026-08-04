@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import run_pipeline
 
@@ -33,3 +32,4 @@ def test_record_result_appends_jsonl(tmp_path, monkeypatch):
     second = json.loads(lines[1])
     assert second["gene"] == "Rv0002"
     assert second["comparison_result"] == "N/A"
+    assert second["cumulative_relevance"] == 0.0
