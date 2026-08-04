@@ -104,34 +104,32 @@ result = resolve_go_terms(
 )
 ```
 
-## Future annotation hook (not implemented)
+## Annotation pipeline integration
 
-When prototyping is validated, wire into `autoannotation.get_gene_annotation` after aggregation:
+Wired into `autoannotation.get_gene_annotation` via `autoannotation/go_resolution.py` when the organism profile has **`go_resolution_enabled: true`** (default **off**). Enable in the profile editor: **Resolve GO terms after aggregation**.
 
-```python
-# Future: after aggregation in autoannotation.get_gene_annotation
-import os
-from dataclasses import asdict
+**When it runs**
 
-from goresolve import resolve_go_terms, has_usable_text
-from goresolve.embeddings import SentenceTransformerEmbedder
+1. **Target** — after target aggregation merges `function` / `functional_category`, before ortholog eligibility.
+2. **Ortholog** — after ortholog aggregation, using ortholog (not merged target) text, before `merge_ortholog_annotation`.
 
-if has_usable_text(annotation.get('function'), annotation.get('functional_category')):
-    go_result = resolve_go_terms(
-        function=annotation.get('function'),
-        functional_category=annotation.get('functional_category'),
-        ontology_path=os.environ.get('GO_BASIC_OBO_PATH', 'data/go-basic.obo'),
-        embedder=SentenceTransformerEmbedder(),
-        ranker_models=os.environ.get('GORESOLVE_MODELS', 'qwen3:8b').split(','),
-    )
-    annotation['go_terms'] = [asdict(t) for t in go_result.go_terms]
-    annotation.setdefault('annotation_metadata', {})['go_resolution'] = {
-        'method': go_result.method,
-        'queries': list(go_result.queries),
-        'shortlist_size': len(go_result.shortlist),
-    }
-else:
-    annotation['go_terms'] = []
-```
+**Ranker models** — the job’s summary model list (`MODEL_SUMMARY`), same models used for aggregation consensus.
 
-Persist `go_terms` beside free-text `functional_category`; store shortlist metadata under `annotation_metadata.go_resolution`. Optionally share OBO parsing with `compareannotations` via a shared module later.
+**Stored fields**
+
+| Location | Content |
+|----------|---------|
+| `go_terms` | Target-pass GO terms (`id`, `name`, `aspect`, …) |
+| `annotation_metadata.go_resolution` | Target provenance (`method`, `queries`, `shortlist_size`, optional `error`) |
+| `annotation_metadata.ortholog_go_terms` | Ortholog-pass terms (same shape; only when ortholog aggregation ran) |
+| `annotation_metadata.ortholog_go_resolution` | Ortholog provenance |
+
+**Failure modes**
+
+- Disabled profile flag → skipped entirely (no GO keys).
+- Empty function + categories → `method: skipped_no_text`, empty term lists.
+- Resolver exception → soft-fail: annotation succeeds, empty terms, `method: error` and `error` in metadata.
+
+**Job requirements** — `data/go-basic.obo` (or `GO_BASIC_OBO_PATH`) on the worker host; Ollama running with summary models pulled.
+
+Progress events: `go_resolving` (target) and `ortholog_go_resolving` (ortholog). See `USAGE.md` for operator setup and CLI examples.

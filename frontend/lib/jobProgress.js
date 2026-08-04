@@ -8,6 +8,22 @@ function isOrthologPhase(job) {
   );
 }
 
+const PHASE_LABELS = {
+  fetching: "Fetching papers",
+  extracting: "Extracting sections",
+  aggregating: "Aggregating results",
+  go_resolving: "Resolving GO terms",
+  ortholog_fetching: "Fetching ortholog papers",
+  ortholog_extracting: "Extracting ortholog sections",
+  ortholog_aggregating: "Aggregating ortholog results",
+  ortholog_go_resolving: "Resolving ortholog GO terms",
+  finalizing: "Finalizing",
+};
+
+function formatPhaseLabel(phase) {
+  return PHASE_LABELS[phase] || phase;
+}
+
 // Bar is split target/ortholog when an ortholog fallback pass is in play:
 // target owns the full bar until an ortholog progress event appears, then
 // target holds 0-50% and ortholog owns 50-100%. See design doc "Progress bar
@@ -26,6 +42,10 @@ export function progressPercent(job) {
   const sectionsDone = job.sections_done || 0;
   const sectionsTotal = job.sections_total || 0;
 
+  if (job.progress_phase === "ortholog_go_resolving") {
+    return Math.round(clampRunning(99));
+  }
+
   if (isOrthologPhase(job)) {
     if (!sectionsTotal) {
       return 50;
@@ -38,6 +58,10 @@ export function progressPercent(job) {
     return Math.round(
       clampRunning(FETCH_BASE + (100 - FETCH_BASE) * (sectionsDone / sectionsTotal)),
     );
+  }
+
+  if (job.progress_phase === "go_resolving") {
+    return Math.round(clampRunning(98));
   }
 
   if (job.progress_phase === "aggregating") {
@@ -59,7 +83,12 @@ export function formatJobStepLabel(job, stepLabels) {
   if (job.progress_phase && job.sections_total) {
     const done = job.sections_done ?? 0;
     const passSuffix = job.pass_name ? ` (${job.pass_name})` : "";
-    return `${job.progress_phase} · ${done}/${job.sections_total} sections${passSuffix}`;
+    return `${formatPhaseLabel(job.progress_phase)} · ${done}/${job.sections_total} sections${passSuffix}`;
+  }
+
+  if (job.progress_phase) {
+    const passSuffix = job.pass_name ? ` (${job.pass_name})` : "";
+    return `${formatPhaseLabel(job.progress_phase)}${passSuffix}`;
   }
 
   return stepLabels[job.current_step] || stepLabels[job.status] || job.status;

@@ -4,9 +4,23 @@ Operator-facing how-to for tools in this repo. Package READMEs cover design deta
 
 ---
 
-## goresolve (GO term resolution prototype)
+## goresolve (GO term resolution)
 
-Maps free-text `function` and/or `functional_category` from an annotation to Gene Ontology terms. **Does not** run the annotation pipeline; feed it fields from a finished job (or paste them by hand).
+Maps free-text `function` and/or `functional_category` from an annotation to Gene Ontology terms. Use the CLI below for one-off runs, or enable it on annotation jobs via the profile flag described in **Pipeline integration**.
+
+### Pipeline integration (annotation jobs)
+
+GO resolution is **opt-in per organism profile** (`go_resolution_enabled`, default **off**). In the profile editor, enable **Resolve GO terms after aggregation** (runs after target and ortholog aggregation using the job’s summary models; free-text categories are still extracted).
+
+When enabled on a job:
+
+- **Target pass** — after aggregation, resolves `function` / `functional_category` into top-level `go_terms`; provenance in `annotation_metadata.go_resolution`.
+- **Ortholog pass** — when an ortholog fallback runs, resolves ortholog text separately into `annotation_metadata.ortholog_go_terms` (target `go_terms` are not overwritten); provenance in `annotation_metadata.ortholog_go_resolution`.
+- **Requirements** — workers need `data/go-basic.obo` (or `GO_BASIC_OBO_PATH`) plus Ollama with the job’s summary models available.
+- **Soft-fail** — resolver errors do not fail the job; `go_terms` / `ortholog_go_terms` stay empty and metadata records `method: error` with an `error` string.
+- **Empty text** — both function and categories empty → `skipped_no_text`, no embedding/LLM work.
+
+When the flag is off, the pipeline skips GO resolution entirely (no `go_terms` keys added).
 
 ### One-time setup
 

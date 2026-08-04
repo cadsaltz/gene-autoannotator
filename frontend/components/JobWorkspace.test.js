@@ -87,7 +87,47 @@ test("job tile shows sections progress when structured fields present", () => {
   );
 
   assert.match(label, /3\/12/);
-  assert.match(label, /extracting/);
+  assert.match(label, /Extracting sections/);
+});
+
+test("formatJobStepLabel shows human-readable GO resolution phases", () => {
+  assert.equal(
+    formatJobStepLabel(
+      { status: "running", progress_phase: "go_resolving", pass_name: "target" },
+      {},
+    ),
+    "Resolving GO terms (target)",
+  );
+  assert.equal(
+    formatJobStepLabel(
+      {
+        status: "running",
+        progress_phase: "ortholog_go_resolving",
+        pass_name: "ortholog",
+      },
+      {},
+    ),
+    "Resolving ortholog GO terms (ortholog)",
+  );
+});
+
+test("progressPercent maps GO resolution phases near end of each pass", () => {
+  assert.equal(
+    progressPercent({
+      status: "running",
+      pass_name: "target",
+      progress_phase: "go_resolving",
+    }),
+    98,
+  );
+  assert.equal(
+    progressPercent({
+      status: "running",
+      pass_name: "ortholog",
+      progress_phase: "ortholog_go_resolving",
+    }),
+    99,
+  );
 });
 
 test("formatJobStepLabel falls back to legacy step labels without structured fields", () => {
