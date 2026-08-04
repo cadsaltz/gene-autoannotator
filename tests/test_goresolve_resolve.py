@@ -41,7 +41,7 @@ def test_resolve_with_injected_rankers_returns_majority_terms():
     assert calls == ['m1', 'm2', 'm3']
 
 
-def test_resolve_drops_ancestor_after_majority():
+def test_resolve_keeps_parent_and_child_after_majority():
     def rank_fn(prompt, model):
         return {
             'go_terms': [
@@ -61,8 +61,9 @@ def test_resolve_drops_ancestor_after_majority():
         min_cosine=0.05,
     )
 
-    assert [term.id for term in result.go_terms] == ['GO:0000278']
-    assert result.notes == 'Dropped 1 ancestor GO terms after majority.'
+    # Prefer keeping both parent and child over dropping the broader term.
+    assert {term.id for term in result.go_terms} == {'GO:0000278', 'GO:0007049'}
+    assert not result.notes
 
 
 def test_exact_only_skips_llm_when_rankers_are_disabled():
