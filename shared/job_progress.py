@@ -8,9 +8,11 @@ JobProgressPhase = Literal[
     "fetching",
     "extracting",
     "aggregating",
+    "go_resolving",
     "ortholog_fetching",
     "ortholog_extracting",
     "ortholog_aggregating",
+    "ortholog_go_resolving",
     "finalizing",
 ]
 

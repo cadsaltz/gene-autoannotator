@@ -11,6 +11,7 @@ import pandas as pd
 # function keeps those contracts in one linear flow so CLI and web jobs share
 # the same behavior.
 from . import field_defs
+from . import go_resolution
 from . import llms
 from . import gene_names
 from . import metadata
@@ -73,11 +74,17 @@ def collect_paper_sections(paper_manager, pmc_id):
 
 
 _PASS_PHASES = {
-    'target': {'fetching': 'fetching', 'extracting': 'extracting', 'aggregating': 'aggregating'},
+    'target': {
+        'fetching': 'fetching',
+        'extracting': 'extracting',
+        'aggregating': 'aggregating',
+        'go_resolving': 'go_resolving',
+    },
     'ortholog': {
         'fetching': 'ortholog_fetching',
         'extracting': 'ortholog_extracting',
         'aggregating': 'ortholog_aggregating',
+        'go_resolving': 'ortholog_go_resolving',
     },
 }
 
@@ -520,6 +527,17 @@ def get_gene_annotation(
             annotation_metadata,
             field_coverage=field_coverage,
         )
+        if go_resolution.is_go_resolution_enabled(profile_context):
+            _emit_progress(progress_cb, 'target', 'go_resolving')
+            target_go_attachment = go_resolution.resolve_for_annotation(
+                function=merged_annotation.get('function'),
+                functional_category=merged_annotation.get('functional_category'),
+                ranker_models=list(MODEL_SUMMARY),
+            )
+            merged_annotation['go_terms'] = target_go_attachment.go_terms
+            merged_annotation['annotation_metadata']['go_resolution'] = (
+                target_go_attachment.resolution
+            )
 
     profile_field_defs = field_defs.resolve_annotation_field_defs(profile_context)
     eligible_fields = []
@@ -601,6 +619,14 @@ def get_gene_annotation(
                 json.loads(ortholog_pass.gene_distillation),
                 expected_gene_id=ortholog_gene,
             )
+            ortholog_go_attachment = None
+            if go_resolution.is_go_resolution_enabled(profile_context):
+                _emit_progress(progress_cb, 'ortholog', 'go_resolving')
+                ortholog_go_attachment = go_resolution.resolve_for_annotation(
+                    function=ortholog_parsed.get('function'),
+                    functional_category=ortholog_parsed.get('functional_category'),
+                    ranker_models=list(MODEL_SUMMARY),
+                )
             merged_annotation, fields_filled = metadata.merge_ortholog_annotation(
                 merged_annotation,
                 ortholog_parsed,
@@ -609,6 +635,15 @@ def get_gene_annotation(
                 target_gene_id=gene,
                 target_gene_name=name or display_gene,
             )
+            if ortholog_go_attachment is not None:
+                # Ortholog GO is stored separately from the target's go_terms so
+                # the target attachment above is never overwritten here.
+                merged_annotation['annotation_metadata']['ortholog_go_terms'] = (
+                    ortholog_go_attachment.go_terms
+                )
+                merged_annotation['annotation_metadata']['ortholog_go_resolution'] = (
+                    ortholog_go_attachment.resolution
+                )
             if fields_filled:
                 field_coverage = metadata.build_field_coverage(
                     merged_annotation, profile=profile_context,
