@@ -238,7 +238,11 @@ def _read_proc_stat_jiffies(pid: int) -> int | None:
     return utime + stime
 
 
+_OLLAMA_COMM_NAMES = frozenset({"ollama", "llama-server"})
+
+
 def _ollama_pids() -> list[int]:
+    """PIDs for the Ollama serve process and its llama.cpp runners."""
     pids: list[int] = []
     try:
         entries = _PROC_ROOT.iterdir()
@@ -249,7 +253,7 @@ def _ollama_pids() -> list[int]:
             continue
         pid = int(entry.name)
         comm = _read_proc_comm(pid)
-        if comm == "ollama":
+        if comm in _OLLAMA_COMM_NAMES:
             pids.append(pid)
     return pids
 

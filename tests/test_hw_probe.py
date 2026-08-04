@@ -132,10 +132,16 @@ def test_read_ollama_cpu_sample_sums_matching_procs(tmp_path, monkeypatch):
     (proc / "999").mkdir()
     (proc / "999" / "comm").write_text("ollama\n", encoding="utf-8")
     (proc / "999" / "stat").write_text("999 (ollama) S 0 0 0 0 0 0 0 0 0 0 50 25\n", encoding="utf-8")
+    (proc / "770513").mkdir()
+    (proc / "770513" / "comm").write_text("llama-server\n", encoding="utf-8")
+    (proc / "770513" / "stat").write_text(
+        "770513 (llama-server) R 0 0 0 0 0 0 0 0 0 0 300 100\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(hw_probe, "_PROC_ROOT", proc)
     sample = hw_probe.read_ollama_cpu_sample()
-    assert sample.process_count == 2
-    assert sample.jiffies == 1275
+    assert sample.process_count == 3
+    assert sample.jiffies == 1675
 
 
 def test_probe_ollama_cpu_first_tick_is_none_second_computes(tmp_path, monkeypatch):
