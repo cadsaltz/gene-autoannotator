@@ -101,9 +101,10 @@ export function formatGoTermLabel(term) {
 }
 
 export function hasOrthologColumn(annotation) {
-  const metadata = getMetadata(annotation);
+  // A pass can run (ortholog_pass.ran === true) yet contribute nothing —
+  // e.g. the ortholog gene had no papers or no fields to fill. Gate the
+  // Ortholog column on actual content, not merely on the pass having run.
   return (
-    metadata.ortholog_pass?.ran === true ||
     getOrthologGoTerms(annotation).length > 0 ||
     Object.keys(getOrthologFields(annotation)).length > 0
   );

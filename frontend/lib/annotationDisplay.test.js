@@ -248,15 +248,38 @@ test("formatGoTermLabel includes only GO id and name", () => {
   assert.equal(label.includes("ranker-a"), false);
 });
 
-test("hasOrthologColumn detects a ran pass, ortholog fields, or ortholog GO", () => {
+test("hasOrthologColumn gates on actual ortholog content, not merely ran===true", () => {
   assert.equal(typeof annotationDisplay.hasOrthologColumn, "function");
   const wrapMetadata = (metadata) => ({
     result: { annotation: { annotation_metadata: metadata } },
   });
 
   assert.equal(annotationDisplay.hasOrthologColumn(annotation), false);
+
+  // A pass can run and still contribute nothing (no papers, no fields
+  // filled) — that must NOT show an empty Ortholog column.
   assert.equal(
     annotationDisplay.hasOrthologColumn(wrapMetadata({ ortholog_pass: { ran: true } })),
+    false,
+  );
+  assert.equal(
+    annotationDisplay.hasOrthologColumn(
+      wrapMetadata({
+        ortholog_pass: { ran: true },
+        ortholog_fields: {},
+        ortholog_go_terms: [],
+      }),
+    ),
+    false,
+  );
+
+  assert.equal(
+    annotationDisplay.hasOrthologColumn(
+      wrapMetadata({
+        ortholog_pass: { ran: true },
+        ortholog_fields: { function: { value: "ortholog" } },
+      }),
+    ),
     true,
   );
   assert.equal(
