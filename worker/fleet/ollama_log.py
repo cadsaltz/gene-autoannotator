@@ -7,7 +7,9 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-DEFAULT_RING_SIZE = 200
+from worker.fleet.ollama_diag import summarize_ollama_lines
+
+DEFAULT_RING_SIZE = 1000
 DEFAULT_DASHBOARD_LINES = 10
 _MAX_LINE_DISPLAY = 120
 
@@ -64,6 +66,13 @@ class OllamaLogBuffer:
                 return []
             return list(self._lines)[-n:]
 
+    def all_lines(self) -> list[str]:
+        with self._lock:
+            return list(self._lines)
+
+    def summary(self) -> dict[str, Any]:
+        return summarize_ollama_lines(self.all_lines()).to_dict()
+
     def snapshot(
         self,
         *,
@@ -73,13 +82,16 @@ class OllamaLogBuffer:
         status: str,
         n_lines: int = DEFAULT_DASHBOARD_LINES,
     ) -> dict[str, Any]:
+        with self._lock:
+            lines = list(self._lines)
         return {
             "host": host,
             "port": port,
             "pid": pid,
             "status": status,
             "log_path": str(self.log_path) if self.log_path is not None else None,
-            "lines": self.recent(n_lines),
+            "lines": lines[-n_lines:] if n_lines > 0 else [],
+            "summary": summarize_ollama_lines(lines).to_dict(),
         }
 
 

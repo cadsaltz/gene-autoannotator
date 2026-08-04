@@ -70,14 +70,32 @@ def test_render_dashboard_includes_ollama_section():
                     "pid": 4242,
                     "status": "running",
                     "log_path": "/tmp/ollama-server-11434.log",
-                    "lines": ["listening on 127.0.0.1:11434", "llama runner started"],
+                    "summary": {
+                        "phase": "idle",
+                        "runners": 1,
+                        "layers_on_gpu": 31,
+                        "layers_total": 49,
+                        "last_chat": {"status": 200, "duration_s": 24.5},
+                        "alerts": [
+                            {
+                                "code": "prompt_truncated",
+                                "message": (
+                                    "truncating prompt 6333→4095 (slot ctx); "
+                                    "raise ctx or set parallel=1"
+                                ),
+                            }
+                        ],
+                    },
                 }
             ],
         },
     )
     assert "OLLAMA" in text
     assert "pid 4242 running" in text
-    assert "listening on 127.0.0.1:11434" in text
+    assert "phase: idle" in text
+    assert "last chat: 200 in 24.5s" in text
+    assert "! truncating prompt 6333→4095" in text
+    assert "llama runner started" not in text
     assert "/tmp/ollama-server-11434.log" in text
 
 
@@ -99,7 +117,9 @@ def test_supervisor_ollama_log_snapshot_includes_buffer():
     )
     buffer = OllamaLogBuffer()
     buffer.log_path = Path("/tmp/ollama-server-11434.log")
-    buffer.append("boot ok")
+    buffer.append(
+        'time=2026-08-04 level=WARN msg="truncating input prompt" limit=4095 prompt=6333 keep=4'
+    )
     register_buffer(11434, buffer)
 
     class FakeProc:
@@ -122,4 +142,7 @@ def test_supervisor_ollama_log_snapshot_includes_buffer():
     assert len(snap) == 1
     assert snap[0]["status"] == "running"
     assert snap[0]["pid"] == 99
-    assert snap[0]["lines"] == ["boot ok"]
+    assert "summary" in snap[0]
+    assert snap[0]["summary"]["phase"] in {"unknown", "idle", "inferencing", "loading", "dead"}
+    codes = {a["code"] for a in snap[0]["summary"]["alerts"]}
+    assert "prompt_truncated" in codes

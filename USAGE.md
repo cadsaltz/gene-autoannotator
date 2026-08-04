@@ -394,7 +394,7 @@ python -m worker serve \
 | `--memory-gb` | Annotation memory budget (GB) | Else `ANNOTATION_MEMORY_BUDGET_GB` |
 | `--no-dashboard` | Disable live TTY dashboard | Dashboard is on when stdout is a TTY |
 
-With the dashboard on, verbose worker logs go to `worker-serve.log` (or `--log-file` / `WORKER_LOG_FILE`). Managed `ollama serve` stdout/stderr is teed to `ollama-server-<port>.log` next to that log file (else cwd), and the dashboard **OLLAMA** strip shows process status plus the last serve log lines.
+With the dashboard on, verbose worker logs go to `worker-serve.log` (or `--log-file` / `WORKER_LOG_FILE`). Managed `ollama serve` stdout/stderr is teed to `ollama-server-<port>.log` next to that log file (else cwd), and the dashboard **OLLAMA** strip shows process status plus a parsed summary (phase, last `/api/chat`, alerts such as prompt truncation). Offline: `python -m worker.fleet.diagnose_ollama_log ollama-server-11434.log`. A `truncating prompt N→M` alert usually means slot context is too small (often `OLLAMA_NUM_PARALLEL>1` splitting the server context); truncation fixes are separate from this diagnostics view.
 
 ### Bench options
 

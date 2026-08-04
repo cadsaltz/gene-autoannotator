@@ -136,6 +136,14 @@ class FleetSupervisor:
                         "status": status,
                         "log_path": None,
                         "lines": [],
+                        "summary": {
+                            "phase": "unknown",
+                            "runners": None,
+                            "layers_on_gpu": None,
+                            "layers_total": None,
+                            "last_chat": None,
+                            "alerts": [],
+                        },
                     }
                 )
         return snapshots

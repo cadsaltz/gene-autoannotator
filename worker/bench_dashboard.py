@@ -189,7 +189,7 @@ def _build_lines(
 
 
 def _ollama_log_lines(meta: dict[str, Any]) -> list[str]:
-    from worker.fleet.ollama_log import truncate_line_for_display
+    from worker.fleet.ollama_diag import format_summary_lines
 
     servers = meta.get("ollama_servers")
     if not isinstance(servers, list) or not servers:
@@ -204,12 +204,11 @@ def _ollama_log_lines(meta: dict[str, Any]) -> list[str]:
         pid_part = f"pid {pid}" if pid is not None else "pid —"
         log_path = server.get("log_path") or "—"
         out.append(f"OLLAMA  |  {host}  |  {pid_part} {status}  |  {log_path}")
-        raw_lines = server.get("lines") or []
-        if isinstance(raw_lines, list) and raw_lines:
-            for line in raw_lines[-12:]:
-                out.append(f"  {truncate_line_for_display(str(line))}")
+        summary = server.get("summary")
+        if isinstance(summary, dict) and summary:
+            out.extend(format_summary_lines(summary))
         else:
-            out.append("  (no serve log lines yet)")
+            out.append("  phase: unknown | (waiting for serve logs)")
     return out
 
 
