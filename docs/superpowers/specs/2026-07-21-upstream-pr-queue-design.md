@@ -164,7 +164,7 @@ flowchart TD
 - **Key commits:** `2caad32` … `23dad55`; later GO/category work `4e167c2`, `bbbd5ce`, `c5bf7ca` if still in compareannotations
 - **Include:** `compareannotations/`, `run_pipeline.py`, related tests, requirements needed for compare/scoring
 - **Exclude:** `gen_json/`, `trust_json/` bulk outputs, pipeline run logs
-- **Notes:** Do not upstream large generated JSON corpora. Stacked on UP-01.
+- **Notes:** Do not upstream large generated JSON corpora. Stacked on UP-01. `run_pipeline.py` appends scores to local `pipeline_scores.jsonl` (no Google Sheets/service-account dependency).
 - **PR:** https://github.com/ethanbustad/gene-autoannotator/pull/3
 
 ### UP-03 — Improve PMC relevance ranking and paper-selection budget
