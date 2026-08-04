@@ -164,6 +164,7 @@ export function buildProfilePayload(values) {
       values.defaultFieldOrtholog,
       keggOrganismCode,
     ),
+    go_resolution_enabled: Boolean(values.goResolutionEnabled),
   };
   return payload;
 }
@@ -186,5 +187,6 @@ export function profileToForm(profile) {
     keggLocusRegex: profile.kegg_locus_regex || "",
     customFields: profileCustomFieldsFromApi(profile),
     defaultFieldOrtholog: defaultFieldOrthologFromApi(profile),
+    goResolutionEnabled: Boolean(profile.go_resolution_enabled),
   };
 }

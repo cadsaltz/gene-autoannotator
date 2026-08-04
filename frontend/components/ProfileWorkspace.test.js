@@ -68,6 +68,26 @@ test("profile workspace supports editing all reusable profile fields", async () 
   assert.doesNotMatch(workspace, /Built-in/);
 });
 
+test("profile workspace exposes GO resolution beside required annotation fields", async () => {
+  const workspace = await readProjectFile("components/ProfileWorkspace.js");
+  const editor = await readProjectFile("components/CustomFieldsEditor.js");
+
+  assert.match(workspace, /goResolutionEnabled: false/);
+  assert.match(
+    workspace,
+    /goResolutionEnabled=\{form\.goResolutionEnabled\}/,
+  );
+  assert.match(
+    workspace,
+    /onGoResolutionEnabledChange=\{\(goResolutionEnabled\) =>\s*updateForm\("goResolutionEnabled", goResolutionEnabled\)\s*\}/s,
+  );
+  assert.match(editor, /Resolve GO terms after aggregation/);
+  assert.match(
+    editor,
+    /Runs after target and ortholog aggregation using the job's summary models; free-text categories are still extracted\./,
+  );
+});
+
 test("resetting the profile form clears stale edit status text", async () => {
   const workspace = await readProjectFile("components/ProfileWorkspace.js");
 

@@ -32,6 +32,8 @@ export default function CustomFieldsEditor({
   keggOrganismCode,
   onChange,
   onDefaultFieldOrthologChange,
+  goResolutionEnabled,
+  onGoResolutionEnabledChange,
 }) {
   const orthologEnabled = canEnableOrthologAllowed(keggOrganismCode);
   const usedKeys = new Set((customFields || []).map((field) => field.key));
@@ -107,6 +109,22 @@ export default function CustomFieldsEditor({
             </label>
           </div>
         ))}
+        <label className="flex items-start gap-3 rounded-xl border workbench-border bg-white/70 p-3 text-sm font-medium">
+          <input
+            type="checkbox"
+            checked={Boolean(goResolutionEnabled)}
+            onChange={(event) =>
+              onGoResolutionEnabledChange(event.target.checked)
+            }
+            className="mt-1"
+          />
+          <span>
+            Resolve GO terms after aggregation
+            <span className="workbench-muted mt-1 block text-xs font-normal leading-5">
+              {"Runs after target and ortholog aggregation using the job's summary models; free-text categories are still extracted."}
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="flex flex-wrap gap-2">

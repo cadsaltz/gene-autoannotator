@@ -36,6 +36,7 @@ const emptyForm = {
     function: true,
     functional_category: false,
   },
+  goResolutionEnabled: false,
 };
 
 const textFields = [
@@ -407,6 +408,10 @@ export default function ProfileWorkspace() {
               onChange={(customFields) => updateForm("customFields", customFields)}
               onDefaultFieldOrthologChange={(defaultFieldOrtholog) =>
                 updateForm("defaultFieldOrtholog", defaultFieldOrtholog)
+              }
+              goResolutionEnabled={form.goResolutionEnabled}
+              onGoResolutionEnabledChange={(goResolutionEnabled) =>
+                updateForm("goResolutionEnabled", goResolutionEnabled)
               }
             />
 

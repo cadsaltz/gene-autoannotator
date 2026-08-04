@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildProfilePayload,
   canEnableOrthologAllowed,
+  profileToForm,
   resolveProfileFieldsForDisplay,
   sanitizeCustomFieldsForPayload,
   sanitizeDefaultFieldOrthologForPayload,
@@ -55,7 +56,23 @@ test("buildProfilePayload serializes profile form fields", () => {
         function: false,
         functional_category: false,
       },
+      go_resolution_enabled: false,
     },
+  );
+});
+
+test("buildProfilePayload enables GO resolution when checked", () => {
+  assert.equal(
+    buildProfilePayload({ goResolutionEnabled: true }).go_resolution_enabled,
+    true,
+  );
+});
+
+test("profileToForm defaults GO resolution off and restores enabled profiles", () => {
+  assert.equal(profileToForm({}).goResolutionEnabled, false);
+  assert.equal(
+    profileToForm({ go_resolution_enabled: true }).goResolutionEnabled,
+    true,
   );
 });
 
