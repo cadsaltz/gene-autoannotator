@@ -33,4 +33,3 @@ test("AnnotationContent hides empty GO sections and formats only id and name", a
   assert.match(component, /\{formatGoTermLabel\(term\)\}/);
   assert.doesNotMatch(component, /term\.(agreement|confidence|votes)/);
 });
-
