@@ -1,3 +1,7 @@
 __pycache__/**
 .cache/**
 **/*.pyc
+creds/
+pipeline_scores.jsonl
+completed_genes.txt
+error_log.txt
