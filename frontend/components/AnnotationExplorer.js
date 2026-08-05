@@ -60,16 +60,9 @@ function AnnotationFieldCard({ row, value = row.value, sourceLabel = "" }) {
           : "workbench-muted-bg workbench-border"
       }`}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">
-          {row.label}
-        </dt>
-        {row.orthologDerived ? (
-          <span className="rounded-full border border-[#d4c4a0] bg-white/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#8a7340]">
-            Ortholog derived
-          </span>
-        ) : null}
-      </div>
+      <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">
+        {row.label}
+      </dt>
       <dd className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#3d463f]">
         {value}
       </dd>
