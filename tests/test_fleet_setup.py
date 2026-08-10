@@ -328,7 +328,263 @@ def test_refresh_fleet_footprints_forwards_model_budget_bytes(tmp_path, monkeypa
     assert captured["model_budget_bytes"] == expected
 
 
+_FLEET_ENV_KEYS_TO_ISOLATE = (
+    "OLLAMA_FLEET_SERVERS",
+    "OLLAMA_FLEET_PARALLEL",
+    "WORKER_MAX_SLOTS",
+    "OLLAMA_FLEET_W_ALL_BYTES",
+    "OLLAMA_FLEET_W_PEAK_BYTES",
+    "OLLAMA_FLEET_C_SLOT_BYTES",
+    "OLLAMA_FLEET_MEMORY_TIER",
+    "OLLAMA_FLEET_KEEP_ALIVE",
+    "AUTOANNOTATION_OLLAMA_KEEP_ALIVE",
+    "WORKER_MODEL_MEMORY_BUDGET_GB",
+    "ANNOTATION_MEMORY_BUDGET_GB",
+)
+
+
+def _isolate_fleet_env(monkeypatch):
+    """Clear real process env fleet keys so a test's assertions aren't
+    contaminated by ``_apply_fleet_to_environ`` mutations from earlier tests
+    (or by this test's own real-env side effects leaking to later tests).
+    """
+    for key in _FLEET_ENV_KEYS_TO_ISOLATE:
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_refresh_fleet_footprints_reads_budget_via_env_value_from_file(tmp_path, monkeypatch):
+    """Important fix: budget lookup must use _env_value (file+env), not bare os.getenv."""
+    _isolate_fleet_env(monkeypatch)
+    env_path = tmp_path / "worker.env"
+    env_path.write_text("WORKER_MODEL_MEMORY_BUDGET_GB=16\n", encoding="utf-8")
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=32 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    cfg = FleetConfig(
+        num_servers=1,
+        parallel=2,
+        max_slots=2,
+        keep_alive="0",
+        w_all_bytes=20 * 1024**3,
+        w_peak_bytes=12 * 1024**3,
+        c_slot_bytes=int(0.4 * 1024**3),
+        memory_tier="vram_overflow",
+    )
+    monkeypatch.setattr(
+        setup.models,
+        "resolve_footprints",
+        lambda **kw: (22 * 1024**3, 12 * 1024**3, "manifest"),
+    )
+    captured: dict[str, int | None] = {}
+
+    def fake_normalize(cfg, spec, *, preserve_keep_alive=False, model_budget_bytes=None):
+        captured["model_budget_bytes"] = model_budget_bytes
+        return cfg
+
+    monkeypatch.setattr(setup, "_normalize_fleet_config", fake_normalize)
+    monkeypatch.setattr(setup, "_persist_fleet_config", lambda path, c: None)
+    monkeypatch.setattr(setup, "_apply_fleet_to_environ", lambda c: None)
+
+    setup.refresh_fleet_footprints(cfg, spec, host="127.0.0.1:11434", env_path=env_path)
+
+    expected = sizing.effective_model_budget_bytes(spec, user_budget_gb=16.0)
+    assert captured["model_budget_bytes"] == expected
+
+
+def test_ensure_fleet_config_reads_legacy_budget_alias_from_env_file(tmp_path, monkeypatch):
+    """Legacy ANNOTATION_MEMORY_BUDGET_GB in the file must resolve via _env_value too."""
+    _isolate_fleet_env(monkeypatch)
+    monkeypatch.setattr(setup, "_apply_fleet_to_environ", lambda c: None)
+    env_path = tmp_path / "worker.env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "OLLAMA_FLEET_SERVERS=1",
+                "OLLAMA_FLEET_PARALLEL=1",
+                "WORKER_MAX_SLOTS=1",
+                "ANNOTATION_MEMORY_BUDGET_GB=16",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=31 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    captured: dict[str, int | None] = {}
+    real_normalize = setup._normalize_fleet_config
+
+    def spy_normalize(cfg, spec, *, preserve_keep_alive=False, model_budget_bytes=None):
+        captured["model_budget_bytes"] = model_budget_bytes
+        return real_normalize(
+            cfg,
+            spec,
+            preserve_keep_alive=preserve_keep_alive,
+            model_budget_bytes=model_budget_bytes,
+        )
+
+    monkeypatch.setattr(setup, "_normalize_fleet_config", spy_normalize)
+    setup.ensure_fleet_config(interactive=False, env_path=env_path, spec=spec)
+
+    expected = sizing.effective_model_budget_bytes(spec, user_budget_gb=16.0)
+    assert captured["model_budget_bytes"] == expected
+
+
+def test_refresh_fleet_footprints_does_not_preserve_process_only_keep_alive(tmp_path, monkeypatch):
+    """Important fix: keep-alive preserve must check the env *file*, not os.environ.
+
+    Simulates a prior ensure_fleet_config call that auto-applied a tier-derived
+    keep_alive into os.environ (via _apply_fleet_to_environ) without the user
+    ever setting it explicitly in worker.env. A later refresh must not mistake
+    that process-env value for explicit user intent.
+    """
+    _isolate_fleet_env(monkeypatch)
+    env_path = tmp_path / "worker.env"
+    env_path.write_text("", encoding="utf-8")  # no explicit keep-alive in the file
+    monkeypatch.setenv("OLLAMA_FLEET_KEEP_ALIVE", "5m")  # auto-applied, not user-set
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=32 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    cfg = FleetConfig(
+        num_servers=1,
+        parallel=2,
+        max_slots=2,
+        keep_alive="5m",
+        w_all_bytes=20 * 1024**3,
+        w_peak_bytes=12 * 1024**3,
+        c_slot_bytes=int(0.4 * 1024**3),
+        memory_tier="vram_overflow",
+    )
+    monkeypatch.setattr(
+        setup.models,
+        "resolve_footprints",
+        lambda **kw: (22 * 1024**3, 12 * 1024**3, "manifest"),
+    )
+    monkeypatch.setattr(setup, "_persist_fleet_config", lambda path, c: None)
+    monkeypatch.setattr(setup, "_apply_fleet_to_environ", lambda c: None)
+
+    out = setup.refresh_fleet_footprints(cfg, spec, host="127.0.0.1:11434", env_path=env_path)
+
+    # vram_overflow tier's mapped keep_alive is "0"; process-env "5m" must not win.
+    assert out.keep_alive == "0"
+
+
+def test_ensure_fleet_config_does_not_preserve_process_only_keep_alive(tmp_path, monkeypatch):
+    _isolate_fleet_env(monkeypatch)
+    monkeypatch.setattr(setup, "_apply_fleet_to_environ", lambda c: None)
+    env_path = tmp_path / "worker.env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "OLLAMA_FLEET_SERVERS=1",
+                "OLLAMA_FLEET_PARALLEL=2",
+                "WORKER_MAX_SLOTS=2",
+                "OLLAMA_FLEET_W_ALL_BYTES=21474836480",
+                "OLLAMA_FLEET_W_PEAK_BYTES=12884901888",
+                "OLLAMA_FLEET_MEMORY_TIER=vram_overflow",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OLLAMA_FLEET_KEEP_ALIVE", "5m")  # auto-applied, not user-set in file
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=32 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    cfg = setup.ensure_fleet_config(interactive=False, env_path=env_path, spec=spec)
+    assert cfg.keep_alive == "0"
+
+
+def test_ensure_fleet_config_preserves_keep_alive_explicit_in_file(tmp_path, monkeypatch):
+    _isolate_fleet_env(monkeypatch)
+    monkeypatch.setattr(setup, "_apply_fleet_to_environ", lambda c: None)
+    env_path = tmp_path / "worker.env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "OLLAMA_FLEET_SERVERS=1",
+                "OLLAMA_FLEET_PARALLEL=2",
+                "WORKER_MAX_SLOTS=2",
+                "OLLAMA_FLEET_W_ALL_BYTES=21474836480",
+                "OLLAMA_FLEET_W_PEAK_BYTES=12884901888",
+                "OLLAMA_FLEET_MEMORY_TIER=vram_overflow",
+                "OLLAMA_FLEET_KEEP_ALIVE=5m",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=32 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    cfg = setup.ensure_fleet_config(interactive=False, env_path=env_path, spec=spec)
+    assert cfg.keep_alive == "5m"
+
+
+def test_ensure_fleet_config_saved_path_infeasible_under_tight_budget_raises_budget_error(
+    tmp_path, monkeypatch,
+):
+    """Critical fix #2: saved fleet path under a tight budget must raise a
+    clear budget-related error (not silently pick a wrong tier), and must
+    not blame "this machine" when the user budget is the binding constraint.
+    """
+    _isolate_fleet_env(monkeypatch)
+    monkeypatch.setattr(setup, "_apply_fleet_to_environ", lambda c: None)
+    env_path = tmp_path / "worker.env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "OLLAMA_FLEET_SERVERS=1",
+                "OLLAMA_FLEET_PARALLEL=1",
+                "WORKER_MAX_SLOTS=1",
+                "OLLAMA_FLEET_W_ALL_BYTES=21474836480",
+                "OLLAMA_FLEET_W_PEAK_BYTES=12884901888",
+                "WORKER_MODEL_MEMORY_BUDGET_GB=1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=32 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    try:
+        setup.ensure_fleet_config(interactive=False, env_path=env_path, spec=spec)
+    except RuntimeError as exc:
+        message = str(exc)
+        assert "WORKER_MODEL_MEMORY_BUDGET_GB" in message
+        assert "budget" in message.lower()
+    else:
+        raise AssertionError("expected RuntimeError: 1 GB budget cannot fit a 12 GB peak model")
+
+
 def test_ensure_fleet_config_loads_from_env(tmp_path, monkeypatch):
+    _isolate_fleet_env(monkeypatch)
+    monkeypatch.setattr(setup, "_apply_fleet_to_environ", lambda c: None)
     env_path = tmp_path / "worker.env"
     env_path.write_text(
         "\n".join(

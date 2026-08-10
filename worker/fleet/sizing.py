@@ -73,7 +73,10 @@ def parse_model_memory_budget_gb(raw: str | None) -> float | None:
     if not text or text == "-1":
         return None
     value = float(text)
-    if value < 0:
+    if value <= 0:
+        # "0" (and any negative other than the "-1" sentinel above) has no
+        # sensible meaning as a model-memory budget; treat as unset/max
+        # rather than silently clamping the fleet to zero bytes.
         return None
     return value
 
@@ -87,7 +90,12 @@ def effective_model_budget_bytes(
     cap = machine_model_cap_bytes(spec, num_servers)
     if user_budget_gb is None or user_budget_gb < 0:
         return cap
-    return min(int(user_budget_gb * 1024**3), cap)
+    user_bytes = int(user_budget_gb * 1024**3)
+    if cap <= 0:
+        # Probe couldn't determine machine capacity; don't let a bogus
+        # non-positive cap clamp an explicit positive user budget to 0.
+        return user_bytes
+    return min(user_bytes, cap)
 
 
 def _feasibility_budget_bytes(
@@ -117,7 +125,8 @@ def classify_memory_tier(
     model_budget_bytes: int | None = None,
 ) -> MemoryTier:
     vram_budget = vram_budget_for_fleet(spec, num_servers)
-    total_budget = total_model_budget_bytes(spec, num_servers)
+    machine_cap = total_model_budget_bytes(spec, num_servers)
+    total_budget = machine_cap
     if model_budget_bytes is not None:
         total_budget = min(total_budget, model_budget_bytes)
     warm_need = vram_needed_bytes(
@@ -127,16 +136,26 @@ def classify_memory_tier(
         num_servers, parallel, model_bytes=w_peak_bytes, c_slot_bytes=c_slot_bytes,
     )
 
-    if (
-        vram_budget
-        and warm_need <= vram_budget
-        and (model_budget_bytes is None or warm_need <= model_budget_bytes)
-    ):
+    def _within_user_budget(need: int) -> bool:
+        return model_budget_bytes is None or need <= model_budget_bytes
+
+    if vram_budget and warm_need <= vram_budget and _within_user_budget(warm_need):
         return "warm_stack"
-    if peak_need <= vram_budget:
+    if vram_budget and peak_need <= vram_budget and _within_user_budget(peak_need):
         return "swap"
     if peak_need <= total_budget:
         return "vram_overflow"
+
+    budget_is_binding = model_budget_bytes is not None and model_budget_bytes < machine_cap
+    if budget_is_binding:
+        raise RuntimeError(
+            "No feasible Ollama fleet configuration within your "
+            "WORKER_MODEL_MEMORY_BUDGET_GB budget: largest model footprint needs "
+            f"{peak_need / 1024**3:.1f} GB but the configured budget allows only "
+            f"{model_budget_bytes / 1024**3:.1f} GB (this machine's VRAM+RAM capacity is "
+            f"{machine_cap / 1024**3:.1f} GB). Raise WORKER_MODEL_MEMORY_BUDGET_GB or set it "
+            "to -1 to use the full machine capacity."
+        )
     raise RuntimeError(
         "No feasible Ollama fleet configuration for this machine: "
         f"largest model footprint needs {peak_need / 1024**3:.1f} GB "
@@ -350,6 +369,19 @@ def recommend(
         model_budget_bytes=model_budget_bytes,
     )
     if not feasible:
+        # num_servers=1/parallel=1 has the smallest footprint of any
+        # configuration; if it's infeasible, nothing else will be. Let
+        # classify_memory_tier raise so budget-specific detail (vs. a
+        # generic "this machine" message) reaches the caller.
+        classify_memory_tier(
+            spec,
+            w_all_bytes=w_all_bytes,
+            w_peak_bytes=w_peak_bytes,
+            c_slot_bytes=c_slot_bytes,
+            num_servers=1,
+            parallel=1,
+            model_budget_bytes=model_budget_bytes,
+        )
         raise RuntimeError("No feasible Ollama fleet configuration for this machine")
 
     best_cfg, best_tier = max(feasible, key=lambda item: _score(spec, item[0], item[1]))

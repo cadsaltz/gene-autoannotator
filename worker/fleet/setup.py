@@ -630,6 +630,17 @@ def _env_value(key: str, *, env_path: Path) -> str | None:
     return None
 
 
+def _env_file_has_key(key: str, *, env_path: Path) -> bool:
+    """Whether ``key`` is explicitly set in the env *file* (user intent).
+
+    Unlike :func:`_env_value`, this ignores ``os.environ`` so that values
+    auto-applied to the process env by :func:`_apply_fleet_to_environ` are
+    not mistaken for an explicit user choice on a later refresh/normalize.
+    """
+    file_values = load_env_file(env_path)
+    return bool(file_values.get(key))
+
+
 def _fleet_env_complete(*, env_path: Path) -> bool:
     return all(_env_value(key, env_path=env_path) for key in FLEET_ENV_KEYS)
 
@@ -766,10 +777,10 @@ def refresh_fleet_footprints(
         w_peak_bytes=w_peak,
     )
     path = env_path or _default_env_path()
-    preserve_ka = _env_value("OLLAMA_FLEET_KEEP_ALIVE", env_path=path) is not None
+    preserve_ka = _env_file_has_key("OLLAMA_FLEET_KEEP_ALIVE", env_path=path)
     user_budget_gb = sizing.parse_model_memory_budget_gb(
-        os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
-        or os.getenv("ANNOTATION_MEMORY_BUDGET_GB")
+        _env_value("WORKER_MODEL_MEMORY_BUDGET_GB", env_path=path)
+        or _env_value("ANNOTATION_MEMORY_BUDGET_GB", env_path=path)
     )
     model_budget_bytes = sizing.effective_model_budget_bytes(
         spec, user_budget_gb=user_budget_gb,
@@ -802,14 +813,14 @@ def ensure_fleet_config(
     cfg = _fleet_from_env(env_path=path)
     system_spec = spec or probe_system()
     user_budget_gb = sizing.parse_model_memory_budget_gb(
-        os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
-        or os.getenv("ANNOTATION_MEMORY_BUDGET_GB")
+        _env_value("WORKER_MODEL_MEMORY_BUDGET_GB", env_path=path)
+        or _env_value("ANNOTATION_MEMORY_BUDGET_GB", env_path=path)
     )
     model_budget_bytes = sizing.effective_model_budget_bytes(
         system_spec, user_budget_gb=user_budget_gb,
     )
     if cfg is not None:
-        preserve_ka = _env_value("OLLAMA_FLEET_KEEP_ALIVE", env_path=path) is not None
+        preserve_ka = _env_file_has_key("OLLAMA_FLEET_KEEP_ALIVE", env_path=path)
         cfg = _normalize_fleet_config(
             cfg,
             system_spec,
