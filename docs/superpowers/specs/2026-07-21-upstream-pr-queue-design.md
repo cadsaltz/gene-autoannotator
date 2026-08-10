@@ -1,35 +1,37 @@
-# Upstream Feature PR Queue
+# Upstream Feature PR Queue (CLI / annotation pipeline only)
 
-**Date:** 2026-07-21  
+**Date:** 2026-07-21 (revised 2026-08-10)  
 **Status:** approved — living document  
 **Target:** [ethanbustad/gene-autoannotator](https://github.com/ethanbustad/gene-autoannotator)  
-**Fork tip measured:** `be54564` on `cadsaltz/gene-autoannotator`  
-**Ethan base:** `748e577` (*Split python script out into package*, 2026-03-31) — still matches upstream `master` (4 commits)
+**Scope:** Bare CLI annotation program + local bench throughput — **not** the web architecture.
 
 ## Goals
 
-- Land the **full useful fork** into Ethan’s repo as a sequence of reviewable PRs.
-- Open PRs **chronologically** (earliest work first), in **small stacked batches** (multiple open PRs OK when dependencies are clear).
-- Keep this file as the **source of truth** for what is queued, open, merged, or deferred — append new `UP-NN` entries as features land on the fork.
+- Land **annotation pipeline** changes into Ethan’s repo as reviewable feature PRs.
+- Keep existing pipeline PRs: UP-01 merged (#2), UP-02 (#3) and UP-03 (#4) open.
+- Prefer **CLI / file-based** shapes: `data/profiles/`, CLI flags, bench JSONL — not FastAPI/Mongo/UI.
+- Include **worker bench** + fleet + model router + Docker/Slurm bench path — **not** `serve` / coordinator claiming.
+- Include August pipeline work (GO resolve, scores JSONL, Ollama diagnostics, model memory budget).
+- Open PRs chronologically in **small stacked batches**.
+- Keep this file as the source of truth; append `UP-NN` as new CLI/pipeline features land.
 
 ## Non-goals
 
-- Rewriting or force-pushing Ethan’s history.
-- Upstreaming noise (logs, local DBs, benchmark dumps, secrets, generated run artifacts).
-- Dumping the entire queue as open PRs at once.
-- Preserving every original merge commit; PRs use clean end-state snapshots.
+- Frontend, coordinator HTTP APIs, Mongo-backed history/search, job tiles, Fleet UI, regex helper UI.
+- `worker/serve.py` and worker↔coordinator lease/claim loop.
+- Upstreaming **any `tests/`** (agent-generated or otherwise) — tests stay local / untracked.
+- Dumping the entire queue at once; rewriting Ethan’s history; replaying merge-chaos commits.
 
 ## Workflow (locked)
 
 1. Develop normally on the fork (`master`).
-2. When ready to upstream the next queued item(s), create a branch from **Ethan’s current `master`**, or from the previous open stack tip when stacking.
-3. Apply an **end-state file snapshot** for that feature’s paths (reconstruct from the chosen tip SHA on the fork), as 1–few clean commits. Prefer path-based reconstruction over cherry-picking merge-heavy ranges.
-4. Open PRs against `ethanbustad/gene-autoannotator`. **Multiple PRs may be open at once** when they are a short stack or low-conflict siblings. Prefer small batches (a few at a time), not the whole queue.
-5. Stack dependent features (`UP-N` branch based on `UP-(N-1)` tip). In each PR body, note dependencies and which tip commit/files to review until earlier PRs merge.
-6. Avoid opening PRs that would force painful cross-merges; if two features heavily touch the same files, open them sequentially or explicitly stack.
-7. New features built on the fork after this queue was written go to **UP-23+** at the bottom (or merge into an unopened earlier UP if they are tiny fixes for that feature).
+2. Cut each PR from Ethan’s current `master`, or from the previous stack tip when stacking.
+3. Apply an **end-state file snapshot** for that feature’s paths (named paths only).
+4. **Never stage `tests/`** or web-only trees (`frontend/`, `coordinator/`, `backend/` except if a tiny shared helper is truly required — prefer `autoannotation/` + `shared/` + `worker` bench paths).
+5. Multiple open PRs OK in small stacks; note dependencies in PR bodies.
+6. Append new CLI/pipeline work at UP-19+.
 
-### Remotes (when executing)
+### Remotes
 
 ```bash
 git remote add upstream git@github.com:ethanbustad/gene-autoannotator.git   # if missing
@@ -39,48 +41,35 @@ git fetch origin
 
 ### Extraction method (per PR)
 
-**End-state file snapshot (preferred):**
-
 1. Identify include paths + tip SHA where the feature is complete on the fork.
-2. From `upstream/master` (or post-merge tip), check out those paths from the tip SHA / assemble the tree.
-3. Commit with a clear conventional message (`feat: …` / `fix: …`).
-4. Run focused tests for that slice before opening the PR.
+2. From `upstream/master` (or stack tip), check out those paths from the tip SHA.
+3. Commit with a clear message (`feat: …`).
+4. Do **not** include `tests/`. Optional local smoke (`python -m autoannotation --help`, import checks) is fine.
 
-Do **not** use `git add .` / `git add -A`. Stage named paths only.
+Do **not** use `git add .` / `git add -A`.
 
 ## Size reference
 
-**UP-03 (PMC relevance filter)** is the calibration unit:
-
-| Metric | Core (`4d5724b`) | + organism / metadata / NCBI 503 |
-|--------|------------------|----------------------------------|
-| Files  | ~6               | ~8–11                            |
-| LOC    | ~+749 / −236     | ~+0.75k–1.6k                     |
-
-Target each PR near that size when possible. Larger items may split on review (`UP-17a/b`, `UP-20a/b`).
+**UP-03 (PMC relevance filter)** remains the calibration unit (~6–11 files, ~0.75–1.6k LOC, **excluding tests**).
 
 ## Global exclude (never upstream)
 
-- `log.txt`, `log1.txt`, `error_log.txt`, `run_log.txt`
-- `completed_genes.txt`, `name_query_results.txt`
-- `*.sqlite3` / `backend/jobs.sqlite3`
-- `tests/benchmark_results/**`
-- `.env`, `worker.env`, credentials
-- `.cache/`, `.venv/`, `__pycache__/`, `node_modules/`
-- Generated annotation dumps (`gen_json/`, large pipeline outputs) unless Ethan explicitly wants fixtures
-- Observational memory profiler (`scripts/profile_job_memory.py`) — **deferred** unless requested
+- **`tests/`** (entire tree)
+- `frontend/`, `coordinator/`, `backend/` (web control plane)
+- `worker/serve.py`, `worker/sources/coordinator.py`, Fleet/Jobs UI
+- `log*.txt`, `error_log.txt`, `run_log.txt`, `*.sqlite3`
+- `.env`, `worker.env`, credentials, `.cache/`, `.venv/`, `node_modules/`
+- Generated dumps (`gen_json/`, large pipeline outputs) unless Ethan asks
+- Observational memory profiler (`scripts/profile_job_memory.py`) — deferred unless requested
 
-`frontend/package-lock.json` may be included with frontend PRs for reproducible installs.
+**Allowed minimal shared:** `shared/job_contract.py`, `shared/job_progress.py` (and similar) only when bench needs them.
 
 ## How to append
 
-When a new feature is finished on the fork:
-
-1. Add a new `### UP-NN` section at the bottom (next free number).
-2. Fill Status, Era, Depends on, Approx tip, Include, Exclude, Notes.
-3. Add a row to the summary table.
-4. Update the mermaid diagram if dependencies changed.
-5. Keep Status values exact: `queued` | `in_progress` | `open` | `merged` | `deferred` | `skipped`
+1. Add `### UP-NN` at the bottom (next free number).
+2. Fill Status, Era, Depends on, Include, Exclude, Notes.
+3. Update summary table + mermaid.
+4. Status values: `queued` | `in_progress` | `open` | `merged` | `deferred` | `dropped` | `skipped`
 
 ---
 
@@ -88,56 +77,52 @@ When a new feature is finished on the fork:
 
 ```mermaid
 flowchart TD
-  UP01[UP-01 Model modes] --> UP02[UP-02 Compareannotations]
-  UP02 --> UP03[UP-03 Relevance filter]
-  UP03 --> UP04[UP-04 Multi-organism]
-  UP04 --> UP05[UP-05 Web scaffold]
-  UP05 --> UP06[UP-06 Next Mongo reads]
-  UP05 --> UP07[UP-07 Token metadata]
-  UP05 --> UP08[UP-08 Hybrid profiles]
-  UP08 --> UP09[UP-09 Regex helper]
-  UP08 --> UP10[UP-10 Custom fields + ortholog v1]
-  UP05 --> UP11[UP-11 Version history UI]
-  UP08 --> UP12[UP-12 Batch jobs]
-  UP10 --> UP13[UP-13 Ortholog redesign]
-  UP05 --> UP14[UP-14 Coordinator/worker split]
-  UP14 --> UP15[UP-15 Worker ops + Fleet + CI]
-  UP10 --> UP16[UP-16 Hybrid consensus]
-  UP14 --> UP17[UP-17 Fleet/router/serve-bench]
-  UP08 --> UP18[UP-18 Seeded profiles]
-  UP17 --> UP19[UP-19 Docker/Slurm bench]
-  UP17 --> UP20[UP-20 Progress + dashboards]
-  UP14 --> UP21[UP-21 Job tile resolved name]
-  UP20 --> UP22[UP-22 Test cleanup]
+  UP01[UP-01 merged] --> UP02[UP-02 compare]
+  UP01 --> UP03[UP-03 relevance]
+  UP03 --> UP04[UP-04 multi-organism]
+  UP04 --> UP05[UP-05 file profiles]
+  UP05 --> UP06[UP-06 custom fields]
+  UP05 --> UP07[UP-07 token metadata]
+  UP06 --> UP08[UP-08 ortholog]
+  UP08 --> UP09[UP-09 consensus]
+  UP05 --> UP10[UP-10 batch JSONL]
+  UP10 --> UP11[UP-11 shared/bench contracts]
+  UP11 --> UP12[UP-12 bench fleet router]
+  UP12 --> UP13[UP-13 Docker Slurm]
+  UP12 --> UP14[UP-14 bench progress]
+  UP09 --> UP15[UP-15 GO resolve]
+  UP12 --> UP16[UP-16 scores JSONL]
+  UP12 --> UP17[UP-17 ollama diagnostics]
+  UP12 --> UP18[UP-18 memory budget]
 ```
 
 ## Summary table
 
-| ID | Title | Era | Depends | Size vs UP-03 | Status |
-|----|-------|-----|---------|---------------|--------|
-| UP-01 | Lite/performance model modes | 2026-04-07 | — | smaller | open |
-| UP-02 | Annotation comparison scoring harness | 2026-04-16 → 05-08 | UP-01 | ~1–2× | open |
-| UP-03 | PMC relevance filter + paper budget | 2026-05-18 → 05-19 | UP-01 | **reference** | open |
-| UP-04 | Multi-organism / strain validation + search | 2026-05-20 | UP-03 | ~1.5× | queued |
-| UP-05 | Next.js frontend + FastAPI backend scaffold | 2026-05-26 → 06-02 | UP-04 | ~2× | queued |
-| UP-06 | Next.js Mongo annotation read routes | 2026-06-05 | UP-05 | ~1× | queued |
-| UP-07 | Ollama token usage metadata | 2026-06-05 | UP-05 | smaller | queued |
-| UP-08 | Hybrid profiles + target submission | 2026-06-15 | UP-05 | ~2–3× | queued |
-| UP-09 | Locus regex generation helper | 2026-06-15 → 06-16 | UP-08 | ~1× | queued |
-| UP-10 | Custom fields + ortholog v1 | 2026-06-28 → 06-29 | UP-08 | ~2× | queued |
-| UP-11 | Annotation version history UI | 2026-06-28 | UP-06 | smaller | queued |
-| UP-12 | Batch gene-list job submission | 2026-06-29 | UP-08 | ~1.5× | queued |
-| UP-13 | Ortholog fallback redesign | 2026-07-03 | UP-10, UP-12 | ~1–1.5× | queued |
-| UP-14 | Coordinator + leased workers split | 2026-07-03 | UP-05 | ~1.5× | queued |
-| UP-15 | Worker bootstrap, Fleet UI, CI, compose | 2026-07-04 | UP-14 | ~1.5–2× | queued |
-| UP-16 | Hybrid section consensus | 2026-07-06 → 07-13 | UP-10 | ~1.5× | queued |
-| UP-17 | Worker fleet, model router, serve/bench | 2026-07-08 → 07-13 | UP-14, UP-15 | ~2–3× | queued |
-| UP-18 | Curated `data/profiles/` | 2026-07-14 → 07-15 | UP-08 | ~1× | queued |
-| UP-19 | Worker-bench Docker + Slurm | 2026-07-14 | UP-17 | ~1× | queued |
-| UP-20 | Structured job progress + dashboards | 2026-07-16 | UP-17 | ~2× | queued |
-| UP-21 | Preflight-resolved names on job tiles | 2026-07-16 | UP-14 | smaller | queued |
-| UP-22 | Align stale tests with current APIs | 2026-07-21 | prior | cleanup | queued |
-| UP-23+ | *(append new fork features here)* | future | … | … | — |
+| ID | Title | Depends | Status |
+|----|-------|---------|--------|
+| UP-01 | Lite/performance model modes | — | merged (#2) |
+| UP-02 | Compareannotations harness | UP-01 | open (#3) |
+| UP-03 | PMC relevance + paper budget | UP-01 | open (#4) |
+| UP-04 | Multi-organism / strain + CLI targets | UP-03 | queued |
+| UP-05 | File-based hybrid profiles + CLI | UP-04 | queued |
+| UP-06 | Custom annotation fields | UP-05 | queued |
+| UP-07 | Token / usage metadata (pipeline) | UP-05 | queued |
+| UP-08 | Ortholog fallback (v1 + redesign) | UP-06 | queued |
+| UP-09 | Hybrid section consensus | UP-08 | queued |
+| UP-10 | CLI/bench batch parse + JSONL source | UP-05 | queued |
+| UP-11 | Shared job contract + progress (minimal) | UP-10 | queued |
+| UP-12 | Worker bench + fleet + model router | UP-11 | queued |
+| UP-13 | Worker-bench Docker + Slurm | UP-12 | queued |
+| UP-14 | Bench dashboard + structured progress | UP-12 | queued |
+| UP-15 | GO resolve + pipeline wiring | UP-09 | queued |
+| UP-16 | Pipeline scores JSONL | UP-12 | queued |
+| UP-17 | Ollama log diagnostics / server log capture | UP-12 | queued |
+| UP-18 | Worker model memory budget | UP-12 | queued |
+| UP-19+ | *(append new CLI/pipeline features)* | … | — |
+
+### Dropped (web-only — do not upstream in this queue)
+
+Old web-centric IDs: Next.js/FastAPI scaffold, Mongo annotation reads, regex helper UI, version-history UI, web batch store/API, coordinator/serve split, Fleet page/CI-for-web, job-tile resolved names, frontend progress tiles, test-alignment-as-upstream-PR.
 
 ---
 
@@ -145,269 +130,158 @@ flowchart TD
 
 ### UP-01 — Add lite/performance model modes
 
-- **Status:** open
-- **Era:** 2026-04-07
-- **Depends on:** —
-- **Approx tip:** `ba0daaf` (*changed models for smaller models*)
-- **Key commits:** `814e257`, `1537eb3`, `76f9991`, `ba0daaf` (+ README polish if useful)
-- **Include:** `autoannotation/models.py`, related mode-switching in `autoannotation/llms.py` / `autoannotation/autoannotation.py` as of tip; README notes for modes
-- **Exclude:** generated annotations from early runs (`436a560` run outputs)
-- **Notes:** First PR to open. Keep focused on model definitions + switching.
+- **Status:** merged
+- **Include:** `autoannotation/models.py`, mode wiring, README notes
+- **Exclude:** tests, generated runs
 - **PR:** https://github.com/ethanbustad/gene-autoannotator/pull/2
 
 ### UP-02 — Add annotation comparison scoring harness
 
 - **Status:** open
-- **Era:** 2026-04-16 → 2026-05-08
-- **Depends on:** UP-01
-- **Approx tip:** `bbbd5ce` (path snapshot for compare feature)
-- **Key commits:** `2caad32` … `23dad55`; later GO/category work `4e167c2`, `bbbd5ce`, `c5bf7ca` if still in compareannotations
-- **Include:** `compareannotations/`, `run_pipeline.py`, related tests, requirements needed for compare/scoring
-- **Exclude:** `gen_json/`, `trust_json/` bulk outputs, pipeline run logs
-- **Notes:** Do not upstream large generated JSON corpora. Stacked on UP-01. `run_pipeline.py` appends scores to local `pipeline_scores.jsonl` (no Google Sheets/service-account dependency).
+- **Include:** `compareannotations/`, `run_pipeline.py`, `requirements.txt` (compare deps)
+- **Exclude:** **`tests/`**, `gen_json/`, `trust_json/` bulk
+- **Notes:** Strip any already-pushed test files from the PR branch when convenient (no new PRs required for that cleanup).
 - **PR:** https://github.com/ethanbustad/gene-autoannotator/pull/3
 
 ### UP-03 — Improve PMC relevance ranking and paper-selection budget
 
 - **Status:** open
-- **Era:** 2026-05-18 → 2026-05-19
-- **Depends on:** UP-01 (soft); after UP-02 chronologically
-- **Approx tip:** `8569f84` (*added handling for ncbi 503 responses*)
-- **Key commits:** `4d5724b` (*better relevance filter*), `b5a5ec5`, `8994159`, `8569f84`
-- **Include:** `autoannotation/pmc.py`, `autoannotation/autoannotation.py` (selection/budget hooks), `get_papers.py`, `tests/test_pmc_relevance.py`, `tests/test_autoannotation_relevance.py`, `tests/test_get_papers.py`; paper-selection metadata pieces if small
-- **Exclude:** add/remove PMC retry churn (`9dd64dd` / `840c1e0`) — ship the final behavior only
-- **Notes:** **Size reference PR.** Spec: none dedicated. Stacked on UP-02.
+- **Include:** `autoannotation/pmc.py`, `metadata.py`, `autoannotation.py`, `get_papers.py`
+- **Exclude:** **`tests/`**, llms prompt polish deferred if separate
 - **PR:** https://github.com/ethanbustad/gene-autoannotator/pull/4
 
-### UP-04 — Multi-organism validation and generalized organism search
+### UP-04 — Multi-organism / strain validation + CLI target resolution
 
 - **Status:** queued
-- **Era:** 2026-05-20
 - **Depends on:** UP-03
-- **Approx tip:** `c224170`
-- **Key commits:** `3e1c21f`, `c224170`
-- **Include:** `autoannotation/organisms.py`, validation/target helpers, PMC/search wiring for organisms, related tests
-- **Exclude:** noise
-- **Notes:** Precursor to hybrid profiles (UP-08).
+- **Include:** `autoannotation/organisms.py`, `targets.py`, `validate.py`, related CLI wiring
+- **Exclude:** web validate API, UI, tests
 
-### UP-05 — Scaffold Next.js frontend and FastAPI job backend
+### UP-05 — File-based hybrid profiles + CLI
 
 - **Status:** queued
-- **Era:** 2026-05-26 → 2026-06-02
 - **Depends on:** UP-04
-- **Approx tip:** `85887ff` (*Remove tracked node_modules and fix gitignore*) — ensure node_modules never return
-- **Key commits:** `1c72a51`, `4f8e1d2`, UI/network polish through early June
-- **Include:** `frontend/` (app, components, lib, package files), `backend/` as it existed pre-rename, README usage for web stack
-- **Exclude:** `node_modules/`, local `.env`, sqlite DBs
-- **Notes:** Larger than reference; still one PR unless Ethan asks to split UI vs API.
+- **Include:** profile load/seed under `data/profiles/`, CLI `--profile` / ad hoc organism/strain, `USAGE.md` CLI bits as needed
+- **Exclude:** Mongo profile store, ProfileWorkspace UI, coordinator profile APIs, tests
 
-### UP-06 — Serve annotation search/health from Next Mongo routes
+### UP-06 — Custom annotation fields
 
 - **Status:** queued
-- **Era:** 2026-06-05
 - **Depends on:** UP-05
-- **Approx tip:** end of Next-Mongo work on that day (prefer final state after revert/re-merge noise)
-- **Include:** `frontend/lib/annotationStore.js`, `frontend/app/api/annotations/**`, related health/search UI wiring
-- **Exclude:** merge/revert commits as separate history — ship final tree only
-- **Notes:** Local plan may exist under gitignored docs.
+- **Include:** `autoannotation/field_defs.py`, profile/pipeline wiring
+- **Exclude:** CustomFieldsEditor UI, tests
 
-### UP-07 — Capture and display Ollama token usage in metadata
+### UP-07 — Token / usage metadata (pipeline)
 
 - **Status:** queued
-- **Era:** 2026-06-05
 - **Depends on:** UP-05
-- **Approx tip:** `47484b5` / companion token commits
-- **Include:** `autoannotation/llms.py`, `autoannotation/metadata.py`, `frontend/lib/annotationDisplay.js` (display bits)
-- **Exclude:** —
-- **Notes:** Smaller than reference; may merge into UP-06 if Ethan prefers fewer tiny PRs.
+- **Include:** `autoannotation/llms.py` / `metadata.py` token capture
+- **Exclude:** frontend display, tests
 
-### UP-08 — Hybrid builtin/user/ad-hoc profiles and target resolution
+### UP-08 — Ortholog fallback
 
 - **Status:** queued
-- **Era:** 2026-06-15
-- **Depends on:** UP-05, UP-04
-- **Approx tip:** `d0b4321` / end of hybrid-profile commits that day
-- **Key commits:** `03cc695`, `7b90101`, `d0b4321`
-- **Include:** `autoannotation/targets.py`, `autoannotation/organisms.py`, profile store, Jobs/Profiles UI pieces for hybrid submission
-- **Exclude:** regex helper (UP-09)
-- **Notes:** ~2–3× reference. Spec: `2026-06-15-hybrid-profile-target-design.md`. Split only if review too heavy.
-
-### UP-09 — Assisted locus regex generation helper
-
-- **Status:** queued
-- **Era:** 2026-06-15 → 2026-06-16
-- **Depends on:** UP-08
-- **Approx tip:** `73f5c14`
-- **Include:** `backend/regex_gen.py` (or coordinator path if renamed later — use names as of tip relative to UP-05/UP-08 tree), `RegexHelper` UI, API schemas, tests
-- **Exclude:** —
-- **Notes:** Closest clean match to UP-03 size. Spec: `2026-06-15-regex-generation-helper-design.md`.
-
-### UP-10 — Custom annotation fields and initial ortholog literature fallback
-
-- **Status:** queued
-- **Era:** 2026-06-28 → 2026-06-29
-- **Depends on:** UP-08
-- **Approx tip:** `4361b62` (before batch / before redesign)
-- **Key commits:** `fbd6f59`, `2fa0c33`, `25ca3de`, `4361b62`
-- **Include:** field defs, `orthology.py` v1, ortholog lookup, CustomFields UI, metadata merge hooks, tests
-- **Exclude:** redesign behavior (UP-13)
-- **Notes:** Large; optional split custom-fields vs ortholog if needed.
-
-### UP-11 — Browse older annotation versions in the explorer
-
-- **Status:** queued
-- **Era:** 2026-06-28
 - **Depends on:** UP-06
-- **Approx tip:** `1d7f161`
-- **Include:** `AnnotationExplorer` version UI, `annotationVersions` helpers
-- **Exclude:** —
-- **Notes:** Smaller; may fold into UP-06 or UP-08 if preferred.
+- **Include:** `orthology.py`, `ortholog_lookup.py`, merge/metadata, CLI ortholog flags
+- **Exclude:** JobWorkspace ortholog UI, tests
+- **Notes:** May ship as one PR or split v1 vs redesign if review asks
 
-### UP-12 — Batch gene-list validate/create and batch queue UI
+### UP-09 — Hybrid section consensus
 
 - **Status:** queued
-- **Era:** 2026-06-29
 - **Depends on:** UP-08
-- **Approx tip:** `dd1865c`
-- **Include:** batch parse/resolution/store, `BatchJobForm`, API routes, docs for batch formats
-- **Exclude:** —
-- **Notes:** Spec: `2026-06-29-batch-job-submission-design.md`.
+- **Include:** `autoannotation/consensus.py`, LLM consensus wiring
+- **Exclude:** prototype dumps, tests
 
-### UP-13 — Ortholog fallback redesign
+### UP-10 — CLI/bench batch parse + JSONL source
 
 - **Status:** queued
-- **Era:** 2026-07-03
-- **Depends on:** UP-10, UP-12
-- **Approx tip:** `16d031c` / end of ortholog-redesign series before worker split
-- **Include:** `autoannotation/orthology.py`, metadata/merge, API schemas, JobWorkspace/AnnotationExplorer controls, tests
-- **Exclude:** coordinator/worker rename (UP-14)
-- **Notes:** Spec: `2026-07-03-ortholog-fallback-redesign-design.md`.
+- **Depends on:** UP-05
+- **Include:** `autoannotation/batch_parse.py`, `batch_resolution.py`, `worker/sources/batch.py`
+- **Exclude:** `coordinator/batch_store.py`, BatchJobForm UI, tests
 
-### UP-14 — Rename backend→coordinator; leased workers; shared contracts
+### UP-11 — Shared job contract + progress (minimal)
 
 - **Status:** queued
-- **Era:** 2026-07-03
-- **Depends on:** UP-05 (APIs); ideally after UP-12/UP-13 so leases wrap current job APIs
-- **Approx tip:** `6376bb3`
-- **Include:** `coordinator/`, `worker/` foundation, `shared/`, job lease columns, worker registry/API, integration tests
-- **Exclude:** fleet/router/bench concurrency expansion (UP-17), Fleet polish (UP-15)
-- **Notes:** Spec: `2026-07-03-distributed-worker-architecture-design.md`. Foundation only.
-
-### UP-15 — Worker bootstrap, Fleet page, CI, compose
-
-- **Status:** queued
-- **Era:** 2026-07-04
-- **Depends on:** UP-14
-- **Approx tip:** end of Jul 4 worker-ops / Fleet / CI series
-- **Include:** `deploy/`, worker bootstrap/env helpers, `FleetDashboard`, `.github/workflows/ci.yml`, NCBI API key support if small
-- **Exclude:** multi-slot fleet/router (UP-17)
-- **Notes:** Can split ops vs Fleet vs CI if review asks.
-
-### UP-16 — Hybrid section consensus
-
-- **Status:** queued
-- **Era:** 2026-07-06 → 2026-07-13
 - **Depends on:** UP-10
-- **Approx tip:** `0ba6efe`
-- **Include:** `autoannotation/consensus.py`, LLM consensus wiring, focused tests
-- **Exclude:** heavy prototype dumps / oversized comparison scratch files — keep tests lean
-- **Notes:** Pipeline-independent of worker; chronologically after UP-14/15 in the open order, but can land whenever UP-10 is in.
+- **Include:** minimal `shared/job_contract.py`, `shared/job_progress.py` (bench-needed surface only)
+- **Exclude:** coordinator worker registry APIs, tests
 
-### UP-17 — Multi-slot Ollama fleet, model router, serve/bench modes
+### UP-12 — Worker bench + fleet + model router
 
 - **Status:** queued
-- **Era:** 2026-07-08 → 2026-07-13
-- **Depends on:** UP-14, UP-15
-- **Approx tip:** `608d5cd` (router refactor) + serve/bench stabilization through Jul 13
-- **Include:** `worker/fleet/`, `worker/router/`, `runtime.py`, `serve.py`, `bench.py`, LLM router hook
-- **Exclude:** Docker/Slurm packaging (UP-19), progress TUI (UP-20)
-- **Notes:** Largest cluster. Split on demand: fleet sizing → router → serve/bench → router refactor. Spec: `2026-07-11-router-refactor-design.md`.
+- **Depends on:** UP-11
+- **Include:** `worker/bench.py`, fleet/, router/, runtime/executor pieces needed for bench
+- **Exclude:** `worker/serve.py`, `worker/sources/coordinator.py`, Fleet UI, tests
 
-### UP-18 — Ship curated profiles under `data/profiles/`
+### UP-13 — Worker-bench Docker + Slurm
 
 - **Status:** queued
-- **Era:** 2026-07-14 → 2026-07-15
-- **Depends on:** UP-08
-- **Approx tip:** profile save commits (`a1c0207`, follow-ons)
-- **Include:** `data/profiles/*.json` (curated only)
-- **Exclude:** `.seeded` markers if meaningless upstream
-- **Notes:** May open earlier (right after UP-08) if useful for reviewers.
+- **Depends on:** UP-12
+- **Include:** `deploy/docker` / `deploy/slurm` bench paths, related docs/examples (no secrets)
+- **Exclude:** full web compose stack unless required for bench image alone, tests
 
-### UP-19 — Lean worker-bench image and HPC Slurm path
+### UP-14 — Bench dashboard + structured progress emitters
 
 - **Status:** queued
-- **Era:** 2026-07-14
-- **Depends on:** UP-17
-- **Approx tip:** end of Docker/Slurm bench series
-- **Include:** `deploy/docker/Dockerfile.worker`, run scripts, `deploy/slurm/`, related docs
-- **Exclude:** secrets in env files — ship `.example` only
-- **Notes:** Spec: `2026-07-14-worker-bench-docker-slurm-design.md` (tracked).
+- **Depends on:** UP-12
+- **Include:** `worker/bench_dashboard.py`, pipeline progress emitters consumed by bench
+- **Exclude:** coordinator progress PATCH for Jobs UI, frontend tiles, tests
 
-### UP-20 — JobProgress events, bench/serve dashboards, coordinator/frontend progress
+### UP-15 — GO resolve + pipeline wiring
 
 - **Status:** queued
-- **Era:** 2026-07-16
-- **Depends on:** UP-17
-- **Approx tip:** before job-tile name commits (`3a3036c` area)
-- **Include:** `shared/job_progress.py`, pipeline emitters, `bench_dashboard.py`, progress PATCH, Jobs tiles progress UI
-- **Exclude:** resolved-name tile title (UP-21)
-- **Notes:** ~2× reference; split bench-progress vs serve/coordinator/frontend if needed. Specs: `2026-07-16-worker-bench-dashboard-progress-design.md`, `2026-07-16-serve-dashboard-job-progress-design.md`.
+- **Depends on:** UP-09
+- **Include:** `goresolve/`, `autoannotation/go_resolution.py`, profile flag wiring
+- **Exclude:** profile editor UI toggle-only bits if inseparable from web — prefer CLI/profile JSON flag, tests
 
-### UP-21 — Show preflight-resolved gene names on job tiles
+### UP-16 — Pipeline scores JSONL
 
 - **Status:** queued
-- **Era:** 2026-07-16
-- **Depends on:** UP-14
-- **Approx tip:** `2a68ab0`
-- **Key commits:** `e8e0349`, `ef778dc`, `2a68ab0`
-- **Include:** coordinator job-create preflight flag honor, `getJobDisplayName`, JobWorkspace tile title
-- **Exclude:** —
-- **Notes:** Spec: `2026-07-16-job-tile-resolved-name-design.md`.
+- **Depends on:** UP-12
+- **Include:** pipeline scores JSONL writers/readers as designed
+- **Exclude:** web-only consumers, tests
 
-### UP-22 — Align stale tests with profiles, fleet APIs, and consensus
+### UP-17 — Ollama log diagnostics / server log capture
 
 - **Status:** queued
-- **Era:** 2026-07-21
-- **Depends on:** all prior that affect tests
-- **Approx tip:** `be54564`
-- **Include:** `tests/` updates from that commit / equivalent end-state
-- **Exclude:** benchmark result JSON
-- **Notes:** Cleanup PR for the fork tip as of queue creation. New features after this get UP-23+.
+- **Depends on:** UP-12
+- **Include:** fleet/worker Ollama log diagnostics modules
+- **Exclude:** tests; split into two PRs if review too large
 
-### UP-23+ — (template for new features)
+### UP-18 — Worker model memory budget
 
-Copy and fill:
+- **Status:** queued
+- **Depends on:** UP-12
+- **Include:** memory budget sizing/classify for worker fleet/bench
+- **Exclude:** tests
+
+### UP-19+ — (template)
 
 ```markdown
 ### UP-NN — <Title>
 
 - **Status:** queued
-- **Era:** YYYY-MM-DD → YYYY-MM-DD
+- **Era:** YYYY-MM-DD
 - **Depends on:** UP-…
-- **Approx tip:** <sha>
-- **Key commits:** …
 - **Include:** …
-- **Exclude:** …
+- **Exclude:** tests/, frontend/, coordinator/, …
 - **Notes:** …
 - **PR:** (url when open)
 ```
-
-Also add a summary-table row and update the mermaid diagram.
 
 ---
 
 ## Execution checklist (per PR)
 
-- [ ] Confirm Ethan’s `master` SHA; rebase/replay onto it
-- [ ] Set Status → `in_progress`; create branch `upstream/UP-NN-short-slug`
-- [ ] Apply end-state snapshot for Include paths only
-- [ ] Run focused tests
-- [ ] Push to fork; open PR → Ethan; set Status → `open`; paste PR URL in Notes
-- [ ] Address review; on merge set Status → `merged`
-- [ ] Fetch upstream; start next queued ID
+- [ ] Base = Ethan `master` or prior stack tip
+- [ ] Named-path snapshot only; **no `tests/`**
+- [ ] No web trees unless explicitly allowed above
+- [ ] Push + open PR; record URL here
+- [ ] Small batches; stack when dependent
 
-## First action when executing
+## Current batch note (2026-08-10)
 
-1. Add `upstream` remote if missing; `git fetch upstream`.
-2. Open a small batch (e.g. UP-01 → UP-03) as a stack when ready.
-3. Prefer low file-overlap siblings or explicit stacks; do not dump the entire queue at once.
+- Do **not** open new PRs until asked.
+- Fork policy: **`tests/` untracked** (gitignored) so agent test piles stay out of upstream cuts.
+- Open #3/#4 should drop test files from the PR diff when cleaned up (amend existing branches; do not open replacements unless necessary).

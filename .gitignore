@@ -36,6 +36,6 @@ trust_json/
 bench_outputs/
 bench_out/
 reports/
-tests/fixtures/
+tests/
 
 worker-serve.log
