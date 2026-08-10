@@ -127,7 +127,9 @@ class Throttler:
         self.last_requests = {}
         self.scraper = cs.create_scraper()
         self.timeout = TIMEOUT_SECONDS_DEFAULT if timeout_secs is None else timeout_secs
-        if self.cooldown_seconds <= 1:
+        if self.cooldown_seconds <= 0:
+            log.info('Using throttler with no cooldown (unlimited request rate)')
+        elif self.cooldown_seconds <= 1:
             log.info(
                 f'Using throttler to make no more than {1/self.cooldown_seconds:.0f} ' + \
                     f'request{utils.s_if_plural(self.cooldown_seconds)} per second'

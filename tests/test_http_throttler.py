@@ -112,3 +112,10 @@ def test_throttler_cooldown_env_override(monkeypatch):
     monkeypatch.setenv("AUTOANNOTATION_HTTP_COOLDOWN_SEC", "1.25")
     throttler = http_.Throttler()
     assert throttler.cooldown_seconds == 1.25
+
+
+@pytest.mark.parametrize("cooldown_env", ["0", "-1"])
+def test_throttler_zero_cooldown_env_does_not_raise(monkeypatch, cooldown_env):
+    monkeypatch.setenv("AUTOANNOTATION_HTTP_COOLDOWN_SEC", cooldown_env)
+    throttler = http_.Throttler()
+    assert throttler.cooldown_seconds == 0
