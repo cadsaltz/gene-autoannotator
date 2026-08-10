@@ -173,6 +173,81 @@ def test_normalize_preserves_explicit_keep_alive(monkeypatch):
     assert out2.keep_alive == "0"  # tier map for vram_overflow
 
 
+def test_normalize_infeasible_fallback_preserves_explicit_keep_alive(monkeypatch):
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=32 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    cfg = FleetConfig(
+        num_servers=99,
+        parallel=99,
+        max_slots=99,
+        keep_alive="5m",
+        w_all_bytes=20 * 1024**3,
+        w_peak_bytes=12 * 1024**3,
+        c_slot_bytes=int(0.4 * 1024**3),
+    )
+    rec = FleetRecommendation(
+        num_servers=1,
+        parallel=1,
+        max_slots=1,
+        keep_alive="0",
+        w_all_bytes=20 * 1024**3,
+        w_peak_bytes=12 * 1024**3,
+        c_slot_bytes=int(0.4 * 1024**3),
+        memory_tier="swap",
+    )
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("infeasible")
+
+    monkeypatch.setattr(setup.sizing, "classify_memory_tier", boom)
+    monkeypatch.setattr(setup.sizing, "recommend", lambda *args, **kwargs: rec)
+
+    out = setup._normalize_fleet_config(cfg, spec, preserve_keep_alive=True)
+    assert out.keep_alive == "5m"
+
+    out2 = setup._normalize_fleet_config(cfg, spec, preserve_keep_alive=False)
+    assert out2.keep_alive == "0"
+
+
+def test_refresh_fleet_footprints_preserves_explicit_keep_alive(tmp_path, monkeypatch):
+    env_path = tmp_path / "worker.env"
+    env_path.write_text("OLLAMA_FLEET_KEEP_ALIVE=5m\n", encoding="utf-8")
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=32 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    cfg = FleetConfig(
+        num_servers=1,
+        parallel=2,
+        max_slots=2,
+        keep_alive="5m",
+        w_all_bytes=20 * 1024**3,
+        w_peak_bytes=12 * 1024**3,
+        c_slot_bytes=int(0.4 * 1024**3),
+        memory_tier="vram_overflow",
+    )
+    monkeypatch.setattr(
+        setup.models,
+        "resolve_footprints",
+        lambda **kw: (22 * 1024**3, 12 * 1024**3, "manifest"),
+    )
+    persisted: list[FleetConfig] = []
+    monkeypatch.setattr(setup, "_persist_fleet_config", lambda path, c: persisted.append(c))
+    monkeypatch.setattr(setup, "_apply_fleet_to_environ", lambda c: None)
+
+    out = setup.refresh_fleet_footprints(cfg, spec, host="127.0.0.1:11434", env_path=env_path)
+    assert out.keep_alive == "5m"
+    assert persisted[-1].keep_alive == "5m"
+
+
 def test_ensure_fleet_config_loads_from_env(tmp_path, monkeypatch):
     env_path = tmp_path / "worker.env"
     env_path.write_text(

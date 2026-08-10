@@ -708,11 +708,12 @@ def _normalize_fleet_config(
             c_slot_bytes=c_slot,
             model_budget_bytes=model_budget_bytes,
         )
+        keep_alive = cfg.keep_alive if preserve_keep_alive else rec.keep_alive
         return FleetConfig(
             num_servers=rec.num_servers,
             parallel=rec.parallel,
             max_slots=rec.max_slots,
-            keep_alive=rec.keep_alive,
+            keep_alive=keep_alive,
             w_all_bytes=rec.w_all_bytes,
             w_peak_bytes=rec.w_peak_bytes,
             c_slot_bytes=rec.c_slot_bytes,
@@ -751,8 +752,9 @@ def refresh_fleet_footprints(
         w_all_bytes=w_all,
         w_peak_bytes=w_peak,
     )
-    updated = _normalize_fleet_config(updated, spec)
     path = env_path or _default_env_path()
+    preserve_ka = _env_value("OLLAMA_FLEET_KEEP_ALIVE", env_path=path) is not None
+    updated = _normalize_fleet_config(updated, spec, preserve_keep_alive=preserve_ka)
     _persist_fleet_config(path, updated)
     _apply_fleet_to_environ(updated)
     log.info(
