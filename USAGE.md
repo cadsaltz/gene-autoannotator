@@ -391,7 +391,7 @@ python -m worker serve \
 |------|---------|-------|
 | `--coordinator-url` | Coordinator base URL | Else `COORDINATOR_URL` / `worker.env` |
 | `--token` | `WORKER_API_TOKEN` | Else env / `worker.env` |
-| `--memory-gb` | Annotation memory budget (GB) | Else `ANNOTATION_MEMORY_BUDGET_GB` |
+| `--memory-gb` | Model memory budget (GB) for Ollama weights/KV | Sets `WORKER_MODEL_MEMORY_BUDGET_GB`; else env / `worker.env`. `-1` or omit = use machine cap. Does **not** set job slots. |
 | `--no-dashboard` | Disable live TTY dashboard | Dashboard is on when stdout is a TTY |
 
 With the dashboard on, verbose worker logs go to `worker-serve.log` (or `--log-file` / `WORKER_LOG_FILE`). Managed `ollama serve` stdout/stderr is teed to `ollama-server-<port>.log` next to that log file (else cwd), and the dashboard **OLLAMA** strip shows process status plus a parsed summary (phase, last `/api/chat`, alerts such as prompt truncation). Offline: `python -m worker.fleet.diagnose_ollama_log ollama-server-11434.log`.
@@ -424,12 +424,18 @@ python -m worker bench \
 
 ### Worker env (`worker.env.example`)
 
+`worker.env` is the source of truth: keys you set are not silently overwritten on restart (except one-time migration from legacy names). Model memory budget and job slots are **separate** knobs.
+
 | Variable | Purpose |
 |----------|---------|
 | `COORDINATOR_URL` | Coordinator base URL |
 | `WORKER_API_TOKEN` | Auth token |
-| `ANNOTATION_MEMORY_BUDGET_GB` | Memory budget used for slot sizing |
-| `JOB_MEMORY_ESTIMATE_GB` / `WORKER_MEMORY_HEADROOM_GB` | Sizing knobs |
+| `WORKER_MODEL_MEMORY_BUDGET_GB` | Cap for model weights / KV / Ollama memory (GB). `-1` or omit = machine-derived max. Influences fleet **recommendations** and feasibility warnings; does **not** derive `WORKER_MAX_SLOTS`. |
+| `WORKER_MAX_SLOTS` | Concurrent annotation subprocess cap (from fleet setup prompt or manual edit) |
+| `OLLAMA_FLEET_SERVERS` / `OLLAMA_FLEET_PARALLEL` | Homogeneous Ollama fleet shape |
+| `OLLAMA_FLEET_KEEP_ALIVE` | Ollama unload policy for the fleet (`0`, `5m`, `-1`, …). If set, kept across restarts; if absent, written once from the recommended memory tier. |
+| `ANNOTATION_MEMORY_BUDGET_GB` | **Legacy alias** — read once and migrated to `WORKER_MODEL_MEMORY_BUDGET_GB` on persist |
+| `JOB_MEMORY_ESTIMATE_GB` / `WORKER_MEMORY_HEADROOM_GB` | Legacy fallback slot math when fleet keys are absent |
 | `WORKER_CACHE_DIR` / `WORKER_OUTPUT_DIR` | Cache / output overrides |
 | `OLLAMA_HOST` / `OLLAMA_CHAT_TIMEOUT_SEC` / `OLLAMA_ROUTER_READ_TIMEOUT_SEC` | Ollama / router timeouts (`unset` = unlimited) |
 | `OLLAMA_FLEET_SLOT_CTX` | Per-parallel-slot context tokens (default `8192`); total = slot × `OLLAMA_FLEET_PARALLEL` |

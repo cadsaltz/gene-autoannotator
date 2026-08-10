@@ -59,7 +59,7 @@ Or with explicit CLI overrides:
 python -m worker serve \
   --coordinator-url http://192.168.1.10:8000 \
   --token dev-token \
-  --memory-gb 48
+  --memory-gb 48   # sets WORKER_MODEL_MEMORY_BUDGET_GB (model/Ollama cap; not job slots)
 ```
 
 On startup the worker logs `Registered worker <name> (<slots> slots)`. The
@@ -184,20 +184,30 @@ On first run (or when fleet env vars are missing), the worker probes hardware
 and recommends a fleet configuration. In an interactive terminal it prompts
 for:
 
+- **model memory budget** — `WORKER_MODEL_MEMORY_BUDGET_GB`, the cap for Ollama
+  model weights / KV (not job subprocess RAM). `-1` or omit uses the
+  machine-derived maximum. Influences tier classification and fleet
+  recommendations; it does **not** set job slot count.
 - **servers** — number of homogeneous `ollama serve` processes
 - **parallel per server** — `OLLAMA_NUM_PARALLEL` on each server
 - **max job slots** — `WORKER_MAX_SLOTS`, the concurrent subprocess cap
+- **keep-alive** — recommended `OLLAMA_FLEET_KEEP_ALIVE` from the memory tier
+  (written once if absent; left unchanged if already set in `worker.env`)
 
 Recommended defaults come from `worker.fleet.sizing.recommend()`. Impossible
 configs are rejected; risky ones (e.g. more servers than GPUs) emit warnings
 but can be accepted.
 
-Values are persisted to `worker.env` (or `WORKER_ENV_FILE`):
+Values are persisted to `worker.env` (or `WORKER_ENV_FILE`). Saved keys are
+the source of truth — explicit values (including `OLLAMA_FLEET_KEEP_ALIVE`) are
+not silently overwritten on subsequent starts:
 
 ```bash
+WORKER_MODEL_MEMORY_BUDGET_GB=24
 OLLAMA_FLEET_SERVERS=2
 OLLAMA_FLEET_PARALLEL=2
 WORKER_MAX_SLOTS=4
+OLLAMA_FLEET_KEEP_ALIVE=5m
 OLLAMA_FLEET_W_ALL_BYTES=2147483648
 OLLAMA_FLEET_C_SLOT_BYTES=429496729
 ```
@@ -279,8 +289,13 @@ sees one worker with `max_slots` equal to this value.
 
 ### Memory admission
 
-The legacy per-job 20 GB estimate is **no longer used for slot counting** when
-fleet env vars are set. Slots come directly from `WORKER_MAX_SLOTS`.
+**Model memory budget** (`WORKER_MODEL_MEMORY_BUDGET_GB`, or legacy
+`ANNOTATION_MEMORY_BUDGET_GB` read once for migration) caps how much RAM/VRAM
+the worker may use for Ollama model memory. It affects fleet recommendations
+and feasibility warnings. It does **not** derive job slot count.
+
+When fleet env vars are set, slots come directly from `WORKER_MAX_SLOTS` — not
+from the model budget or the legacy per-job 20 GB estimate.
 
 Admission before each claim checks only subprocess overhead:
 
@@ -291,8 +306,9 @@ SUBPROCESS_OVERHEAD_BYTES = 2 * 1024**3  # ~2 GB per job (Python, papers, cache)
 `can_admit()` returns true when `memory_available_bytes >= SUBPROCESS_OVERHEAD_BYTES`.
 
 The legacy `ANNOTATION_MEMORY_BUDGET_GB` / `JOB_MEMORY_ESTIMATE_GB` path still
-works as a fallback when fleet keys are absent (older deployments), but new
-setups should use the fleet configuration flow.
+works as a fallback when fleet keys are absent (older deployments): budget and
+per-job estimate drive `capacity.compute_slots()`. New setups should use the
+fleet configuration flow and `WORKER_MODEL_MEMORY_BUDGET_GB`.
 
 ## Environment variables
 
@@ -310,11 +326,13 @@ setups should use the fleet configuration flow.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `WORKER_MODEL_MEMORY_BUDGET_GB` | from prompt | Model weights / KV / Ollama memory cap (GB). `-1` or omit = machine cap. Does not set slots. |
 | `OLLAMA_FLEET_SERVERS` | from sizing | Number of `ollama serve` processes. |
 | `OLLAMA_FLEET_PARALLEL` | from sizing | `OLLAMA_NUM_PARALLEL` per server. |
 | `OLLAMA_FLEET_SLOT_CTX` | `8192` | Per-slot context tokens; managed serve sets `OLLAMA_CONTEXT_LENGTH = slot × parallel`. |
 | `OLLAMA_CONTEXT_LENGTH` | computed | Total runner context (explicit non-zero override wins). Larger values may spill to RAM when VRAM is tight. |
-| `WORKER_MAX_SLOTS` | from sizing | Concurrent job subprocess cap. |
+| `WORKER_MAX_SLOTS` | from sizing | Concurrent job subprocess cap (separate from model memory budget). |
+| `OLLAMA_FLEET_KEEP_ALIVE` | from tier | Ollama unload policy (`0`, `5m`, `-1`, …). If set in env, respected on every start; if absent, written once from recommended tier. |
 | `OLLAMA_FLEET_W_ALL_BYTES` | measured/estimated | All-models-warm VRAM footprint per server. |
 | `OLLAMA_FLEET_C_SLOT_BYTES` | `429496729` (~0.4 GB) | Per-lane context VRAM estimate. |
 
@@ -335,7 +353,7 @@ setups should use the fleet configuration flow.
 | `WORKER_CACHE_DIR` | `./.cache` | Annotation cache root (bench cold purge targets `llm_cache` / `llm_responses` here). |
 | `WORKER_OUTPUT_DIR` | `gen_json` | Annotation JSON output directory. |
 | `WORKER_ENV_FILE` | `worker.env` | Persisted env file for coordinator URL, token, fleet config. |
-| `ANNOTATION_MEMORY_BUDGET_GB` | `0` | Legacy memory budget (fallback slot math when fleet keys absent). |
+| `ANNOTATION_MEMORY_BUDGET_GB` | — | **Legacy alias** for `WORKER_MODEL_MEMORY_BUDGET_GB`; read once and migrated on persist. Fallback slot math when fleet keys absent. |
 | `JOB_MEMORY_ESTIMATE_GB` | `20.0` | Legacy per-job estimate (fallback only). |
 | `WORKER_MEMORY_HEADROOM_GB` | `4.0` | Legacy headroom (fallback only). |
 
@@ -423,8 +441,9 @@ Non-interactive:
 deploy/scripts/install-worker.sh http://192.168.1.10:8000 "$(deploy/scripts/generate-worker-token.sh)"
 ```
 
-First run prompts for coordinator URL, token, memory budget, and fleet sizing.
-Values are saved to `worker.env`.
+First run prompts for coordinator URL, token, model memory budget
+(`WORKER_MODEL_MEMORY_BUDGET_GB`), and fleet sizing (servers, parallel, slots,
+keep-alive). Values are saved to `worker.env`.
 
 ### Two-machine LAN setup
 
