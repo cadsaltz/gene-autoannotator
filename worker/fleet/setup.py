@@ -725,7 +725,7 @@ def _normalize_fleet_config(
         return FleetConfig(
             num_servers=rec.num_servers,
             parallel=rec.parallel,
-            max_slots=rec.max_slots,
+            max_slots=cfg.max_slots,
             keep_alive=keep_alive,
             w_all_bytes=rec.w_all_bytes,
             w_peak_bytes=rec.w_peak_bytes,

@@ -52,6 +52,43 @@ def test_prompt_fleet_accepts_valid_config(monkeypatch):
     assert cfg.max_slots == 2
 
 
+def test_normalize_fleet_config_preserves_slots_when_budget_is_infeasible(monkeypatch):
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=31 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    cfg = FleetConfig(num_servers=2, parallel=3, max_slots=7, keep_alive="5m")
+    recommendation = FleetRecommendation(
+        num_servers=1,
+        parallel=1,
+        max_slots=1,
+        keep_alive="0",
+        w_all_bytes=2 * 1024**3,
+        w_peak_bytes=1 * 1024**3,
+        c_slot_bytes=int(0.4 * 1024**3),
+        memory_tier="swap",
+    )
+
+    def raise_infeasible(*_args, **_kwargs):
+        raise RuntimeError("model budget is infeasible")
+
+    monkeypatch.setattr(setup.sizing, "classify_memory_tier", raise_infeasible)
+    monkeypatch.setattr(setup.sizing, "recommend", lambda *_args, **_kwargs: recommendation)
+
+    normalized = setup._normalize_fleet_config(
+        cfg,
+        spec,
+        model_budget_bytes=2 * 1024**3,
+    )
+
+    assert normalized.max_slots == 7
+    assert normalized.num_servers == 1
+    assert normalized.parallel == 1
+
+
 def test_start_fleet_launches_one_process_per_server(monkeypatch):
     spec = SystemSpec(
         gpu_count=2,
