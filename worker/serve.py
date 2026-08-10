@@ -187,7 +187,7 @@ def _coordinator_overrides_from_args(parsed_args: argparse.Namespace) -> dict[st
     if getattr(parsed_args, "token", None):
         overrides["WORKER_API_TOKEN"] = parsed_args.token
     if getattr(parsed_args, "memory_gb", None) is not None:
-        overrides["ANNOTATION_MEMORY_BUDGET_GB"] = parsed_args.memory_gb
+        overrides["WORKER_MODEL_MEMORY_BUDGET_GB"] = parsed_args.memory_gb
     return overrides
 
 

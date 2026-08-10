@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from worker import capacity
 from worker.fleet.config import FleetConfig
+from worker.fleet import sizing
+from worker.probe import probe_system
 
 
 @dataclass
@@ -33,8 +35,13 @@ def load_config():
     token = os.environ.get("WORKER_API_TOKEN", "")
     hostname = socket.gethostname()
     worker_name = os.getenv("WORKER_NAME", hostname)
-    dedicated_gb = float(os.getenv("ANNOTATION_MEMORY_BUDGET_GB", "0"))
-    dedicated_bytes = int(dedicated_gb * (1024 ** 3))
+    user_gb = sizing.parse_model_memory_budget_gb(
+        os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
+        or os.getenv("ANNOTATION_MEMORY_BUDGET_GB")
+    )
+    dedicated_bytes = sizing.effective_model_budget_bytes(
+        probe_system(), user_budget_gb=user_gb,
+    )
     total_bytes = _total_memory_bytes()
     fleet_keys_present = bool(os.getenv("OLLAMA_FLEET_SERVERS") or os.getenv("OLLAMA_FLEET_PARALLEL"))
     worker_max_slots = os.getenv("WORKER_MAX_SLOTS")
@@ -46,7 +53,7 @@ def load_config():
         )
         slots = capacity.compute_slots_from_fleet(fleet)
     else:
-        slots = capacity.compute_slots(dedicated_gb) if dedicated_gb else 0
+        slots = capacity.compute_slots(dedicated_bytes / (1024**3)) if dedicated_bytes else 0
     return WorkerConfig(
         coordinator_url=coordinator_url,
         worker_api_token=token,

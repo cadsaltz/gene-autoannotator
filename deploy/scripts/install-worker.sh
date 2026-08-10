@@ -7,7 +7,7 @@ cd "$REPO_ROOT"
 
 usage() {
   cat <<EOF
-Usage: $0 [COORDINATOR_URL] [WORKER_API_TOKEN] [ANNOTATION_MEMORY_BUDGET_GB]
+Usage: $0 [COORDINATOR_URL] [WORKER_API_TOKEN] [WORKER_MODEL_MEMORY_BUDGET_GB]
 
 Install the worker agent in this repo clone (dev/lab). Creates .venv, installs
 dependencies, and writes worker.env when URL and token are provided.
@@ -63,7 +63,7 @@ if os.environ.get("INSTALL_COORDINATOR_URL"):
 if os.environ.get("INSTALL_WORKER_TOKEN"):
     overrides["WORKER_API_TOKEN"] = os.environ["INSTALL_WORKER_TOKEN"]
 if os.environ.get("INSTALL_MEMORY_GB"):
-    overrides["ANNOTATION_MEMORY_BUDGET_GB"] = float(os.environ["INSTALL_MEMORY_GB"])
+    overrides["WORKER_MODEL_MEMORY_BUDGET_GB"] = float(os.environ["INSTALL_MEMORY_GB"])
 ensure_worker_env(cli_overrides=overrides or None)
 print("Wrote/updated worker.env")
 PY

@@ -5,31 +5,18 @@ import sys
 from pathlib import Path
 
 from shared.env_persist import load_env_file, resolve_value, save_env_file
-from worker.fleet import setup as fleet_setup
+from worker.fleet import setup as fleet_setup, sizing
+from worker.probe import SystemSpec, probe_system
 
 
 VALID_MODEL_MODES = ("performance", "lite", "nano")
 DEFAULT_MODEL_MODE = "performance"
+BUDGET_ENV_KEY = "WORKER_MODEL_MEMORY_BUDGET_GB"
+LEGACY_BUDGET_ENV_KEY = "ANNOTATION_MEMORY_BUDGET_GB"
 
 
 def default_env_path() -> Path:
     return Path(os.getenv("WORKER_ENV_FILE", "worker.env"))
-
-
-def _total_memory_gb() -> float:
-    try:
-        import psutil
-
-        return psutil.virtual_memory().total / (1024**3)
-    except Exception:
-        return 0.0
-
-
-def suggest_memory_budget_gb() -> float:
-    total = _total_memory_gb()
-    if total <= 0:
-        return 24.0
-    return float(max(0, int(total - 8)))
 
 
 def _read_line(prompt: str) -> str:
@@ -43,16 +30,36 @@ def _format_memory_gb(value: float) -> str:
     return str(value)
 
 
-def prompt_memory_budget_gb() -> float:
-    total = _total_memory_gb()
-    suggested = suggest_memory_budget_gb()
+def prompt_model_memory_budget_gb(spec: SystemSpec) -> float | None:
+    ram_gb = spec.system_ram_bytes / (1024**3)
+    vram_gb = sum(spec.vram_bytes) / (1024**3)
+    suggested = sizing.effective_model_budget_bytes(spec, user_budget_gb=None) / (1024**3)
     prompt = (
-        f"Machine RAM: {total:.0f} GB. "
-        f"Suggested annotation budget: {suggested} GB. "
-        f"Enter GB to dedicate [{suggested}]: "
+        f"Machine RAM: {ram_gb:.0f} GB; VRAM: {vram_gb:.0f} GB. "
+        f"Suggested model memory budget: {suggested:.0f} GB. "
+        "Enter model memory budget in GB [-1 for max]: "
     )
     raw = _read_line(prompt).strip()
-    return float(raw or suggested)
+    return sizing.parse_model_memory_budget_gb(raw)
+
+
+def resolve_model_memory_budget_gb(*, env_path: Path) -> tuple[str, float | None]:
+    """Resolve the model budget, migrating the legacy env key when needed."""
+    saved = load_env_file(env_path)
+    raw = (
+        os.getenv(BUDGET_ENV_KEY)
+        or saved.get(BUDGET_ENV_KEY)
+        or os.getenv(LEGACY_BUDGET_ENV_KEY)
+        or saved.get(LEGACY_BUDGET_ENV_KEY)
+    )
+    if raw is None:
+        raise KeyError(BUDGET_ENV_KEY)
+    raw = str(raw).strip()
+    budget_gb = sizing.parse_model_memory_budget_gb(raw)
+    saved[BUDGET_ENV_KEY] = raw
+    saved.pop(LEGACY_BUDGET_ENV_KEY, None)
+    save_env_file(env_path, saved)
+    return raw, budget_gb
 
 
 def _prompt_coordinator_url() -> str:
@@ -143,28 +150,37 @@ def ensure_worker_env(
         default=token_default,
     )
 
-    mem = cli_overrides.get("ANNOTATION_MEMORY_BUDGET_GB")
+    mem = cli_overrides.get(BUDGET_ENV_KEY)
     if mem is not None:
         mem_str = _format_memory_gb(float(mem))
         saved = load_env_file(path)
-        saved["ANNOTATION_MEMORY_BUDGET_GB"] = mem_str
+        saved[BUDGET_ENV_KEY] = mem_str
+        saved.pop(LEGACY_BUDGET_ENV_KEY, None)
         save_env_file(path, saved)
     else:
-        mem_str, _ = resolve_value(
-            "ANNOTATION_MEMORY_BUDGET_GB",
-            env_file=path,
-            cli_value=None,
-            prompt_fn=(
-                (lambda _k, _d: _format_memory_gb(prompt_memory_budget_gb()))
-                if is_interactive and require_coordinator
-                else None
-            ),
-            default=mem_default,
-        )
+        try:
+            mem_str, _ = resolve_model_memory_budget_gb(env_path=path)
+        except KeyError:
+            spec = probe_system()
+
+            def _prompt_budget(_key: str, _default: str | None) -> str:
+                budget_gb = prompt_model_memory_budget_gb(spec)
+                return "-1" if budget_gb is None else _format_memory_gb(budget_gb)
+
+            prompt_fn = (
+                _prompt_budget if is_interactive and require_coordinator else None
+            )
+            mem_str, _ = resolve_value(
+                BUDGET_ENV_KEY,
+                env_file=path,
+                cli_value=None,
+                prompt_fn=prompt_fn,
+                default=mem_default,
+            )
 
     os.environ.setdefault("COORDINATOR_URL", url)
     os.environ.setdefault("WORKER_API_TOKEN", token)
-    os.environ.setdefault("ANNOTATION_MEMORY_BUDGET_GB", mem_str)
+    os.environ[BUDGET_ENV_KEY] = mem_str
 
     ensure_model_mode(env_path=path, interactive=is_interactive)
     if not skip_fleet_config:

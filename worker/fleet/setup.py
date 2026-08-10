@@ -209,11 +209,21 @@ def _prompt_int(label: str, *, recommended: int) -> int:
             print("Enter an integer.", flush=True)
 
 
-def validate_or_warn(spec: SystemSpec, cfg: FleetConfig) -> tuple[list[str], list[str]]:
-    return sizing.validate_fleet(spec, cfg)
+def validate_or_warn(
+    spec: SystemSpec,
+    cfg: FleetConfig,
+    *,
+    model_budget_bytes: int | None = None,
+) -> tuple[list[str], list[str]]:
+    return sizing.validate_fleet(spec, cfg, model_budget_bytes=model_budget_bytes)
 
 
-def prompt_fleet(spec: SystemSpec, recommendation: FleetRecommendation) -> FleetConfig:
+def prompt_fleet(
+    spec: SystemSpec,
+    recommendation: FleetRecommendation,
+    *,
+    model_budget_bytes: int | None = None,
+) -> FleetConfig:
     for warning in recommendation.warnings:
         print(f"WARNING: {warning}", flush=True)
     print(
@@ -233,6 +243,7 @@ def prompt_fleet(spec: SystemSpec, recommendation: FleetRecommendation) -> Fleet
                 c_slot_bytes=recommendation.c_slot_bytes,
                 num_servers=n,
                 parallel=p,
+                model_budget_bytes=model_budget_bytes,
             )
         except RuntimeError as exc:
             print(f"ERROR: {exc}", flush=True)
@@ -247,7 +258,9 @@ def prompt_fleet(spec: SystemSpec, recommendation: FleetRecommendation) -> Fleet
             c_slot_bytes=recommendation.c_slot_bytes,
             memory_tier=tier,
         )
-        errors, warnings = validate_or_warn(spec, cfg)
+        errors, warnings = validate_or_warn(
+            spec, cfg, model_budget_bytes=model_budget_bytes,
+        )
         for warning in warnings:
             print(f"WARNING: {warning}", flush=True)
         if errors:
@@ -776,12 +789,24 @@ def ensure_fleet_config(
 
     cfg = _fleet_from_env(env_path=path)
     system_spec = spec or probe_system()
+    user_budget_gb = sizing.parse_model_memory_budget_gb(
+        os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
+        or os.getenv("ANNOTATION_MEMORY_BUDGET_GB")
+    )
+    model_budget_bytes = sizing.effective_model_budget_bytes(
+        system_spec, user_budget_gb=user_budget_gb,
+    )
     if cfg is not None:
         preserve_ka = _env_value("OLLAMA_FLEET_KEEP_ALIVE", env_path=path) is not None
         cfg = _normalize_fleet_config(
-            cfg, system_spec, preserve_keep_alive=preserve_ka,
+            cfg,
+            system_spec,
+            preserve_keep_alive=preserve_ka,
+            model_budget_bytes=model_budget_bytes,
         )
-        errors, warnings = validate_or_warn(system_spec, cfg)
+        errors, warnings = validate_or_warn(
+            system_spec, cfg, model_budget_bytes=model_budget_bytes,
+        )
         for warning in warnings:
             log.warning(warning)
         if errors:
@@ -797,6 +822,7 @@ def ensure_fleet_config(
         w_all_bytes=w_all,
         w_peak_bytes=w_peak,
         c_slot_bytes=c_slot,
+        model_budget_bytes=model_budget_bytes,
     )
     for warning in recommendation.warnings:
         log.warning(warning)
@@ -804,7 +830,9 @@ def ensure_fleet_config(
             print(f"WARNING: {warning}", flush=True)
 
     if interactive:
-        cfg = prompt_fleet(system_spec, recommendation)
+        cfg = prompt_fleet(
+            system_spec, recommendation, model_budget_bytes=model_budget_bytes,
+        )
     else:
         cfg = FleetConfig(
             num_servers=recommendation.num_servers,
