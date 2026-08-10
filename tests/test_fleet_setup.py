@@ -144,6 +144,35 @@ def test_effective_max_loaded_models_respects_env_override(monkeypatch):
     assert setup.effective_max_loaded_models(cfg) == 2
 
 
+def test_normalize_preserves_explicit_keep_alive(monkeypatch):
+    from worker.fleet import setup
+    from worker.fleet.config import FleetConfig
+    from worker.probe import SystemSpec
+
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=32 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    cfg = FleetConfig(
+        num_servers=1,
+        parallel=2,
+        max_slots=2,
+        keep_alive="5m",
+        w_all_bytes=20 * 1024**3,
+        w_peak_bytes=12 * 1024**3,
+        c_slot_bytes=int(0.4 * 1024**3),
+        memory_tier="vram_overflow",
+    )
+    out = setup._normalize_fleet_config(cfg, spec, preserve_keep_alive=True)
+    assert out.keep_alive == "5m"
+
+    out2 = setup._normalize_fleet_config(cfg, spec, preserve_keep_alive=False)
+    assert out2.keep_alive == "0"  # tier map for vram_overflow
+
+
 def test_ensure_fleet_config_loads_from_env(tmp_path, monkeypatch):
     env_path = tmp_path / "worker.env"
     env_path.write_text(

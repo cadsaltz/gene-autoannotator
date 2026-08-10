@@ -676,7 +676,13 @@ def _apply_fleet_to_environ(cfg: FleetConfig) -> None:
         os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = cfg.keep_alive
 
 
-def _normalize_fleet_config(cfg: FleetConfig, spec: SystemSpec) -> FleetConfig:
+def _normalize_fleet_config(
+    cfg: FleetConfig,
+    spec: SystemSpec,
+    *,
+    preserve_keep_alive: bool = False,
+    model_budget_bytes: int | None = None,
+) -> FleetConfig:
     w_peak = cfg.w_peak_bytes or models.estimate_w_peak_bytes()
     w_all = cfg.w_all_bytes or models.estimate_w_all_bytes()
     c_slot = cfg.c_slot_bytes or DEFAULT_C_SLOT_BYTES
@@ -688,6 +694,7 @@ def _normalize_fleet_config(cfg: FleetConfig, spec: SystemSpec) -> FleetConfig:
             c_slot_bytes=c_slot,
             num_servers=cfg.num_servers,
             parallel=cfg.parallel,
+            model_budget_bytes=model_budget_bytes,
         )
     except RuntimeError as exc:
         log.warning(
@@ -699,6 +706,7 @@ def _normalize_fleet_config(cfg: FleetConfig, spec: SystemSpec) -> FleetConfig:
             w_all_bytes=w_all,
             w_peak_bytes=w_peak,
             c_slot_bytes=c_slot,
+            model_budget_bytes=model_budget_bytes,
         )
         return FleetConfig(
             num_servers=rec.num_servers,
@@ -710,13 +718,14 @@ def _normalize_fleet_config(cfg: FleetConfig, spec: SystemSpec) -> FleetConfig:
             c_slot_bytes=rec.c_slot_bytes,
             memory_tier=rec.memory_tier,
         )
+    keep_alive = cfg.keep_alive if preserve_keep_alive else sizing.TIER_KEEP_ALIVE[tier]
     return replace(
         cfg,
         w_all_bytes=w_all,
         w_peak_bytes=w_peak,
         c_slot_bytes=c_slot,
         memory_tier=tier,
-        keep_alive=sizing.TIER_KEEP_ALIVE[tier],
+        keep_alive=keep_alive,
     )
 
 
@@ -766,7 +775,10 @@ def ensure_fleet_config(
     cfg = _fleet_from_env(env_path=path)
     system_spec = spec or probe_system()
     if cfg is not None:
-        cfg = _normalize_fleet_config(cfg, system_spec)
+        preserve_ka = _env_value("OLLAMA_FLEET_KEEP_ALIVE", env_path=path) is not None
+        cfg = _normalize_fleet_config(
+            cfg, system_spec, preserve_keep_alive=preserve_ka,
+        )
         errors, warnings = validate_or_warn(system_spec, cfg)
         for warning in warnings:
             log.warning(warning)
