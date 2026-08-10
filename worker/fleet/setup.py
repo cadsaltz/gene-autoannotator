@@ -767,7 +767,19 @@ def refresh_fleet_footprints(
     )
     path = env_path or _default_env_path()
     preserve_ka = _env_value("OLLAMA_FLEET_KEEP_ALIVE", env_path=path) is not None
-    updated = _normalize_fleet_config(updated, spec, preserve_keep_alive=preserve_ka)
+    user_budget_gb = sizing.parse_model_memory_budget_gb(
+        os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
+        or os.getenv("ANNOTATION_MEMORY_BUDGET_GB")
+    )
+    model_budget_bytes = sizing.effective_model_budget_bytes(
+        spec, user_budget_gb=user_budget_gb,
+    )
+    updated = _normalize_fleet_config(
+        updated,
+        spec,
+        preserve_keep_alive=preserve_ka,
+        model_budget_bytes=model_budget_bytes,
+    )
     _persist_fleet_config(path, updated)
     _apply_fleet_to_environ(updated)
     log.info(

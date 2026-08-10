@@ -1,5 +1,6 @@
 from worker.fleet.config import FleetConfig
 from worker.fleet.sizing import FleetRecommendation
+from worker.fleet import sizing
 from worker.fleet.supervisor import FleetSupervisor
 from worker.fleet import setup
 from worker.probe import SystemSpec
@@ -283,6 +284,48 @@ def test_refresh_fleet_footprints_preserves_explicit_keep_alive(tmp_path, monkey
     out = setup.refresh_fleet_footprints(cfg, spec, host="127.0.0.1:11434", env_path=env_path)
     assert out.keep_alive == "5m"
     assert persisted[-1].keep_alive == "5m"
+
+
+def test_refresh_fleet_footprints_forwards_model_budget_bytes(tmp_path, monkeypatch):
+    env_path = tmp_path / "worker.env"
+    env_path.write_text("", encoding="utf-8")
+    spec = SystemSpec(
+        gpu_count=1,
+        vram_bytes=(8 * 1024**3,),
+        system_ram_bytes=32 * 1024**3,
+        cpu_physical=6,
+        cpu_logical=12,
+    )
+    cfg = FleetConfig(
+        num_servers=1,
+        parallel=2,
+        max_slots=2,
+        keep_alive="0",
+        w_all_bytes=20 * 1024**3,
+        w_peak_bytes=12 * 1024**3,
+        c_slot_bytes=int(0.4 * 1024**3),
+        memory_tier="vram_overflow",
+    )
+    monkeypatch.setenv("WORKER_MODEL_MEMORY_BUDGET_GB", "16")
+    monkeypatch.setattr(
+        setup.models,
+        "resolve_footprints",
+        lambda **kw: (22 * 1024**3, 12 * 1024**3, "manifest"),
+    )
+    captured: dict[str, int | None] = {}
+
+    def fake_normalize(cfg, spec, *, preserve_keep_alive=False, model_budget_bytes=None):
+        captured["model_budget_bytes"] = model_budget_bytes
+        return cfg
+
+    monkeypatch.setattr(setup, "_normalize_fleet_config", fake_normalize)
+    monkeypatch.setattr(setup, "_persist_fleet_config", lambda path, c: None)
+    monkeypatch.setattr(setup, "_apply_fleet_to_environ", lambda c: None)
+
+    setup.refresh_fleet_footprints(cfg, spec, host="127.0.0.1:11434", env_path=env_path)
+
+    expected = sizing.effective_model_budget_bytes(spec, user_budget_gb=16.0)
+    assert captured["model_budget_bytes"] == expected
 
 
 def test_ensure_fleet_config_loads_from_env(tmp_path, monkeypatch):
