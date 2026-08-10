@@ -49,13 +49,20 @@ def _load_ncbi_json(response, query_label):
             f'NCBI response empty for {query_label} (HTTP {status})'
         )
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
         preview = raw.strip().replace("\n", " ")[:200]
         raise RuntimeError(
             f'NCBI response non-JSON for {query_label} '
             f'(HTTP {status}): {preview!r}'
         ) from exc
+    if not isinstance(parsed, dict):
+        preview = raw.strip().replace("\n", " ")[:200]
+        raise RuntimeError(
+            f'NCBI response non-object JSON for {query_label} '
+            f'(HTTP {status}): {preview!r}'
+        )
+    return parsed
 
 
 @dataclass

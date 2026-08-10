@@ -104,6 +104,30 @@ def test_get_pmc_id_sources_returns_empty_when_pmc_and_pubmed_bodies_empty():
     assert sources == {}
 
 
+def test_get_pmc_id_sources_returns_empty_when_elink_body_not_object():
+    manager = FakeSearchPmcPaperManager([
+        "",  # PMC esearch empty -> PubMed fallback
+        '{"esearchresult": {"idlist": ["111"]}}',
+        "null",  # elink JSON null must not crash ELink parsing
+    ])
+
+    sources = manager.get_pmc_id_sources("Rv0003", "Rv0003")
+
+    assert sources == {}
+
+
+def test_get_pmc_id_sources_returns_empty_when_elink_body_is_array():
+    manager = FakeSearchPmcPaperManager([
+        '{"esearchresult": {"ERROR": "Search Backend failed"}}',
+        '{"esearchresult": {"idlist": ["111"]}}',
+        "[]",  # elink JSON array must not crash ELink parsing
+    ])
+
+    sources = manager.get_pmc_id_sources("Rv0003", "Rv0003")
+
+    assert sources == {}
+
+
 def test_get_pmc_id_sources_falls_back_to_pubmed_when_pmc_search_errors():
     manager = FakeSearchPmcPaperManager([
         '{"esearchresult": {"ERROR": "Search Backend failed: HTTP request returned 503 status."}}',
