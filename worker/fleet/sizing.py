@@ -62,6 +62,50 @@ def total_model_budget_bytes(spec: SystemSpec, num_servers: int) -> int:
     return vram_budget_for_fleet(spec, num_servers) + ram_model_budget_bytes(spec)
 
 
+def machine_model_cap_bytes(spec: SystemSpec, num_servers: int = 1) -> int:
+    return total_model_budget_bytes(spec, num_servers)
+
+
+def parse_model_memory_budget_gb(raw: str | None) -> float | None:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text or text == "-1":
+        return None
+    value = float(text)
+    if value < 0:
+        return None
+    return value
+
+
+def effective_model_budget_bytes(
+    spec: SystemSpec,
+    *,
+    user_budget_gb: float | None,
+    num_servers: int = 1,
+) -> int:
+    cap = machine_model_cap_bytes(spec, num_servers)
+    if user_budget_gb is None or user_budget_gb < 0:
+        return cap
+    return min(int(user_budget_gb * 1024**3), cap)
+
+
+def _feasibility_budget_bytes(
+    spec: SystemSpec,
+    num_servers: int,
+    *,
+    tier: MemoryTier,
+    model_budget_bytes: int | None,
+) -> int:
+    if tier == "warm_stack":
+        base = vram_budget_for_fleet(spec, num_servers)
+    else:
+        base = total_model_budget_bytes(spec, num_servers)
+    if model_budget_bytes is None:
+        return base
+    return min(base, model_budget_bytes)
+
+
 def classify_memory_tier(
     spec: SystemSpec,
     *,
@@ -70,9 +114,12 @@ def classify_memory_tier(
     c_slot_bytes: int,
     num_servers: int = 1,
     parallel: int = 1,
+    model_budget_bytes: int | None = None,
 ) -> MemoryTier:
     vram_budget = vram_budget_for_fleet(spec, num_servers)
     total_budget = total_model_budget_bytes(spec, num_servers)
+    if model_budget_bytes is not None:
+        total_budget = min(total_budget, model_budget_bytes)
     warm_need = vram_needed_bytes(
         num_servers, parallel, model_bytes=w_all_bytes, c_slot_bytes=c_slot_bytes,
     )
@@ -80,7 +127,11 @@ def classify_memory_tier(
         num_servers, parallel, model_bytes=w_peak_bytes, c_slot_bytes=c_slot_bytes,
     )
 
-    if vram_budget and warm_need <= vram_budget:
+    if (
+        vram_budget
+        and warm_need <= vram_budget
+        and (model_budget_bytes is None or warm_need <= model_budget_bytes)
+    ):
         return "warm_stack"
     if peak_need <= vram_budget:
         return "swap"
@@ -137,6 +188,7 @@ def enumerate_feasible(
     w_all_bytes: int,
     w_peak_bytes: int,
     c_slot_bytes: int,
+    model_budget_bytes: int | None = None,
 ) -> list[tuple[FleetConfig, MemoryTier]]:
     max_servers = _max_servers_for_spec(spec)
     options: list[tuple[FleetConfig, MemoryTier]] = []
@@ -151,6 +203,7 @@ def enumerate_feasible(
                 c_slot_bytes=c_slot_bytes,
                 num_servers=n,
                 parallel=1,
+                model_budget_bytes=model_budget_bytes,
             )
         except RuntimeError:
             continue
@@ -171,6 +224,7 @@ def enumerate_feasible(
                     c_slot_bytes=c_slot_bytes,
                     num_servers=n,
                     parallel=p,
+                    model_budget_bytes=model_budget_bytes,
                 )
             except RuntimeError:
                 continue
@@ -179,16 +233,15 @@ def enumerate_feasible(
                 needed = vram_needed_bytes(
                     n, p, model_bytes=w_all_bytes, c_slot_bytes=c_slot_bytes,
                 )
-                budget = vram_budget_for_fleet(spec, n)
-                if budget and needed > budget:
-                    continue
             else:
                 needed = vram_needed_bytes(
                     n, p, model_bytes=w_peak_bytes, c_slot_bytes=c_slot_bytes,
                 )
-                budget = total_model_budget_bytes(spec, n)
-                if budget and needed > budget:
-                    continue
+            budget = _feasibility_budget_bytes(
+                spec, n, tier=tier, model_budget_bytes=model_budget_bytes,
+            )
+            if budget and needed > budget:
+                continue
 
             max_slots = recommend_max_slots(spec, n, p)
             model_count = len(required_model_names())
@@ -287,12 +340,14 @@ def recommend(
     w_all_bytes: int,
     w_peak_bytes: int,
     c_slot_bytes: int,
+    model_budget_bytes: int | None = None,
 ) -> FleetRecommendation:
     feasible = enumerate_feasible(
         spec,
         w_all_bytes=w_all_bytes,
         w_peak_bytes=w_peak_bytes,
         c_slot_bytes=c_slot_bytes,
+        model_budget_bytes=model_budget_bytes,
     )
     if not feasible:
         raise RuntimeError("No feasible Ollama fleet configuration for this machine")
@@ -325,7 +380,12 @@ def recommend(
     )
 
 
-def validate_fleet(spec: SystemSpec, cfg: FleetConfig) -> tuple[list[str], list[str]]:
+def validate_fleet(
+    spec: SystemSpec,
+    cfg: FleetConfig,
+    *,
+    model_budget_bytes: int | None = None,
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -338,7 +398,9 @@ def validate_fleet(spec: SystemSpec, cfg: FleetConfig) -> tuple[list[str], list[
             model_bytes=cfg.w_all_bytes,
             c_slot_bytes=cfg.c_slot_bytes,
         )
-        budget = vram_budget_for_fleet(spec, cfg.num_servers)
+        budget = _feasibility_budget_bytes(
+            spec, cfg.num_servers, tier=tier, model_budget_bytes=model_budget_bytes,
+        )
         if budget and needed > budget:
             errors.append(
                 f"VRAM exceeded for warm stack: need {needed / 1024**3:.1f} GB, "
@@ -351,7 +413,9 @@ def validate_fleet(spec: SystemSpec, cfg: FleetConfig) -> tuple[list[str], list[
             model_bytes=w_peak,
             c_slot_bytes=cfg.c_slot_bytes,
         )
-        budget = total_model_budget_bytes(spec, cfg.num_servers)
+        budget = _feasibility_budget_bytes(
+            spec, cfg.num_servers, tier=tier, model_budget_bytes=model_budget_bytes,
+        )
         if budget and needed > budget:
             errors.append(
                 f"Model memory exceeded: need {needed / 1024**3:.1f} GB, "
