@@ -98,6 +98,17 @@ def effective_model_budget_bytes(
     return min(user_bytes, cap)
 
 
+def _budget_with_user_cap(
+    machine_budget: int,
+    model_budget_bytes: int | None,
+) -> int:
+    if model_budget_bytes is None:
+        return machine_budget
+    if machine_budget <= 0 and model_budget_bytes > 0:
+        return model_budget_bytes
+    return min(machine_budget, model_budget_bytes)
+
+
 def _feasibility_budget_bytes(
     spec: SystemSpec,
     num_servers: int,
@@ -109,9 +120,7 @@ def _feasibility_budget_bytes(
         base = vram_budget_for_fleet(spec, num_servers)
     else:
         base = total_model_budget_bytes(spec, num_servers)
-    if model_budget_bytes is None:
-        return base
-    return min(base, model_budget_bytes)
+    return _budget_with_user_cap(base, model_budget_bytes)
 
 
 def classify_memory_tier(
@@ -126,9 +135,7 @@ def classify_memory_tier(
 ) -> MemoryTier:
     vram_budget = vram_budget_for_fleet(spec, num_servers)
     machine_cap = total_model_budget_bytes(spec, num_servers)
-    total_budget = machine_cap
-    if model_budget_bytes is not None:
-        total_budget = min(total_budget, model_budget_bytes)
+    total_budget = _budget_with_user_cap(machine_cap, model_budget_bytes)
     warm_need = vram_needed_bytes(
         num_servers, parallel, model_bytes=w_all_bytes, c_slot_bytes=c_slot_bytes,
     )
@@ -146,7 +153,10 @@ def classify_memory_tier(
     if peak_need <= total_budget:
         return "vram_overflow"
 
-    budget_is_binding = model_budget_bytes is not None and model_budget_bytes < machine_cap
+    budget_is_binding = (
+        model_budget_bytes is not None
+        and (machine_cap <= 0 or model_budget_bytes < machine_cap)
+    )
     if budget_is_binding:
         raise RuntimeError(
             "No feasible Ollama fleet configuration within your "

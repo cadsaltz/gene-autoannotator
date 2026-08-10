@@ -259,6 +259,40 @@ def test_recommend_raises_budget_specific_error_when_tight_budget_infeasible():
         assert needed <= tiny_budget
 
 
+def _no_cap_spec():
+    """Probe returned no VRAM/RAM capacity (e.g. headless CI)."""
+    return SystemSpec(
+        gpu_count=0,
+        vram_bytes=(),
+        system_ram_bytes=0,
+        cpu_physical=1,
+        cpu_logical=1,
+    )
+
+
+def test_classify_uses_user_budget_when_machine_cap_zero():
+    spec = _no_cap_spec()
+    assert sizing.total_model_budget_bytes(spec, 1) <= 0
+    w_peak = int(2 * 1024**3)
+    w_all = int(4 * 1024**3)
+    c_slot = int(0.4 * 1024**3)
+    user_budget = int(8 * 1024**3)
+
+    tier = sizing.classify_memory_tier(
+        spec,
+        w_all_bytes=w_all,
+        w_peak_bytes=w_peak,
+        c_slot_bytes=c_slot,
+        model_budget_bytes=user_budget,
+    )
+    assert tier == "vram_overflow"
+
+    budget = sizing._feasibility_budget_bytes(
+        spec, 1, tier=tier, model_budget_bytes=user_budget,
+    )
+    assert budget == user_budget
+
+
 def test_recommend_finds_feasible_config_when_budget_allows_smaller_footprint():
     spec = _laptop_spec()
     w_all = int(2.0 * 1024**3)
