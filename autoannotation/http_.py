@@ -53,6 +53,17 @@ def _get_retry_backoff_seconds() -> float:
     ))
 
 
+def _get_cooldown_seconds(default: float = COOLDOWN_SECONDS_DEFAULT) -> float:
+    return max(0.0, _float_env("AUTOANNOTATION_HTTP_COOLDOWN_SEC", default))
+
+
+def _response_body_is_empty(response) -> bool:
+    text = getattr(response, "text", None)
+    if text is None:
+        return True
+    return not str(text).strip()
+
+
 def _is_retryable_request_error(exc: BaseException) -> bool:
     if isinstance(exc, _RETRYABLE_REQUEST_ERRORS):
         return True
@@ -112,7 +123,7 @@ log.setLevel(logging.DEBUG)
 # not a distributed rate limiter.
 class Throttler:
     def __init__(self, cooldown_secs=None, timeout_secs=None):
-        self.cooldown_seconds = COOLDOWN_SECONDS_DEFAULT if cooldown_secs is None else cooldown_secs
+        self.cooldown_seconds = _get_cooldown_seconds() if cooldown_secs is None else cooldown_secs
         self.last_requests = {}
         self.scraper = cs.create_scraper()
         self.timeout = TIMEOUT_SECONDS_DEFAULT if timeout_secs is None else timeout_secs
@@ -174,6 +185,27 @@ class Throttler:
                 sleep_for = backoff * (2 ** (attempt - 1))
                 log.warning(
                     'Request to %s returned HTTP %s; retrying in %.1fs (%s/%s)',
+                    label,
+                    status_code,
+                    sleep_for,
+                    attempt,
+                    attempts,
+                )
+                time.sleep(sleep_for)
+                continue
+
+            if _response_body_is_empty(return_value):
+                last_exc = requests.exceptions.HTTPError(
+                    f'empty body from {label}',
+                    response=return_value,
+                )
+                if attempt >= attempts:
+                    raise last_exc
+                sleep_for = backoff * (2 ** (attempt - 1))
+                status_code = getattr(return_value, "status_code", "?")
+                log.warning(
+                    'Request to %s returned empty body (HTTP %s); '
+                    'retrying in %.1fs (%s/%s)',
                     label,
                     status_code,
                     sleep_for,
