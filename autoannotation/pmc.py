@@ -40,6 +40,24 @@ DEFAULT_MAX_RANK = 20
 DEFAULT_ORGANISM_PROFILE = organisms.resolve_profile('mtb-h37rv')
 
 
+def _load_ncbi_json(response, query_label):
+    status = getattr(response, "status_code", "?")
+    text = getattr(response, "text", None)
+    raw = "" if text is None else str(text)
+    if not raw.strip():
+        raise RuntimeError(
+            f'NCBI response empty for {query_label} (HTTP {status})'
+        )
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        preview = raw.strip().replace("\n", " ")[:200]
+        raise RuntimeError(
+            f'NCBI response non-JSON for {query_label} '
+            f'(HTTP {status}): {preview!r}'
+        ) from exc
+
+
 @dataclass
 class PaperSelectionResult:
     selected_records: list
@@ -208,21 +226,28 @@ class PmcPaperManager(papers.PaperManager):
         return combined
 
     def _search_pmc_idlist(self, pmc_search_url, search_term, query_label):
-        response = self.throttler.get(pmc_search_url, base_url)
-        result = json.loads(response.text)
         try:
+            response = self.throttler.get(pmc_search_url, base_url)
+            result = _load_ncbi_json(response, query_label)
             return self._extract_esearch_idlist(result, query_label)
         except RuntimeError as exc:
             log.warning(
                 f'PMC search unavailable for {query_label} query ({exc}); '
                 'falling back to PubMed-to-PMC links'
             )
-            return self._search_pubmed_for_pmc_ids(search_term, query_label)
+            try:
+                return self._search_pubmed_for_pmc_ids(search_term, query_label)
+            except RuntimeError as fallback_exc:
+                log.warning(
+                    f'PubMed fallback unavailable for {query_label} '
+                    f'({fallback_exc}); treating as no papers'
+                )
+                return []
 
     def _search_pubmed_for_pmc_ids(self, search_term, query_label):
         pubmed_search_url = pubmed_search_url_tmpl.format(term=search_term) + http_.ncbi_api_key_param()
         response = self.throttler.get(pubmed_search_url, base_url)
-        result = json.loads(response.text)
+        result = _load_ncbi_json(response, f'{query_label} PubMed fallback')
         pubmed_ids = self._extract_esearch_idlist(result, f'{query_label} PubMed fallback')
         return self._get_pmc_ids_for_pubmed_ids(pubmed_ids)
 
@@ -244,8 +269,12 @@ class PmcPaperManager(papers.PaperManager):
             return []
         query = urlencode([('id', pubmed_id) for pubmed_id in pubmed_ids])
         url = pubmed_to_pmc_url_tmpl.format(ids=query) + http_.ncbi_api_key_param()
-        response = self.throttler.get(url, base_url)
-        result = json.loads(response.text)
+        try:
+            response = self.throttler.get(url, base_url)
+            result = _load_ncbi_json(response, 'PubMed-to-PMC elink')
+        except RuntimeError as exc:
+            log.warning(f'PubMed-to-PMC elink failed ({exc}); returning no PMC ids')
+            return []
         pmc_ids = []
         seen = set()
         for linkset in result.get('linksets', []):
