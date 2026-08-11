@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import xml.etree.ElementTree as ET
 
+import requests
+
 from . import http_
 from . import metadata
 from . import organisms
@@ -233,18 +235,19 @@ class PmcPaperManager(papers.PaperManager):
         return combined
 
     def _search_pmc_idlist(self, pmc_search_url, search_term, query_label):
+        # RequestException covers Throttler HTTPError after empty-body / 5xx retries.
         try:
             response = self.throttler.get(pmc_search_url, base_url)
             result = _load_ncbi_json(response, query_label)
             return self._extract_esearch_idlist(result, query_label)
-        except RuntimeError as exc:
+        except (RuntimeError, requests.RequestException) as exc:
             log.warning(
                 f'PMC search unavailable for {query_label} query ({exc}); '
                 'falling back to PubMed-to-PMC links'
             )
             try:
                 return self._search_pubmed_for_pmc_ids(search_term, query_label)
-            except RuntimeError as fallback_exc:
+            except (RuntimeError, requests.RequestException) as fallback_exc:
                 log.warning(
                     f'PubMed fallback unavailable for {query_label} '
                     f'({fallback_exc}); treating as no papers'
@@ -279,7 +282,7 @@ class PmcPaperManager(papers.PaperManager):
         try:
             response = self.throttler.get(url, base_url)
             result = _load_ncbi_json(response, 'PubMed-to-PMC elink')
-        except RuntimeError as exc:
+        except (RuntimeError, requests.RequestException) as exc:
             log.warning(f'PubMed-to-PMC elink failed ({exc}); returning no PMC ids')
             return []
         pmc_ids = []

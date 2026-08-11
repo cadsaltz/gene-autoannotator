@@ -1,3 +1,5 @@
+import requests
+
 from autoannotation import organisms
 from autoannotation.pmc import PmcPaperManager, RelevanceRecord
 
@@ -14,7 +16,11 @@ class FakeThrottler:
 
     def get(self, url, base_url):
         self.urls.append(url)
-        return FakeResponse(self.responses.pop(0))
+        item = self.responses.pop(0)
+        # Allow tests to inject Throttler-like failures (e.g. empty-body HTTPError).
+        if isinstance(item, BaseException):
+            raise item
+        return FakeResponse(item)
 
 
 class FakePmcPaperManager(PmcPaperManager):
@@ -102,6 +108,33 @@ def test_get_pmc_id_sources_returns_empty_when_pmc_and_pubmed_bodies_empty():
     sources = manager.get_pmc_id_sources("Rv0003", "Rv0003")
 
     assert sources == {}
+
+
+def test_get_pmc_id_sources_falls_back_when_throttler_raises_http_error():
+    """Production path: Throttler raises HTTPError after empty-body retries."""
+    empty_err = requests.exceptions.HTTPError("empty body from eutils")
+    manager = FakeSearchPmcPaperManager([
+        empty_err,
+        '{"esearchresult": {"idlist": ["111"]}}',
+        (
+            '{"linksets": [{"linksetdbs": ['
+            '{"linkname": "pubmed_pmc", "links": ["222"]}'
+            ']}]}'
+        ),
+    ])
+
+    sources = manager.get_pmc_id_sources("Rv0003", "Rv0003")
+
+    assert sources == {"222": {"locus"}}
+    assert "db=pmc" in manager.throttler.urls[0]
+    assert "db=pubmed" in manager.throttler.urls[1]
+
+
+def test_get_pmc_id_sources_returns_empty_when_throttler_raises_on_pmc_and_pubmed():
+    err = requests.exceptions.HTTPError("empty body from eutils")
+    manager = FakeSearchPmcPaperManager([err, err])
+
+    assert manager.get_pmc_id_sources("Rv0003", "Rv0003") == {}
 
 
 def test_get_pmc_id_sources_returns_empty_when_elink_body_not_object():

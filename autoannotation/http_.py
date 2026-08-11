@@ -162,7 +162,11 @@ class Throttler:
                 return_value = throttled_function()
             except BaseException as exc:
                 last_exc = exc
-                if attempt >= attempts or not _is_retryable_request_error(exc):
+                retryable = _is_retryable_request_error(exc)
+                if retryable:
+                    # Stamp even on failure so cooldown still applies under rate pressure.
+                    self.last_requests[label] = time.time()
+                if attempt >= attempts or not retryable:
                     raise
                 sleep_for = backoff * (2 ** (attempt - 1))
                 log.warning(
@@ -182,6 +186,7 @@ class Throttler:
                     f'{status_code} from {label}',
                     response=return_value,
                 )
+                self.last_requests[label] = time.time()
                 if attempt >= attempts:
                     return_value.raise_for_status()
                 sleep_for = backoff * (2 ** (attempt - 1))
@@ -201,6 +206,7 @@ class Throttler:
                     f'empty body from {label}',
                     response=return_value,
                 )
+                self.last_requests[label] = time.time()
                 if attempt >= attempts:
                     raise last_exc
                 sleep_for = backoff * (2 ** (attempt - 1))

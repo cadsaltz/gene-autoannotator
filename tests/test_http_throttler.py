@@ -119,3 +119,17 @@ def test_throttler_zero_cooldown_env_does_not_raise(monkeypatch, cooldown_env):
     monkeypatch.setenv("AUTOANNOTATION_HTTP_COOLDOWN_SEC", cooldown_env)
     throttler = http_.Throttler()
     assert throttler.cooldown_seconds == 0
+
+
+def test_throttler_stamps_last_requests_after_empty_body_exhaustion(monkeypatch):
+    monkeypatch.setenv("AUTOANNOTATION_HTTP_GET_ATTEMPTS", "2")
+    monkeypatch.setenv("AUTOANNOTATION_HTTP_RETRY_BACKOFF_SEC", "0")
+
+    class EmptyResponse:
+        status_code = 200
+        text = ""
+
+    throttler = http_.Throttler(cooldown_secs=10, timeout_secs=1)
+    with pytest.raises(requests.exceptions.HTTPError, match="empty body"):
+        throttler.throttle("eutils.ncbi.nlm.nih.gov", lambda: EmptyResponse())
+    assert "eutils.ncbi.nlm.nih.gov" in throttler.last_requests
