@@ -641,6 +641,25 @@ def _env_file_has_key(key: str, *, env_path: Path) -> bool:
     return bool(file_values.get(key))
 
 
+def _pin_keep_alive_from_environ(env_path: Path) -> None:
+    """Copy process ``OLLAMA_FLEET_KEEP_ALIVE`` into the worker env file.
+
+    Docker ``--env-file`` / systemd ``EnvironmentFile`` inject into
+    ``os.environ`` but not ``WORKER_ENV_FILE``. Without materializing the
+    key, :func:`_env_file_has_key` misses the operator setting and
+    :func:`_normalize_fleet_config` replaces it with the memory-tier default
+    (e.g. ``vram_overflow`` → ``0``).
+    """
+    val = (os.environ.get("OLLAMA_FLEET_KEEP_ALIVE") or "").strip()
+    if not val:
+        return
+    saved = load_env_file(env_path)
+    if saved.get("OLLAMA_FLEET_KEEP_ALIVE") == val:
+        return
+    saved["OLLAMA_FLEET_KEEP_ALIVE"] = val
+    save_env_file(env_path, saved)
+
+
 def _fleet_env_complete(*, env_path: Path) -> bool:
     return all(_env_value(key, env_path=env_path) for key in FLEET_ENV_KEYS)
 
@@ -809,6 +828,7 @@ def ensure_fleet_config(
     env_path: Path | None = None,
 ) -> FleetConfig:
     path = env_path or _default_env_path()
+    _pin_keep_alive_from_environ(path)
 
     cfg = _fleet_from_env(env_path=path)
     system_spec = spec or probe_system()
