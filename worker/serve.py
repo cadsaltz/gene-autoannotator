@@ -235,7 +235,9 @@ def main(args=None):
             "yes",
             "on",
         }:
-            keep_alive = os.getenv("AUTOANNOTATION_OLLAMA_KEEP_ALIVE", "-1")
+            from worker.ollama_keep_alive import resolve_job_keep_alive
+
+            keep_alive = resolve_job_keep_alive(fleet_keep_alive=fleet.keep_alive)
             warm_all_models(
                 client=ollama.Client(host=primary_host),
                 keep_alive=keep_alive,

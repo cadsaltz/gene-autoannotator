@@ -35,8 +35,11 @@ def main():
     )
     bench_parser.add_argument(
         "--keep-alive",
-        default="-1",
-        help="Ollama keep_alive for all LLM calls (default -1 = never unload)",
+        default=None,
+        help=(
+            "Ollama keep_alive for all LLM calls. When omitted, uses "
+            "OLLAMA_FLEET_KEEP_ALIVE from the worker env (same as other fleet options)"
+        ),
     )
     bench_parser.add_argument(
         "--no-warm-models",

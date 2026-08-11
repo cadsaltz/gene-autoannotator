@@ -135,10 +135,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--keep-alive",
-        default="-1",
+        default=None,
         help=(
-            "Ollama keep_alive for all LLM calls. Default -1 (never unload). "
-            "Use 5m, 30m, or 0 for timed/immediate unload."
+            "Ollama keep_alive for all LLM calls. When omitted, uses "
+            "OLLAMA_FLEET_KEEP_ALIVE / AUTOANNOTATION_OLLAMA_KEEP_ALIVE from the "
+            "worker env (same source as other fleet options). Examples: -1, 5m, 0."
         ),
     )
     parser.add_argument(
@@ -291,8 +292,15 @@ def main(argv=None):
         _purge_llm_cache()
         _progress("LLM cache cleared (cold start)")
 
-    job_keep_alive = args.keep_alive
+    from worker.ollama_keep_alive import resolve_job_keep_alive
+
+    job_keep_alive = resolve_job_keep_alive(
+        cli_value=getattr(args, "keep_alive", None),
+        fleet_keep_alive=fleet.keep_alive,
+    )
     os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = str(job_keep_alive)
+    os.environ["OLLAMA_FLEET_KEEP_ALIVE"] = str(job_keep_alive)
+    fleet = replace(fleet, keep_alive=str(job_keep_alive))
 
     source = BatchJobSource(args.jobs)
     selected_slots = args.slots if args.slots is not None else fleet.max_slots
