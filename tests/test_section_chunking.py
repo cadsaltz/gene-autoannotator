@@ -37,6 +37,24 @@ def test_expand_labels_number_when_multiple():
     assert out == [("results#1", p1), ("results#2", p2)]
 
 
-def test_excerpt_max_chars_from_env(monkeypatch):
+def test_hard_truncate_when_sentence_exceeds_max_chars(caplog):
+    long_unit = "A" * 100
+    max_chars = 40
+    chunks = chunk_section_text(long_unit, max_chars=max_chars)
+    assert all(len(c) <= max_chars for c in chunks)
+    assert len(chunks) == 1
+    assert chunks[0] == long_unit[:max_chars]
+    assert "hard-truncating" in caplog.text
+
+
+def test_excerpt_max_chars_from_env():
     assert excerpt_max_chars_from_env({}) == 10_000
     assert excerpt_max_chars_from_env({"AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS": "8000"}) == 8000
+    for invalid in ("abc", "0", "-1"):
+        env = {"AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS": invalid}
+        assert excerpt_max_chars_from_env(env) == 10_000
+
+
+def test_expand_sections_flattens():
+    sections = [("intro", "short"), ("methods", "also short")]
+    assert expand_sections(sections, max_chars=100) == sections
