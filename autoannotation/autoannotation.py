@@ -22,6 +22,7 @@ from . import targets
 from . import utils
 
 from .models import MODEL_SUMMARY, MODEL_AGGREGATION, MODEL_CONSENSUS
+from .section_chunking import expand_sections, excerpt_max_chars_from_env
 from shared.job_progress import JobProgressEvent
 
 logging.basicConfig(format='%(asctime)s %(levelname).1s | %(message)s')
@@ -71,6 +72,11 @@ def collect_paper_sections(paper_manager, pmc_id):
     if discussion is not None and discussion != results:
         sections.append(('discussion', discussion))
     return sections
+
+
+def _sections_for_extraction(paper_manager, pmc_id, *, max_chars):
+    raw_sections = collect_paper_sections(paper_manager, pmc_id)
+    return expand_sections(raw_sections, max_chars=max_chars)
 
 
 _PASS_PHASES = {
@@ -188,8 +194,9 @@ def run_paper_annotation_pass(
 
     # Pre-scan section availability for every selected paper before any LLM
     # call so progress totals are known up front.
+    max_chars = excerpt_max_chars_from_env()
     papers_sections = [
-        (pmc_id, collect_paper_sections(paper_manager, pmc_id))
+        (pmc_id, _sections_for_extraction(paper_manager, pmc_id, max_chars=max_chars))
         for pmc_id in papers_to_analyze
     ]
     sections_total = sum(len(sections) for _, sections in papers_sections)
