@@ -23,13 +23,15 @@ from worker.config import load_config
 from worker.fleet.models import required_model_names
 from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet
 from worker.fleet.supervisor import FleetSupervisor
-from worker.ollama_bootstrap import ensure_models, warm_all_models
+from worker.ollama_bootstrap import ensure_models, should_prewarm, warm_all_models
 from worker.probe import probe_system
 from worker.progress_reporter import ProgressReporter
 from worker.router import Backend, ModelRouter
 from worker.router.server import start_router_server
 from worker.runtime import WorkerRuntime
 from worker.sources.coordinator import CoordinatorJobSource
+from worker.fleet import sizing
+from worker.bench import _build_model_memory_cache
 
 DEFAULT_LOG_FILENAME = "worker-serve.log"
 
@@ -225,10 +227,25 @@ def main(args=None):
     fleet = replace(fleet, model_count=len(required))
 
     fleet_supervisor: FleetSupervisor | None = None
+    model_cache = None
     if not discover_only:
         fleet_supervisor = reset_ollama_fleet(fleet, spec)
         primary_host = fleet.backend_hosts()[0]
         ensure_models(client=ollama.Client(host=primary_host))
+        user_budget_gb = sizing.parse_model_memory_budget_gb(
+            os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
+            or os.getenv("ANNOTATION_MEMORY_BUDGET_GB")
+        )
+        budget = sizing.cache_budget_bytes(
+            spec,
+            user_budget_gb=user_budget_gb,
+            num_servers=fleet.num_servers,
+        )
+        model_cache, sizes = _build_model_memory_cache(
+            host=primary_host,
+            budget_bytes=budget,
+            model_names=required,
+        )
         if os.getenv("AUTOANNOTATION_OLLAMA_WARM_ALL", "").strip().lower() in {
             "1",
             "true",
@@ -238,11 +255,19 @@ def main(args=None):
             from worker.ollama_keep_alive import resolve_job_keep_alive
 
             keep_alive = resolve_job_keep_alive(fleet_keep_alive=fleet.keep_alive)
-            warm_all_models(
-                client=ollama.Client(host=primary_host),
-                keep_alive=keep_alive,
-                required=sorted(required),
-            )
+            if should_prewarm(model_sizes=sizes, budget_bytes=budget):
+                warm_all_models(
+                    client=ollama.Client(host=primary_host),
+                    host=primary_host,
+                    keep_alive=keep_alive,
+                    required=sorted(required),
+                )
+            else:
+                log.info(
+                    "Skipping warm-all: stack needs %.1f GiB, budget %.1f GiB",
+                    sum(sizes.values()) / 1024**3,
+                    budget / 1024**3,
+                )
         fleet = refresh_fleet_footprints(
             fleet, spec, host=primary_host, measure_runtime_peak=False,
         )
@@ -263,6 +288,7 @@ def main(args=None):
         router_port,
         collect_metrics=False,
         fleet_supervisor=fleet_supervisor,
+        model_cache=model_cache,
     )
     os.environ["OLLAMA_ROUTER_URL"] = f"http://{router_host}:{router_thread._port}"
 
