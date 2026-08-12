@@ -1,5 +1,4 @@
 import threading
-import time
 
 from worker.router.model_cache import ModelMemoryCache
 
@@ -45,15 +44,14 @@ def test_ensure_hit_increments_refcount_without_reload():
 
 def test_ensure_evicts_lru_idle_models_until_space_fits():
     fake = FakeOllama()
-    sizes = {"a": 4, "b": 4, "c": 6}
+    sizes = {"a": 4, "b": 4, "c": 7}
     cache = _cache(fake, budget=10, sizes=sizes)
     cache.ensure("a"); cache.release("a")
     cache.ensure("b"); cache.release("b")
-    # resident a,b used=8; need c=6 → must evict both idle LRU (a then b) or enough for 6
+    # resident a,b used=8; need c=7, so one 4-byte eviction is insufficient
     cache.ensure("c")
-    assert "c" in cache.resident
-    assert "a" not in cache.resident or "b" not in cache.resident
-    assert fake.unloads  # at least one eviction
+    assert cache.resident == frozenset({"c"})
+    assert fake.unloads == ["a", "b"]
     cache.release("c")
 
 
@@ -64,6 +62,14 @@ def test_ensure_waits_when_only_busy_models_block_space():
     cache.ensure("a")  # busy, refcount=1
 
     done = {"ok": False}
+    entered_wait = threading.Event()
+    original_wait = cache._condition.wait
+
+    def observed_wait(timeout=None):
+        entered_wait.set()
+        return original_wait(timeout)
+
+    cache._condition.wait = observed_wait
 
     def other():
         cache.ensure("b")
@@ -72,8 +78,9 @@ def test_ensure_waits_when_only_busy_models_block_space():
 
     t = threading.Thread(target=other)
     t.start()
-    time.sleep(0.2)
+    assert entered_wait.wait(timeout=1.0)
     assert done["ok"] is False  # blocked: cannot evict busy a
     cache.release("a")
     t.join(timeout=2.0)
+    assert not t.is_alive()
     assert done["ok"] is True
