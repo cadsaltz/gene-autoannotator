@@ -47,6 +47,7 @@ Useful shared env vars (annotation models / hosts):
 | `AUTOANNOTATION_SUMMARY_MODELS` | Comma-separated extractor models |
 | `AUTOANNOTATION_CONSENSUS_MODEL` | Consensus model |
 | `AUTOANNOTATION_AGGREGATION_MODEL` | Aggregation model |
+| `AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS` | Max characters of paper excerpt per extractor call (default 10000); oversized abstract/results/discussion text is split on paragraphs, then sentences; each chunk gets its own extractors + consensus |
 | `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` | e.g. `-1` / `forever`, `0`, `5m` |
 | `OLLAMA_HOST` | Ollama base URL |
 | `NCBI_API_KEY` | Optional NCBI rate-limit key |
