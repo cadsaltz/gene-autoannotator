@@ -14,11 +14,10 @@ For embedding-based retrieval (default path):
 
 - **sentence-transformers** — installed via `requirements.txt`; first run downloads `sentence-transformers/all-MiniLM-L6-v2` unless you pass `--embed-model`.
 - **Ollama** — required for LLM rankers (default model `qwen3:8b`). This
-  project pins **Ollama server 0.24.0** (see `worker/ollama_version.py` /
+  project pins **Ollama server 0.15.6** (see `worker/ollama_version.py` /
   `deploy/docker/Dockerfile.worker`). Retrieval embeddings use
-  **sentence-transformers**, not Ollama, so downgrading the server does not
-  affect embedding search. GO ranking uses `/api/chat` with a JSON schema
-  (`format=…`), supported since Ollama 0.5 — fine on 0.24.
+  **sentence-transformers**, not Ollama. GO ranking uses `/api/chat` with a
+  JSON schema (`format=…`), supported since Ollama 0.5 — fine on 0.15.6.
 
   ```bash
   ollama pull qwen3:8b

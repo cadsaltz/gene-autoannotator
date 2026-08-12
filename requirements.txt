@@ -46,7 +46,7 @@ nvidia-nccl-cu13==2.28.9
 nvidia-nvjitlink==13.0.88
 nvidia-nvshmem-cu13==3.4.5
 nvidia-nvtx==13.0.85
-# Ollama *server* version is pinned to 0.24.0 (see deploy/docker/Dockerfile.worker
+# Ollama *server* version is pinned to 0.15.6 (see deploy/docker/Dockerfile.worker
 # and worker/ollama_version.py). Do not confuse that with this Python client pin.
 ollama==0.6.2
 packaging==26.2

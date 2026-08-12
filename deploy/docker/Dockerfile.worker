@@ -1,6 +1,6 @@
 # Pin the Ollama *server* (not the Python client in requirements.txt).
-# 0.24.x is the last version known-good for this project's fleet/bench runs.
-ARG OLLAMA_VERSION=0.24.0
+# Match the July 2026 known-good worker image base (commit 7ffe65c).
+ARG OLLAMA_VERSION=0.15.6
 FROM ollama/ollama:${OLLAMA_VERSION}
 
 RUN apt-get update \
@@ -33,7 +33,7 @@ ENV AUTOANNOTATION_MODEL_MODE=performance \
     OLLAMA_FLEET_SERVERS=1 \
     OLLAMA_FLEET_PARALLEL=1 \
     WORKER_MAX_SLOTS=2 \
-    OLLAMA_REQUIRE_VERSION=0.24.0 \
+    OLLAMA_REQUIRE_VERSION=0.15.6 \
     PYTHONUNBUFFERED=1
 
 ENTRYPOINT ["/usr/local/bin/worker-bench-entrypoint.sh"]

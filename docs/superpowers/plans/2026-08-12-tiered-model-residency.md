@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Ollama **server** pin remains `0.24.0` (`worker/ollama_version.py` / Dockerfile) unless explicitly changed elsewhere.
+- Ollama **server** pin is managed separately (`worker/ollama_version.py` / Dockerfile); currently `0.15.6` (July baseline).
 - Do **not** force `keep_alive=-1` when the model cache is enabled; use resolved fleet/env keep_alive (operator may set `5m`).
 - Pack models **largest-first** against **`pack_budget`**, not the raw observable cache budget.
 - Default `WORKER_RESIDENCY_PACK_FACTOR=0.70` (30% wiggle). Override via env if needed.
@@ -303,7 +303,7 @@ EOF
 - Perfect KV-cache byte accounting
 - Multi-host shared cache
 - Changing GO resolve behavior
-- Reverting Ollama server pin (stays 0.24 unless separate change)
+- Ollama server pin (handled separately; currently July baseline `0.15.6`)
 
 ## Success criteria
 
