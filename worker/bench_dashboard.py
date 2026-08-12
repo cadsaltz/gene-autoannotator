@@ -193,10 +193,12 @@ def _format_gib(nbytes: int | float) -> str:
     return f"{float(nbytes) / (1024**3):.1f} GiB"
 
 
-def _flight_dots(*, in_flight: int, slots: int) -> str:
+def _flight_dots(*, in_flight: int, slots: int, pending: bool = False) -> str:
+    """Render slot occupancy: ● busy, ◐ waiting/loading, ○ free."""
     width = max(1, int(slots))
     busy = max(0, min(int(in_flight), width))
-    return ("●" * busy) + ("○" * (width - busy))
+    mark = "◐" if pending else "●"
+    return (mark * busy) + ("○" * (width - busy))
 
 
 def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
@@ -245,14 +247,18 @@ def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
             flight = 0
         size_label = _format_gib(size) if size > 0 else "—"
         note = ""
+        pending = False
         if flight > 0 and size <= 0:
             waiting_load = True
+            pending = True
             note = "waiting on Ollama load"
-        elif flight > 0 and ollama_phase == "loading":
+        elif flight > 0 and ollama_phase == "loading" and size > 0:
+            # Resident size may already show while layers are still uploading.
+            pending = True
             note = "loading into memory"
         rows.append(
             (
-                _flight_dots(in_flight=flight, slots=slots),
+                _flight_dots(in_flight=flight, slots=slots, pending=pending),
                 model,
                 size_label,
                 note,

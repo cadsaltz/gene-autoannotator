@@ -51,6 +51,7 @@ def test_render_dashboard_shows_waiting_on_ollama_load():
     assert "cold-start" in text
     assert "phase: waiting on load" in text
     assert "qwen3:14b" in text
+    assert "◐◐" in text
 
 
 def test_render_dashboard_shows_loading_into_memory_note():
@@ -82,6 +83,7 @@ def test_render_dashboard_shows_loading_into_memory_note():
         },
     )
     assert "loading into memory" in text
+    assert "◐◐" in text
 
 
 def test_render_dashboard_shows_ps_disabled():
@@ -101,4 +103,4 @@ def test_render_dashboard_shows_ps_disabled():
     assert "ollama ps disabled" in text
     assert "qwen3:14b" in text
     assert "waiting on Ollama load" in text
-    assert "●○" in text or "●" in text
+    assert "◐○" in text

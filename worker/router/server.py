@@ -7,7 +7,7 @@ import threading
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -21,21 +21,8 @@ log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from worker.fleet.config import FleetConfig
-    from worker.router.model_cache import ModelMemoryCache
 
 from worker.fleet.supervisor import FleetSupervisor
-
-
-def _run_cached_chat(
-    cache: ModelMemoryCache,
-    model: str,
-    chat_fn: Callable[[], dict],
-) -> dict:
-    cache.ensure(model)
-    try:
-        return chat_fn()
-    finally:
-        cache.release(model)
 
 
 def _ollama_chat_with_recovery(
@@ -110,7 +97,6 @@ def _make_handler(
     metrics: MetricsCollector | None = None,
     fleet_cfg: FleetConfig | None = None,
     fleet_supervisor: FleetSupervisor | None = None,
-    model_cache: ModelMemoryCache | None = None,
     jobs_submitted: int = 0,
     model_mode: str = "nano",
 ):
@@ -208,10 +194,7 @@ def _make_handler(
                         chat_kwargs=chat_kwargs,
                     )
 
-                if self.model_cache is None:
-                    result = run_chat()
-                else:
-                    result = _run_cached_chat(self.model_cache, model, run_chat)
+                result = run_chat()
                 inference_ms = _inference_ms_from_result(result)
                 total_ms = _total_ms_from_result(
                     result,
@@ -312,7 +295,6 @@ def _make_handler(
     RouterHTTPHandler.metrics = metrics
     RouterHTTPHandler.fleet_cfg = fleet_cfg
     RouterHTTPHandler.fleet_supervisor = fleet_supervisor
-    RouterHTTPHandler.model_cache = model_cache
     RouterHTTPHandler.jobs_submitted = jobs_submitted
     RouterHTTPHandler.model_mode = model_mode
     return RouterHTTPHandler
@@ -327,7 +309,6 @@ def start_router_server(
     log_requests: bool = False,
     fleet_cfg: FleetConfig | None = None,
     fleet_supervisor: FleetSupervisor | None = None,
-    model_cache: ModelMemoryCache | None = None,
     jobs_submitted: int = 0,
     model_mode: str = "nano",
 ) -> threading.Thread:
@@ -343,7 +324,6 @@ def start_router_server(
         metrics=metrics,
         fleet_cfg=fleet_cfg,
         fleet_supervisor=fleet_supervisor,
-        model_cache=model_cache,
         jobs_submitted=jobs_submitted,
         model_mode=model_mode,
     )

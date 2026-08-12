@@ -115,9 +115,9 @@ def effective_max_loaded_models(
 ) -> int:
     """How many models Ollama may keep resident at once.
 
-    Explicit ``OLLAMA_MAX_LOADED_MODELS`` in the environment wins. Otherwise
-    use ``max_loaded`` from residency planning when provided, else the full
-    required model count.
+    Explicit ``OLLAMA_MAX_LOADED_MODELS`` in the environment wins.
+    ``warm_stack`` (all models fit) allows the full required set.
+    Otherwise only one model may be resident (load on demand / swap).
     """
     raw = os.environ.get("OLLAMA_MAX_LOADED_MODELS", "").strip()
     if raw:
@@ -127,7 +127,9 @@ def effective_max_loaded_models(
             pass
     if max_loaded is not None:
         return max(1, int(max_loaded))
-    return max(1, int(cfg.model_count or 1))
+    if cfg.memory_tier == "warm_stack" and cfg.model_count > 0:
+        return int(cfg.model_count)
+    return 1
 
 
 def _build_ollama_server_env(

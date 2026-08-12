@@ -95,15 +95,6 @@ def _warm_order(names: list[str], *, host: str | None = None) -> list[str]:
     return sorted(names, key=lambda n: sizes.get(n, 0))
 
 
-def should_prewarm(*, model_sizes: dict[str, int], budget_bytes: int) -> bool:
-    """Return True only when the full required stack fits in the cache budget."""
-    if budget_bytes <= 0 or not model_sizes:
-        return False
-    if any(size <= 0 for size in model_sizes.values()):
-        return False
-    return sum(model_sizes.values()) <= budget_bytes
-
-
 def warm_all_models(
     *,
     client=None,

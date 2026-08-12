@@ -258,15 +258,12 @@ gate, and fail the job. Leave it unset for overnight serve runs with large model
 **Ollama disappeared mid-job?** Serve mode starts a managed `ollama serve` child.
 Crashes are usually OOM (performance models exceed VRAM) or the Linux OOM killer,
 not the router HTTP layer itself. The fleet sets `OLLAMA_MAX_LOADED_MODELS` to
-the full required model stack by default (router model cache handles eviction),
-and the supervisor **no longer kills** a busy Ollama just because `/api/tags` is
+the full required model count when the stack fits (`warm_stack`), otherwise `1`
+(load on demand; model switches evict). There is no router-side model cache.
+Pre-warm is skipped; models load on first use. `keep_alive` is `5m` when the
+stack fits, and the tier default (`0`) when it does not.
+The supervisor **no longer kills** a busy Ollama just because `/api/tags` is
 slow during inference. Watch for `Ollama server ... exited unexpectedly` in logs.
-
-**Model memory cache:** The router treats VRAM+RAM (90% of each, capped by
-`WORKER_MODEL_MEMORY_BUDGET_GB`) as an LRU weight cache. It loads models on
-demand, evicts only idle residents via Ollama’s `keep_alive=0` unload API, and
-waits if every loaded model is busy. Bench/serve pre-warm the full stack only
-when it fits that budget; otherwise models load on first use.
 
 Environment variables:
 
@@ -348,7 +345,7 @@ fleet configuration flow and `WORKER_MODEL_MEMORY_BUDGET_GB`.
 | --- | --- | --- |
 | `OLLAMA_ROUTER_URL` | set by worker | Router sidecar URL; propagated to job subprocesses. |
 | `AUTOANNOTATION_MODEL_MODE` | `performance` | Model stack: `performance`, `lite`, or `nano`. |
-| `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` | `0` (serve) / `-1` (bench) | Ollama unload policy. `-1` or `forever` never unloads; `0` unloads after each call; `5m` timed. Bench defaults to `-1` and pre-warms all models. |
+| `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` | tier default | Ollama unload policy. Fit (`warm_stack`) → `5m`; overflow/swap → `0`. CLI `--keep-alive` overrides. |
 | `AUTOANNOTATION_OLLAMA_WARM_ALL` | unset | Set to `1` in serve mode to pre-load all required models at startup. |
 | `WORKER_JOB_EXECUTION` | `subprocess` | Parent execution mode: `subprocess` or `inprocess`. |
 

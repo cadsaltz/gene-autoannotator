@@ -2,7 +2,7 @@ from worker.fleet.config import FleetConfig
 from worker.fleet import setup
 
 
-def test_effective_max_loaded_models_allows_full_stack_on_overflow(monkeypatch):
+def test_effective_max_loaded_models_is_one_on_overflow(monkeypatch):
     monkeypatch.delenv("OLLAMA_MAX_LOADED_MODELS", raising=False)
     cfg = FleetConfig(
         num_servers=1,
@@ -11,10 +11,10 @@ def test_effective_max_loaded_models_allows_full_stack_on_overflow(monkeypatch):
         memory_tier="vram_overflow",
         model_count=5,
     )
-    assert setup.effective_max_loaded_models(cfg) == 5
+    assert setup.effective_max_loaded_models(cfg) == 1
 
 
-def test_effective_max_loaded_models_uses_model_count_for_swap(monkeypatch):
+def test_effective_max_loaded_models_is_one_on_swap(monkeypatch):
     monkeypatch.delenv("OLLAMA_MAX_LOADED_MODELS", raising=False)
     cfg = FleetConfig(
         num_servers=1,
@@ -23,7 +23,7 @@ def test_effective_max_loaded_models_uses_model_count_for_swap(monkeypatch):
         memory_tier="swap",
         model_count=4,
     )
-    assert setup.effective_max_loaded_models(cfg) == 4
+    assert setup.effective_max_loaded_models(cfg) == 1
 
 
 def test_effective_max_loaded_models_uses_model_count_for_warm_stack(monkeypatch):
@@ -44,14 +44,10 @@ def test_effective_max_loaded_models_respects_env_override(monkeypatch):
     assert setup.effective_max_loaded_models(cfg) == 2
 
 
-def test_effective_max_loaded_models_uses_residency_max_loaded(monkeypatch):
-    monkeypatch.delenv("OLLAMA_MAX_LOADED_MODELS", raising=False)
-    cfg = FleetConfig(
-        num_servers=1,
-        parallel=2,
-        max_slots=2,
-        memory_tier="vram_overflow",
-        model_count=5,
-    )
-    assert setup.effective_max_loaded_models(cfg, max_loaded=1) == 1
-    assert setup.effective_max_loaded_models(cfg, max_loaded=3) == 3
+def test_job_keep_alive_for_tier():
+    from worker.bench import _job_keep_alive_for_tier
+
+    assert _job_keep_alive_for_tier("warm_stack") == "5m"
+    assert _job_keep_alive_for_tier("vram_overflow") == "0"
+    assert _job_keep_alive_for_tier("swap") == "0"
+    assert _job_keep_alive_for_tier("vram_overflow", cli_value="10m") == "10m"

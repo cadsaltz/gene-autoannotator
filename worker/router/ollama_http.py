@@ -39,29 +39,3 @@ def chat(
     if not isinstance(payload, dict):
         raise RuntimeError(f"Ollama returned non-object JSON: {type(payload).__name__}")
     return payload
-
-
-def generate(
-    host: str,
-    *,
-    model: str,
-    prompt: str = "",
-    keep_alive: int | str | None = None,
-    timeout_sec: float | None = None,
-) -> dict:
-    url = f"{host.rstrip('/')}/api/generate"
-    body: dict = {"model": model, "prompt": prompt, "stream": False}
-    if keep_alive is not None:
-        body["keep_alive"] = keep_alive
-    with httpx.Client(timeout=_httpx_timeout(timeout_sec)) as client:
-        response = client.post(url, json=body)
-        response.raise_for_status()
-        payload = response.json()
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"Ollama returned non-object JSON: {type(payload).__name__}")
-    return payload
-
-
-def unload_model(host: str, model: str, *, timeout_sec: float | None = 60.0) -> dict:
-    """Ask Ollama to unload ``model`` immediately (keep_alive=0, empty prompt)."""
-    return generate(host, model=model, prompt="", keep_alive=0, timeout_sec=timeout_sec)

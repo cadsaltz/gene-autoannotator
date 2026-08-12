@@ -212,7 +212,7 @@ source .venv/bin/activate   # or your project venv
 ./scripts/download_go_basic_obo.sh
 # writes data/go-basic.obo
 
-# Ollama must be running for LLM ranking (server pin: 0.24.0)
+# Ollama must be running for LLM ranking (server pin: 0.15.6)
 ollama serve
 ollama pull qwen3:8b
 # optional second model for majority voting:
@@ -417,13 +417,16 @@ python -m worker bench \
 | `--cache` | `cold` or `warm` | `cold` |
 | `--report` | Bench report JSON path | `reports/<timestamp>.json` |
 | `--output-dir` | Annotation JSON output dir (local disk) | — |
-| `--keep-alive` | Ollama `keep_alive` for LLM calls | From `OLLAMA_FLEET_KEEP_ALIVE` / env when omitted (not forced to `-1`) |
-| `--no-warm-models` | Force skip pre-warm | off (pre-warm only in residency mode `warm_stack`) |
+| `--keep-alive` | Ollama `keep_alive` for LLM calls | `5m` if stack fits, else `0` |
+| `--no-warm-models` | Deprecated no-op (pre-warm always skipped) | — |
 | `--configure-fleet` | Prompt for Ollama fleet settings | off |
 | `--no-dashboard` | Linear logs instead of TTY dashboard | off |
 | `--log-file` | Verbose log path | under `--output-dir` when dashboard active (survives Docker `--rm`) |
 
-Residency is automatic: models pack largest-first into `cache_budget × WORKER_RESIDENCY_PACK_FACTOR` (default **0.70**). Modes: **`single`** (MAX_LOADED=1, on demand), **`cache`** (multi-model LRU under pack budget), **`warm_stack`** (all fit → pre-warm). Startup logs `Residency mode=… keep_alive=…`.
+Model residency is two-tier only (no router cache, no pre-warm):
+
+- **All models fit** (`warm_stack`): `OLLAMA_MAX_LOADED_MODELS` = model count, `keep_alive=5m`, load on demand.
+- **Otherwise** (`swap` / `vram_overflow`): `MAX_LOADED=1`, load on demand (switches evict; keep_alive is irrelevant).
 
 ### Worker env (`worker.env.example`)
 
@@ -436,9 +439,7 @@ Residency is automatic: models pack largest-first into `cache_budget × WORKER_R
 | `WORKER_MODEL_MEMORY_BUDGET_GB` | Cap for model weights / KV / Ollama memory (GB). `-1` or omit = machine-derived max. Influences fleet **recommendations** and feasibility warnings; does **not** derive `WORKER_MAX_SLOTS`. |
 | `WORKER_MAX_SLOTS` | Concurrent annotation subprocess cap (from fleet setup prompt or manual edit) |
 | `OLLAMA_FLEET_SERVERS` / `OLLAMA_FLEET_PARALLEL` | Homogeneous Ollama fleet shape |
-| `OLLAMA_FLEET_KEEP_ALIVE` | Ollama unload policy for the fleet (`0`, `5m`, `-1`, …). Honored for chats (not overwritten to `-1` by the model cache). If set, kept across restarts; if absent, written once from the recommended memory tier. |
-| `WORKER_RESIDENCY_PACK_FACTOR` | Fraction of cache budget used for tier packing (default `0.70`). |
-| `WORKER_RESIDENCY_RUNTIME_INFLATE` | Scale manifest/show weight sizes toward loaded footprint before packing (default `1.40`). |
+| `OLLAMA_FLEET_KEEP_ALIVE` | Written from memory tier when absent; bench/serve apply tier policy (`5m` vs `0`) unless `--keep-alive` is set. |
 | `WORKER_DASHBOARD_OLLAMA_PS` | `1` (default) = dashboard IN MEM sizes from `/api/ps`; `0` = in-flight dots only (no HTTP). |
 | `WORKER_DASHBOARD_OLLAMA_PS_INTERVAL_SEC` | Min seconds between `/api/ps` probes (default `5`). UI refresh stays faster; in-flight overlays every frame. |
 | `ANNOTATION_MEMORY_BUDGET_GB` | **Legacy alias** — read once and migrated to `WORKER_MODEL_MEMORY_BUDGET_GB` on persist |
