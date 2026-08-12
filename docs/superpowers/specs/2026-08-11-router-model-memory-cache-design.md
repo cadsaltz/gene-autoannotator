@@ -129,3 +129,13 @@ Set `OLLAMA_MAX_LOADED_MODELS` to at least the number of required models (or a h
 - Per-slot KV reservation inside the cache budget.
 - Multi-GPU / multi-server cache placement.
 - Metrics: hit rate, evict count, wait time in bench report.
+
+---
+
+## Amendment (2026-08-12): tiered residency + keep_alive
+
+Supersedes the earlier “pin with `keep_alive=-1` whenever the cache is on” rule and the “always wrap chats in ModelMemoryCache” rollout default.
+
+1. **Residency modes** (`worker/router/residency.py`): largest-first pack into `pack_budget = cache_budget × WORKER_RESIDENCY_PACK_FACTOR` (default **0.70**). Modes: `single` | `cache` | `warm_stack`. Cache wraps chats **only** in `cache` mode; `warm_stack` pre-warms; `single` is on-demand with `OLLAMA_MAX_LOADED_MODELS=1`.
+2. **keep_alive**: honor operator / fleet / CLI resolution (`OLLAMA_FLEET_KEEP_ALIVE`, e.g. `5m`). Do **not** force `-1` when a cache is attached.
+3. **Dashboard IN MEM**: prefer live `GET /api/ps` (`WORKER_DASHBOARD_OLLAMA_PS=0` to disable).

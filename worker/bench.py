@@ -24,13 +24,15 @@ from worker.config import load_config
 from worker.fleet.models import required_model_names
 from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet
 from worker.fleet.supervisor import FleetSupervisor
-from worker.ollama_bootstrap import ensure_models, models_loaded, should_prewarm
+from worker.ollama_bootstrap import ensure_models, models_loaded
 from worker.probe import probe_system
 from worker.fleet import models as fleet_models
 from worker.fleet import sizing
 from worker.router import Backend, ModelRouter
 from worker.router import ollama_http
 from worker.router.model_cache import ModelMemoryCache
+from worker.router.ollama_ps import residency_snapshot_from_ps
+from worker.router.residency import pack_factor_from_env, select_residency_mode
 from worker.router.server import start_router_server, stop_router_server
 from worker.runtime import WorkerRuntime
 from worker.sources.batch import BatchJobSource
@@ -48,8 +50,10 @@ def _build_model_memory_cache(
     host: str,
     budget_bytes: int,
     model_names: set[str] | list[str],
+    sizes: dict[str, int] | None = None,
+    keep_alive: int | str = "5m",
 ) -> tuple[ModelMemoryCache, dict[str, int]]:
-    sizes = {
+    resolved_sizes = sizes or {
         name: fleet_models._model_size_bytes(name, host=host) for name in model_names
     }
 
@@ -58,17 +62,17 @@ def _build_model_memory_cache(
             h,
             model=model,
             messages=[{"role": "user", "content": "ping"}],
-            keep_alive=-1,
+            keep_alive=keep_alive,
         )
 
     cache = ModelMemoryCache(
         host=host,
         budget_bytes=budget_bytes,
-        model_sizes=sizes,
+        model_sizes=resolved_sizes,
         unload_fn=ollama_http.unload_model,
         load_fn=load_fn,
     )
-    return cache, sizes
+    return cache, resolved_sizes
 
 
 def configure_bench_logging(*, log_file: Path | None = None, dashboard: bool = False) -> None:
@@ -122,7 +126,8 @@ def _resolve_log_file(
         return None
     output_dir = getattr(args, "output_dir", None)
     if output_dir:
-        return Path(output_dir).expanduser().resolve().parent / DEFAULT_LOG_FILENAME
+        # Inside the mounted output dir so Docker --rm does not discard logs.
+        return Path(output_dir).expanduser().resolve() / DEFAULT_LOG_FILENAME
     return report_path.parent / DEFAULT_LOG_FILENAME
 
 
@@ -307,22 +312,6 @@ def main(argv=None):
     model_mode = os.getenv("AUTOANNOTATION_MODEL_MODE", "performance")
     required = set(required_model_names())
     fleet = replace(fleet, model_count=len(required))
-    _progress(
-        f"Bench setup: model_mode={model_mode}, fleet={fleet.num_servers}x"
-        f"parallel={fleet.parallel}, slots={args.slots if args.slots is not None else fleet.max_slots}, "
-        f"memory_tier={fleet.memory_tier}, models={len(required)}, "
-        f"ollama_gate={fleet.parallel}/server"
-    )
-    _progress("Resetting Ollama fleet (stop existing servers, start fresh)...")
-    fleet_supervisor: FleetSupervisor | None = None
-    fleet_supervisor = reset_ollama_fleet(fleet, spec)
-    _progress(
-        f"Ollama fleet listening on {', '.join(fleet.backend_hosts())}"
-    )
-
-    if args.cache == "cold":
-        _purge_llm_cache()
-        _progress("LLM cache cleared (cold start)")
 
     from worker.ollama_keep_alive import resolve_job_keep_alive
 
@@ -333,6 +322,54 @@ def main(argv=None):
     os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = str(job_keep_alive)
     os.environ["OLLAMA_FLEET_KEEP_ALIVE"] = str(job_keep_alive)
     fleet = replace(fleet, keep_alive=str(job_keep_alive))
+
+    user_budget_gb = sizing.parse_model_memory_budget_gb(
+        os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
+        or os.getenv("ANNOTATION_MEMORY_BUDGET_GB")
+    )
+    cache_budget = sizing.cache_budget_bytes(
+        spec,
+        user_budget_gb=user_budget_gb,
+        num_servers=fleet.num_servers,
+    )
+    # Size probe before fleet start (local/manifest estimates) so MAX_LOADED
+    # is applied when ollama serve launches.
+    sizes = {
+        name: fleet_models._model_size_bytes(name, host=None) for name in required
+    }
+    pack_factor = pack_factor_from_env()
+    residency = select_residency_mode(
+        sizes,
+        cache_budget_bytes=cache_budget,
+        pack_factor=pack_factor,
+    )
+    os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(residency.max_loaded)
+
+    _progress(
+        f"Bench setup: model_mode={model_mode}, fleet={fleet.num_servers}x"
+        f"parallel={fleet.parallel}, slots={args.slots if args.slots is not None else fleet.max_slots}, "
+        f"memory_tier={fleet.memory_tier}, models={len(required)}, "
+        f"ollama_gate={fleet.parallel}/server"
+    )
+    _progress(
+        f"Residency mode={residency.mode} packed={len(residency.packed_models)}/"
+        f"{len(required)} max_loaded={residency.max_loaded} "
+        f"cache_budget={cache_budget / 1024**3:.1f} GiB "
+        f"pack_budget={residency.pack_budget_bytes / 1024**3:.1f} GiB "
+        f"(factor={pack_factor:.2f}) keep_alive={job_keep_alive}"
+    )
+    _progress("Resetting Ollama fleet (stop existing servers, start fresh)...")
+    fleet_supervisor: FleetSupervisor | None = None
+    fleet_supervisor = reset_ollama_fleet(
+        fleet, spec, max_loaded=residency.max_loaded
+    )
+    _progress(
+        f"Ollama fleet listening on {', '.join(fleet.backend_hosts())}"
+    )
+
+    if args.cache == "cold":
+        _purge_llm_cache()
+        _progress("LLM cache cleared (cold start)")
 
     source = BatchJobSource(args.jobs)
     selected_slots = args.slots if args.slots is not None else fleet.max_slots
@@ -356,53 +393,70 @@ def main(argv=None):
         else:
             _progress("All required models already present")
 
-        user_budget_gb = sizing.parse_model_memory_budget_gb(
-            os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
-            or os.getenv("ANNOTATION_MEMORY_BUDGET_GB")
+        # Refresh sizes from the live fleet host and re-select if needed.
+        sizes = {
+            name: fleet_models._model_size_bytes(name, host=primary_host)
+            for name in required
+        }
+        residency = select_residency_mode(
+            sizes,
+            cache_budget_bytes=cache_budget,
+            pack_factor=pack_factor,
         )
-        budget = sizing.cache_budget_bytes(
-            spec,
-            user_budget_gb=user_budget_gb,
-            num_servers=runtime_fleet.num_servers,
-        )
-        model_cache, sizes = _build_model_memory_cache(
-            host=primary_host,
-            budget_bytes=budget,
-            model_names=required,
-        )
-        stack_bytes = sum(sizes.values())
-        if not args.no_warm_models and should_prewarm(
-            model_sizes=sizes, budget_bytes=budget
-        ):
+        if str(residency.max_loaded) != os.environ.get("OLLAMA_MAX_LOADED_MODELS"):
+            os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(residency.max_loaded)
             _progress(
-                f"Pre-warming {len(required)} model(s) into model cache "
-                f"(budget {budget / 1024**3:.1f} GiB)..."
+                f"Residency updated after size probe: mode={residency.mode} "
+                f"max_loaded={residency.max_loaded}; restarting fleet..."
             )
+            fleet_supervisor = reset_ollama_fleet(
+                fleet, spec, max_loaded=residency.max_loaded
+            )
+            ensure_models(client=ollama.Client(host=primary_host))
+
+        model_cache = None
+        if residency.use_model_cache:
+            model_cache, sizes = _build_model_memory_cache(
+                host=primary_host,
+                budget_bytes=residency.pack_budget_bytes,
+                model_names=required,
+                sizes=sizes,
+                keep_alive=job_keep_alive,
+            )
+
+        if residency.should_prewarm and not args.no_warm_models:
+            _progress(
+                f"Pre-warming all {len(required)} model(s) "
+                f"(warm_stack, keep_alive={job_keep_alive})..."
+            )
+            client = ollama.Client(host=primary_host)
             for name in sorted(required):
-                model_cache.ensure(name)
-                model_cache.release(name)
-            missing = models_loaded(
-                client=ollama.Client(host=primary_host), required=sorted(required)
-            )
+                client.chat(
+                    model=name,
+                    messages=[{"role": "user", "content": "ping"}],
+                    keep_alive=job_keep_alive,
+                )
+            missing = models_loaded(client=client, required=sorted(required))
             if missing:
                 _progress(
-                    f"Warning: after pre-warm, not all models resident in Ollama: "
-                    f"{', '.join(missing)} (they load on first use)"
+                    f"Warning: after pre-warm, not all models resident: "
+                    f"{', '.join(missing)}"
                 )
             else:
-                _progress("All models loaded into cache (idle, keep_alive=-1)")
-        else:
-            reason = (
-                "disabled by --no-warm-models"
-                if args.no_warm_models
-                else (
-                    f"stack needs {stack_bytes / 1024**3:.1f} GiB, budget "
-                    f"{budget / 1024**3:.1f} GiB"
-                )
-            )
+                _progress("All models loaded (warm_stack)")
+        elif residency.mode == "single":
             _progress(
-                f"Skipping pre-warm ({reason}); loading on demand via model cache"
+                "Residency single: MAX_LOADED=1, load on demand "
+                "(same-model parallel still allowed)"
             )
+        elif residency.use_model_cache:
+            _progress(
+                f"Model cache on: pack_budget="
+                f"{residency.pack_budget_bytes / 1024**3:.1f} GiB, "
+                f"packed={', '.join(residency.packed_models)}"
+            )
+        else:
+            _progress("Skipping pre-warm (disabled or not warm_stack)")
 
         fleet = refresh_fleet_footprints(
             fleet, spec, host=primary_host, measure_runtime_peak=False,
@@ -418,7 +472,8 @@ def main(argv=None):
             f"Model footprints: W_all={fleet.w_all_bytes / (1024**3):.2f} GB, "
             f"W_peak={fleet.w_peak_bytes / (1024**3):.2f} GB, "
             f"tier={fleet.memory_tier}, job_keep_alive={job_keep_alive}, "
-            f"cache_budget={budget / 1024**3:.1f} GiB, "
+            f"residency={residency.mode}, "
+            f"pack_budget={residency.pack_budget_bytes / 1024**3:.1f} GiB, "
             f"ollama_chat_timeout={timeout_note}"
         )
         router_thread = start_router_server(
@@ -455,12 +510,16 @@ def main(argv=None):
         _install_shutdown_handlers(runtime)
 
         def _dashboard_meta_provider() -> dict[str, Any]:
-            out: dict[str, Any] = {}
-            if model_cache is not None:
-                try:
-                    out["models_in_mem"] = model_cache.residency_snapshot()
-                except Exception:
-                    pass
+            out: dict[str, Any] = {"slots": selected_slots}
+            try:
+                snap = residency_snapshot_from_ps(
+                    primary_host,
+                    budget_bytes=residency.pack_budget_bytes,
+                )
+                if snap is not None:
+                    out["models_in_mem"] = snap
+            except Exception:
+                pass
             if fleet_supervisor is not None:
                 try:
                     out["ollama_servers"] = fleet_supervisor.ollama_log_snapshot()

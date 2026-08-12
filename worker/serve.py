@@ -20,17 +20,21 @@ from worker.bench_dashboard import BenchDashboard
 from worker.bootstrap import ensure_worker_env
 from worker.client import CoordinatorClient
 from worker.config import load_config
+from worker.fleet import models as fleet_models
+from worker.fleet import sizing
 from worker.fleet.models import required_model_names
 from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet
 from worker.fleet.supervisor import FleetSupervisor
-from worker.ollama_bootstrap import ensure_models, should_prewarm
+from worker.ollama_bootstrap import ensure_models
+from worker.ollama_keep_alive import resolve_job_keep_alive
 from worker.probe import probe_system
 from worker.progress_reporter import ProgressReporter
 from worker.router import Backend, ModelRouter
+from worker.router.ollama_ps import residency_snapshot_from_ps
+from worker.router.residency import pack_factor_from_env, select_residency_mode
 from worker.router.server import start_router_server
 from worker.runtime import WorkerRuntime
 from worker.sources.coordinator import CoordinatorJobSource
-from worker.fleet import sizing
 from worker.bench import _build_model_memory_cache
 
 DEFAULT_LOG_FILENAME = "worker-serve.log"
@@ -226,41 +230,82 @@ def main(args=None):
     required = set(required_model_names())
     fleet = replace(fleet, model_count=len(required))
 
+    job_keep_alive = resolve_job_keep_alive(fleet_keep_alive=fleet.keep_alive)
+    os.environ.setdefault("AUTOANNOTATION_OLLAMA_KEEP_ALIVE", str(job_keep_alive))
+
+    user_budget_gb = sizing.parse_model_memory_budget_gb(
+        os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
+        or os.getenv("ANNOTATION_MEMORY_BUDGET_GB")
+    )
+    cache_budget = sizing.cache_budget_bytes(
+        spec,
+        user_budget_gb=user_budget_gb,
+        num_servers=fleet.num_servers,
+    )
+    sizes = {
+        name: fleet_models._model_size_bytes(name, host=None) for name in required
+    }
+    pack_factor = pack_factor_from_env()
+    residency = select_residency_mode(
+        sizes,
+        cache_budget_bytes=cache_budget,
+        pack_factor=pack_factor,
+    )
+    os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(residency.max_loaded)
+    log.info(
+        "Residency mode=%s packed=%s/%s max_loaded=%s pack_budget=%.1f GiB keep_alive=%s",
+        residency.mode,
+        len(residency.packed_models),
+        len(required),
+        residency.max_loaded,
+        residency.pack_budget_bytes / 1024**3,
+        job_keep_alive,
+    )
+
     fleet_supervisor: FleetSupervisor | None = None
     model_cache = None
     if not discover_only:
-        fleet_supervisor = reset_ollama_fleet(fleet, spec)
+        fleet_supervisor = reset_ollama_fleet(
+            fleet, spec, max_loaded=residency.max_loaded
+        )
         primary_host = fleet.backend_hosts()[0]
         ensure_models(client=ollama.Client(host=primary_host))
-        user_budget_gb = sizing.parse_model_memory_budget_gb(
-            os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
-            or os.getenv("ANNOTATION_MEMORY_BUDGET_GB")
+        sizes = {
+            name: fleet_models._model_size_bytes(name, host=primary_host)
+            for name in required
+        }
+        residency = select_residency_mode(
+            sizes,
+            cache_budget_bytes=cache_budget,
+            pack_factor=pack_factor,
         )
-        budget = sizing.cache_budget_bytes(
-            spec,
-            user_budget_gb=user_budget_gb,
-            num_servers=fleet.num_servers,
-        )
-        model_cache, sizes = _build_model_memory_cache(
-            host=primary_host,
-            budget_bytes=budget,
-            model_names=required,
-        )
-        if os.getenv("AUTOANNOTATION_OLLAMA_WARM_ALL", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }:
-            if should_prewarm(model_sizes=sizes, budget_bytes=budget):
-                for name in sorted(required):
-                    model_cache.ensure(name)
-                    model_cache.release(name)
-            else:
-                log.info(
-                    "Skipping warm-all: stack needs %.1f GiB, budget %.1f GiB",
-                    sum(sizes.values()) / 1024**3,
-                    budget / 1024**3,
+        if str(residency.max_loaded) != os.environ.get("OLLAMA_MAX_LOADED_MODELS"):
+            os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(residency.max_loaded)
+            log.info(
+                "Residency updated after size probe: mode=%s max_loaded=%s; restarting fleet",
+                residency.mode,
+                residency.max_loaded,
+            )
+            fleet_supervisor = reset_ollama_fleet(
+                fleet, spec, max_loaded=residency.max_loaded
+            )
+            ensure_models(client=ollama.Client(host=primary_host))
+
+        if residency.use_model_cache:
+            model_cache, sizes = _build_model_memory_cache(
+                host=primary_host,
+                budget_bytes=residency.pack_budget_bytes,
+                model_names=required,
+                sizes=sizes,
+                keep_alive=job_keep_alive,
+            )
+        if residency.should_prewarm:
+            client = ollama.Client(host=primary_host)
+            for name in sorted(required):
+                client.chat(
+                    model=name,
+                    messages=[{"role": "user", "content": "ping"}],
+                    keep_alive=job_keep_alive,
                 )
         fleet = refresh_fleet_footprints(
             fleet, spec, host=primary_host, measure_runtime_peak=False,
@@ -352,10 +397,15 @@ def main(args=None):
     runtime_holder["runtime"] = runtime
 
     def _dashboard_meta_provider() -> dict[str, Any]:
-        out: dict[str, Any] = {}
-        if model_cache is not None:
+        out: dict[str, Any] = {"slots": config.max_slots}
+        if not discover_only:
             try:
-                out["models_in_mem"] = model_cache.residency_snapshot()
+                snap = residency_snapshot_from_ps(
+                    fleet.backend_hosts()[0],
+                    budget_bytes=residency.pack_budget_bytes,
+                )
+                if snap is not None:
+                    out["models_in_mem"] = snap
             except Exception:
                 pass
         if fleet_supervisor is not None:

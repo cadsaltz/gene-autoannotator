@@ -184,8 +184,6 @@ def _make_handler(
                 keep_alive = _keep_alive_from_env()
             if keep_alive is not None:
                 chat_kwargs["keep_alive"] = keep_alive
-            if self.model_cache is not None:
-                chat_kwargs["keep_alive"] = -1
 
             timeout_sec = ollama_chat_timeout_for_role(role)
             timeout_label = "unlimited" if timeout_sec is None else f"{int(timeout_sec)}s"

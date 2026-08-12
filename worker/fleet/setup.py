@@ -108,12 +108,16 @@ def _ollama_serve_binary() -> str:
     return path
 
 
-def effective_max_loaded_models(cfg: FleetConfig) -> int:
+def effective_max_loaded_models(
+    cfg: FleetConfig,
+    *,
+    max_loaded: int | None = None,
+) -> int:
     """How many models Ollama may keep resident at once.
 
-    Defaults to the full required model stack so the router model cache can
-    decide eviction. Explicit ``OLLAMA_MAX_LOADED_MODELS`` in the environment
-    wins.
+    Explicit ``OLLAMA_MAX_LOADED_MODELS`` in the environment wins. Otherwise
+    use ``max_loaded`` from residency planning when provided, else the full
+    required model count.
     """
     raw = os.environ.get("OLLAMA_MAX_LOADED_MODELS", "").strip()
     if raw:
@@ -121,6 +125,8 @@ def effective_max_loaded_models(cfg: FleetConfig) -> int:
             return max(1, int(raw))
         except ValueError:
             pass
+    if max_loaded is not None:
+        return max(1, int(max_loaded))
     return max(1, int(cfg.model_count or 1))
 
 
@@ -316,9 +322,14 @@ def start_ollama_server(
     return proc
 
 
-def start_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
+def start_fleet(
+    cfg: FleetConfig,
+    spec: SystemSpec,
+    *,
+    max_loaded: int | None = None,
+) -> list[subprocess.Popen]:
     procs: list[subprocess.Popen] = []
-    max_loaded = effective_max_loaded_models(cfg)
+    loaded = effective_max_loaded_models(cfg, max_loaded=max_loaded)
     for i in range(cfg.num_servers):
         gpu = i % spec.gpu_count if spec.gpu_count else None
         port = cfg.base_port + i
@@ -329,7 +340,7 @@ def start_fleet(cfg: FleetConfig, spec: SystemSpec) -> list[subprocess.Popen]:
                 port=port,
                 parallel=cfg.parallel,
                 gpu_index=gpu,
-                max_loaded_models=max_loaded,
+                max_loaded_models=loaded,
             )
         )
     return procs
@@ -600,7 +611,12 @@ def shutdown_fleet(procs: list[subprocess.Popen]) -> None:
                 pass
 
 
-def reset_ollama_fleet(cfg: FleetConfig, spec: SystemSpec):
+def reset_ollama_fleet(
+    cfg: FleetConfig,
+    spec: SystemSpec,
+    *,
+    max_loaded: int | None = None,
+):
     """Kill any existing Ollama servers, then start a fresh supervised fleet."""
     from worker.fleet.supervisor import FleetSupervisor, attach_fleet_to_supervisor
     from worker.ollama_version import assert_ollama_server_version
@@ -614,9 +630,9 @@ def reset_ollama_fleet(cfg: FleetConfig, spec: SystemSpec):
             "OLLAMA_FLEET_SERVERS=1 in worker.env or install the native Ollama package.",
             cfg.num_servers,
         )
-    procs = start_fleet(cfg, spec)
+    procs = start_fleet(cfg, spec, max_loaded=max_loaded)
     supervisor = FleetSupervisor(cfg, spec)
-    attach_fleet_to_supervisor(supervisor, cfg, spec, procs)
+    attach_fleet_to_supervisor(supervisor, cfg, spec, procs, max_loaded=max_loaded)
     primary = cfg.backend_hosts()[0]
     assert_ollama_server_version(primary)
     return supervisor

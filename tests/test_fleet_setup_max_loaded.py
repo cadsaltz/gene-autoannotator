@@ -42,3 +42,16 @@ def test_effective_max_loaded_models_respects_env_override(monkeypatch):
     monkeypatch.setenv("OLLAMA_MAX_LOADED_MODELS", "2")
     cfg = FleetConfig(num_servers=1, parallel=1, max_slots=1, memory_tier="swap")
     assert setup.effective_max_loaded_models(cfg) == 2
+
+
+def test_effective_max_loaded_models_uses_residency_max_loaded(monkeypatch):
+    monkeypatch.delenv("OLLAMA_MAX_LOADED_MODELS", raising=False)
+    cfg = FleetConfig(
+        num_servers=1,
+        parallel=2,
+        max_slots=2,
+        memory_tier="vram_overflow",
+        model_count=5,
+    )
+    assert setup.effective_max_loaded_models(cfg, max_loaded=1) == 1
+    assert setup.effective_max_loaded_models(cfg, max_loaded=3) == 3

@@ -416,11 +416,13 @@ python -m worker bench \
 | `--cache` | `cold` or `warm` | `cold` |
 | `--report` | Bench report JSON path | `reports/<timestamp>.json` |
 | `--output-dir` | Annotation JSON output dir (local disk) | — |
-| `--keep-alive` | Ollama `keep_alive` for LLM calls when not cache-managed | From `OLLAMA_FLEET_KEEP_ALIVE` / env when omitted |
-| `--no-warm-models` | Force skip pre-warm | off (also skips when full model stack does not fit cache budget) |
+| `--keep-alive` | Ollama `keep_alive` for LLM calls | From `OLLAMA_FLEET_KEEP_ALIVE` / env when omitted (not forced to `-1`) |
+| `--no-warm-models` | Force skip pre-warm | off (pre-warm only in residency mode `warm_stack`) |
 | `--configure-fleet` | Prompt for Ollama fleet settings | off |
 | `--no-dashboard` | Linear logs instead of TTY dashboard | off |
-| `--log-file` | Verbose log path | alongside `--report` when dashboard active |
+| `--log-file` | Verbose log path | under `--output-dir` when dashboard active (survives Docker `--rm`) |
+
+Residency is automatic: models pack largest-first into `cache_budget × WORKER_RESIDENCY_PACK_FACTOR` (default **0.70**). Modes: **`single`** (MAX_LOADED=1, on demand), **`cache`** (multi-model LRU under pack budget), **`warm_stack`** (all fit → pre-warm). Startup logs `Residency mode=… keep_alive=…`.
 
 ### Worker env (`worker.env.example`)
 
@@ -433,7 +435,9 @@ python -m worker bench \
 | `WORKER_MODEL_MEMORY_BUDGET_GB` | Cap for model weights / KV / Ollama memory (GB). `-1` or omit = machine-derived max. Influences fleet **recommendations** and feasibility warnings; does **not** derive `WORKER_MAX_SLOTS`. |
 | `WORKER_MAX_SLOTS` | Concurrent annotation subprocess cap (from fleet setup prompt or manual edit) |
 | `OLLAMA_FLEET_SERVERS` / `OLLAMA_FLEET_PARALLEL` | Homogeneous Ollama fleet shape |
-| `OLLAMA_FLEET_KEEP_ALIVE` | Ollama unload policy for the fleet (`0`, `5m`, `-1`, …). If set, kept across restarts; if absent, written once from the recommended memory tier. |
+| `OLLAMA_FLEET_KEEP_ALIVE` | Ollama unload policy for the fleet (`0`, `5m`, `-1`, …). Honored for chats (not overwritten to `-1` by the model cache). If set, kept across restarts; if absent, written once from the recommended memory tier. |
+| `WORKER_RESIDENCY_PACK_FACTOR` | Fraction of cache budget used for tier packing (default `0.70`). |
+| `WORKER_DASHBOARD_OLLAMA_PS` | `1` (default) = dashboard IN MEM from `/api/ps`; `0` disables. |
 | `ANNOTATION_MEMORY_BUDGET_GB` | **Legacy alias** — read once and migrated to `WORKER_MODEL_MEMORY_BUDGET_GB` on persist |
 | `JOB_MEMORY_ESTIMATE_GB` / `WORKER_MEMORY_HEADROOM_GB` | Legacy fallback slot math when fleet keys are absent |
 | `WORKER_CACHE_DIR` / `WORKER_OUTPUT_DIR` | Cache / output overrides |

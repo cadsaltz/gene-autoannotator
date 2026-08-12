@@ -203,12 +203,14 @@ def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
     snap = meta.get("models_in_mem")
     if not isinstance(snap, dict):
         return []
+    if snap.get("ps_disabled"):
+        return ["", "IN MEM  (ollama ps disabled)"]
     models = snap.get("models")
-    if not isinstance(models, list) or not models:
-        return []
     used = snap.get("used_bytes")
     budget = snap.get("budget_bytes")
     if not isinstance(used, (int, float)) or not isinstance(budget, (int, float)):
+        return []
+    if not isinstance(models, list):
         return []
     slots_raw = meta.get("slots")
     try:
@@ -216,6 +218,12 @@ def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
     except (TypeError, ValueError):
         slots = 1
     pct = 0 if budget <= 0 else int(round(100.0 * float(used) / float(budget)))
+    out = [
+        "",
+        f"IN MEM  {float(used) / (1024**3):.1f}/{float(budget) / (1024**3):.1f} GiB ({pct}%)",
+    ]
+    if not models:
+        return out
     rows: list[tuple[str, str, str]] = []
     for row in models:
         if not isinstance(row, dict):
@@ -230,7 +238,7 @@ def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
         try:
             flight = int(in_flight)
         except (TypeError, ValueError):
-            continue
+            flight = 0
         rows.append(
             (
                 _flight_dots(in_flight=flight, slots=slots),
@@ -239,12 +247,8 @@ def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
             )
         )
     if not rows:
-        return []
+        return out
     name_width = max(len(model) for _, model, _ in rows)
-    out = [
-        "",
-        f"IN MEM  {float(used) / (1024**3):.1f}/{float(budget) / (1024**3):.1f} GiB ({pct}%)",
-    ]
     for dots, model, size_label in rows:
         out.append(f"  {dots}  {model:<{name_width}}  {size_label}")
     return out

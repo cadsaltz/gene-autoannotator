@@ -220,10 +220,12 @@ def attach_fleet_to_supervisor(
     cfg: FleetConfig,
     spec: SystemSpec,
     procs: list[subprocess.Popen],
+    *,
+    max_loaded: int | None = None,
 ) -> None:
     from worker.fleet.setup import effective_max_loaded_models
 
-    max_loaded = effective_max_loaded_models(cfg)
+    loaded = effective_max_loaded_models(cfg, max_loaded=max_loaded)
     for i, proc in enumerate(procs):
         port = cfg.base_port + i
         gpu = i % spec.gpu_count if spec.gpu_count else None
@@ -233,6 +235,6 @@ def attach_fleet_to_supervisor(
             port=port,
             parallel=cfg.parallel,
             gpu_index=gpu,
-            max_loaded_models=max_loaded,
+            max_loaded_models=loaded,
             proc=proc,
         )
