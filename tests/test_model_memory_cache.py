@@ -84,3 +84,40 @@ def test_ensure_waits_when_only_busy_models_block_space():
     t.join(timeout=2.0)
     assert not t.is_alive()
     assert done["ok"] is True
+
+
+def test_residency_snapshot_does_not_block_during_slow_load():
+    """Dashboard must not freeze while Ollama load I/O runs."""
+    import time
+
+    release_load = threading.Event()
+    load_started = threading.Event()
+
+    def slow_load(host, model):
+        load_started.set()
+        assert release_load.wait(timeout=5.0)
+
+    cache = ModelMemoryCache(
+        host="http://127.0.0.1:11434",
+        budget_bytes=10,
+        model_sizes={"a": 5},
+        unload_fn=lambda host, model: None,
+        load_fn=slow_load,
+        wait_timeout_sec=5.0,
+    )
+
+    loader = threading.Thread(target=lambda: cache.ensure("a"))
+    loader.start()
+    assert load_started.wait(timeout=1.0)
+
+    t0 = time.monotonic()
+    snap = cache.residency_snapshot()
+    elapsed = time.monotonic() - t0
+    assert elapsed < 0.25, f"snapshot blocked for {elapsed:.2f}s during load"
+    assert isinstance(snap, dict)
+    assert "models" in snap
+
+    release_load.set()
+    loader.join(timeout=2.0)
+    assert not loader.is_alive()
+    cache.release("a")

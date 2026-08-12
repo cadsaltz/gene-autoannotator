@@ -407,6 +407,9 @@ class BenchDashboard:
                 )
 
                 live_meta = dict(meta or {})
+                # Always refresh elapsed before meta_provider so a slow provider
+                # cannot freeze the clock on the previous frame.
+                live_meta["elapsed_s"] = time.monotonic() - started_at
                 if meta_provider is not None:
                     try:
                         provided = meta_provider()
@@ -414,8 +417,7 @@ class BenchDashboard:
                             live_meta.update(provided)
                     except Exception as exc:
                         log.debug("Meta provider failed", exc_info=exc)
-                if "elapsed_s" not in live_meta:
-                    live_meta["elapsed_s"] = time.monotonic() - started_at
+                live_meta["elapsed_s"] = time.monotonic() - started_at
 
                 text = render_dashboard(
                     snapshot=snapshot,
