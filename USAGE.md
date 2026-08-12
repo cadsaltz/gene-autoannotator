@@ -211,7 +211,7 @@ source .venv/bin/activate   # or your project venv
 ./scripts/download_go_basic_obo.sh
 # writes data/go-basic.obo
 
-# Ollama must be running for LLM ranking
+# Ollama must be running for LLM ranking (server pin: 0.24.0)
 ollama serve
 ollama pull qwen3:8b
 # optional second model for majority voting:

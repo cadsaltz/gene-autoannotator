@@ -605,6 +605,7 @@ def shutdown_fleet(procs: list[subprocess.Popen]) -> None:
 def reset_ollama_fleet(cfg: FleetConfig, spec: SystemSpec):
     """Kill any existing Ollama servers, then start a fresh supervised fleet."""
     from worker.fleet.supervisor import FleetSupervisor, attach_fleet_to_supervisor
+    from worker.ollama_version import assert_ollama_server_version
 
     kill_all_ollama_servers()
     ports = [cfg.base_port + i for i in range(cfg.num_servers)]
@@ -618,6 +619,8 @@ def reset_ollama_fleet(cfg: FleetConfig, spec: SystemSpec):
     procs = start_fleet(cfg, spec)
     supervisor = FleetSupervisor(cfg, spec)
     attach_fleet_to_supervisor(supervisor, cfg, spec, procs)
+    primary = cfg.backend_hosts()[0]
+    assert_ollama_server_version(primary)
     return supervisor
 
 
