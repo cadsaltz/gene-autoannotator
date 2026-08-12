@@ -10,8 +10,47 @@ ResidencyMode = Literal["single", "cache", "warm_stack"]
 
 DEFAULT_PACK_FACTOR = 0.70
 PACK_FACTOR_ENV = "WORKER_RESIDENCY_PACK_FACTOR"
+# Manifest/show sizes are on-disk weights; loaded footprint (weights+KV+runtime)
+# is larger. Inflate before packing so we do not over-admit into cache/warm_stack.
+DEFAULT_RUNTIME_INFLATE = 1.40
+RUNTIME_INFLATE_ENV = "WORKER_RESIDENCY_RUNTIME_INFLATE"
 
 GiB = 1024**3
+
+
+def runtime_inflate_from_env(default: float = DEFAULT_RUNTIME_INFLATE) -> float:
+    raw = (os.getenv(RUNTIME_INFLATE_ENV) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    if value < 1.0:
+        return default
+    return value
+
+
+def effective_residency_sizes(
+    weight_sizes: dict[str, int],
+    *,
+    inflate: float = DEFAULT_RUNTIME_INFLATE,
+    parallel: int = 1,
+    c_slot_bytes: int = 0,
+) -> dict[str, int]:
+    """Convert weight/manifest sizes into conservative loaded-footprint estimates.
+
+    ``inflate`` scales disk weights toward observed ``ollama ps`` totals.
+    ``parallel * c_slot_bytes`` adds per-runner context overhead from fleet sizing.
+    """
+    factor = max(1.0, float(inflate))
+    overhead = max(0, int(parallel)) * max(0, int(c_slot_bytes))
+    out: dict[str, int] = {}
+    for name, size in weight_sizes.items():
+        if size <= 0:
+            continue
+        out[name] = int(size * factor) + overhead
+    return out
 
 
 def pack_factor_from_env(default: float = DEFAULT_PACK_FACTOR) -> float:

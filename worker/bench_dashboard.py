@@ -203,8 +203,6 @@ def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
     snap = meta.get("models_in_mem")
     if not isinstance(snap, dict):
         return []
-    if snap.get("ps_disabled"):
-        return ["", "IN MEM  (ollama ps disabled)"]
     models = snap.get("models")
     used = snap.get("used_bytes")
     budget = snap.get("budget_bytes")
@@ -218,10 +216,13 @@ def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
     except (TypeError, ValueError):
         slots = 1
     pct = 0 if budget <= 0 else int(round(100.0 * float(used) / float(budget)))
-    out = [
-        "",
-        f"IN MEM  {float(used) / (1024**3):.1f}/{float(budget) / (1024**3):.1f} GiB ({pct}%)",
-    ]
+    if snap.get("ps_disabled"):
+        header = "IN MEM  (ollama ps disabled — in-flight only)"
+    else:
+        header = (
+            f"IN MEM  {float(used) / (1024**3):.1f}/{float(budget) / (1024**3):.1f} GiB ({pct}%)"
+        )
+    out = ["", header]
     if not models:
         return out
     rows: list[tuple[str, str, str]] = []
@@ -239,11 +240,12 @@ def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
             flight = int(in_flight)
         except (TypeError, ValueError):
             flight = 0
+        size_label = _format_gib(size) if size > 0 else "—"
         rows.append(
             (
                 _flight_dots(in_flight=flight, slots=slots),
                 model,
-                _format_gib(size),
+                size_label,
             )
         )
     if not rows:

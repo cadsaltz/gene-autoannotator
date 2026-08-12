@@ -31,7 +31,12 @@ from worker.probe import probe_system
 from worker.progress_reporter import ProgressReporter
 from worker.router import Backend, ModelRouter
 from worker.router.ollama_ps import residency_snapshot_from_ps
-from worker.router.residency import pack_factor_from_env, select_residency_mode
+from worker.router.residency import (
+    effective_residency_sizes,
+    pack_factor_from_env,
+    runtime_inflate_from_env,
+    select_residency_mode,
+)
 from worker.router.server import start_router_server
 from worker.runtime import WorkerRuntime
 from worker.sources.coordinator import CoordinatorJobSource
@@ -242,10 +247,17 @@ def main(args=None):
         user_budget_gb=user_budget_gb,
         num_servers=fleet.num_servers,
     )
-    sizes = {
+    sizes_weight = {
         name: fleet_models._model_size_bytes(name, host=None) for name in required
     }
     pack_factor = pack_factor_from_env()
+    runtime_inflate = runtime_inflate_from_env()
+    sizes = effective_residency_sizes(
+        sizes_weight,
+        inflate=runtime_inflate,
+        parallel=fleet.parallel,
+        c_slot_bytes=fleet.c_slot_bytes,
+    )
     residency = select_residency_mode(
         sizes,
         cache_budget_bytes=cache_budget,
@@ -253,12 +265,14 @@ def main(args=None):
     )
     os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(residency.max_loaded)
     log.info(
-        "Residency mode=%s packed=%s/%s max_loaded=%s pack_budget=%.1f GiB keep_alive=%s",
+        "Residency mode=%s packed=%s/%s max_loaded=%s pack_budget=%.1f GiB "
+        "inflate=%.2f keep_alive=%s",
         residency.mode,
         len(residency.packed_models),
         len(required),
         residency.max_loaded,
         residency.pack_budget_bytes / 1024**3,
+        runtime_inflate,
         job_keep_alive,
     )
 
@@ -270,10 +284,16 @@ def main(args=None):
         )
         primary_host = fleet.backend_hosts()[0]
         ensure_models(client=ollama.Client(host=primary_host))
-        sizes = {
+        sizes_weight = {
             name: fleet_models._model_size_bytes(name, host=primary_host)
             for name in required
         }
+        sizes = effective_residency_sizes(
+            sizes_weight,
+            inflate=runtime_inflate,
+            parallel=fleet.parallel,
+            c_slot_bytes=fleet.c_slot_bytes,
+        )
         residency = select_residency_mode(
             sizes,
             cache_budget_bytes=cache_budget,
@@ -400,12 +420,23 @@ def main(args=None):
         out: dict[str, Any] = {"slots": config.max_slots}
         if not discover_only:
             try:
-                snap = residency_snapshot_from_ps(
-                    fleet.backend_hosts()[0],
-                    budget_bytes=residency.pack_budget_bytes,
-                )
-                if snap is not None:
+                if model_cache is not None:
+                    snap = model_cache.residency_snapshot()
+                    flight = router.in_flight_by_model()
+                    for row in snap.get("models") or []:
+                        if isinstance(row, dict) and isinstance(row.get("model"), str):
+                            row["in_flight"] = int(
+                                flight.get(row["model"], row.get("in_flight") or 0)
+                            )
                     out["models_in_mem"] = snap
+                else:
+                    snap = residency_snapshot_from_ps(
+                        fleet.backend_hosts()[0],
+                        budget_bytes=residency.pack_budget_bytes,
+                        in_flight=router.in_flight_by_model(),
+                    )
+                    if snap is not None:
+                        out["models_in_mem"] = snap
             except Exception:
                 pass
         if fleet_supervisor is not None:

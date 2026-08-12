@@ -33,6 +33,7 @@ class ModelRouter:
     def __init__(self, backends: list[Backend]) -> None:
         self._backends = list(backends)
         self._in_flight: dict[int, int] = {}
+        self._model_in_flight: dict[str, int] = {}
         self._lock = threading.Lock()
         self._cond = threading.Condition(self._lock)
         self._backends_by_model: dict[str, list[Backend]] = {}
@@ -43,6 +44,11 @@ class ModelRouter:
 
     def _in_flight_for(self, backend: Backend) -> int:
         return self._in_flight.get(id(backend), 0)
+
+    def in_flight_by_model(self) -> dict[str, int]:
+        """Snapshot of concurrent chats per model name (for dashboard IN MEM dots)."""
+        with self._lock:
+            return dict(self._model_in_flight)
 
     def _has_capacity(self, backend: Backend) -> bool:
         return self._in_flight_for(backend) < backend.gate_capacity
@@ -69,6 +75,7 @@ class ModelRouter:
                     backend = min(available, key=self._in_flight_for)
                     key = id(backend)
                     self._in_flight[key] = self._in_flight.get(key, 0) + 1
+                    self._model_in_flight[model] = self._model_in_flight.get(model, 0) + 1
                     waited_ms = int((time.monotonic() - wait_started) * 1000)
                     if waited_ms >= 1000:
                         log.info(
@@ -102,7 +109,6 @@ class ModelRouter:
                     self._cond.wait(timeout=wait_for)
 
     def release(self, backend: Backend, model: str) -> None:
-        del model  # server gate is model-agnostic; kept for call-site compatibility
         key = id(backend)
         with self._cond:
             count = self._in_flight.get(key)
@@ -114,4 +120,9 @@ class ModelRouter:
                 del self._in_flight[key]
             else:
                 self._in_flight[key] = count - 1
+            model_count = self._model_in_flight.get(model, 0)
+            if model_count <= 1:
+                self._model_in_flight.pop(model, None)
+            else:
+                self._model_in_flight[model] = model_count - 1
             self._cond.notify_all()

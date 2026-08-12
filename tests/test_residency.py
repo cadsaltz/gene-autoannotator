@@ -1,6 +1,8 @@
 from worker.router.residency import (
     DEFAULT_PACK_FACTOR,
+    DEFAULT_RUNTIME_INFLATE,
     GiB,
+    effective_residency_sizes,
     pack_budget_bytes,
     pack_models_largest_first,
     select_residency_mode,
@@ -84,3 +86,29 @@ def test_laptop_fixture_factor_100_is_cache_three():
     assert plan.mode == "cache"
     assert plan.packed_models == ["gemma3:27b", "qwen3:14b", "gemma3:12b"]
     assert plan.max_loaded == 3
+
+
+def test_effective_residency_sizes_inflate_and_c_slot():
+    weights = {"qwen3:14b": int(9.3 * GiB)}
+    # 9.3 * 1.4 + 2 * 0.4 ≈ 13.82 GiB — close to observed ollama ps ~14 GiB.
+    effective = effective_residency_sizes(
+        weights,
+        inflate=1.40,
+        parallel=2,
+        c_slot_bytes=int(0.4 * GiB),
+    )
+    assert abs(effective["qwen3:14b"] / GiB - 13.82) < 0.05
+    assert DEFAULT_RUNTIME_INFLATE == 1.40
+
+
+def test_laptop_inflated_sizes_still_single_at_070():
+    inflated = effective_residency_sizes(
+        LAPTOP_SIZES, inflate=1.40, parallel=2, c_slot_bytes=int(0.4 * GiB)
+    )
+    plan = select_residency_mode(
+        inflated,
+        cache_budget_bytes=LAPTOP_CACHE_BUDGET,
+        pack_factor=0.70,
+    )
+    assert plan.mode == "single"
+    assert plan.packed_models == ["gemma3:27b"]

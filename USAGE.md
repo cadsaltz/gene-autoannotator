@@ -437,7 +437,9 @@ Residency is automatic: models pack largest-first into `cache_budget × WORKER_R
 | `OLLAMA_FLEET_SERVERS` / `OLLAMA_FLEET_PARALLEL` | Homogeneous Ollama fleet shape |
 | `OLLAMA_FLEET_KEEP_ALIVE` | Ollama unload policy for the fleet (`0`, `5m`, `-1`, …). Honored for chats (not overwritten to `-1` by the model cache). If set, kept across restarts; if absent, written once from the recommended memory tier. |
 | `WORKER_RESIDENCY_PACK_FACTOR` | Fraction of cache budget used for tier packing (default `0.70`). |
-| `WORKER_DASHBOARD_OLLAMA_PS` | `1` (default) = dashboard IN MEM from `/api/ps`; `0` disables. |
+| `WORKER_RESIDENCY_RUNTIME_INFLATE` | Scale manifest/show weight sizes toward loaded footprint before packing (default `1.40`). |
+| `WORKER_DASHBOARD_OLLAMA_PS` | `1` (default) = dashboard IN MEM sizes from `/api/ps`; `0` = in-flight dots only (no HTTP). |
+| `WORKER_DASHBOARD_OLLAMA_PS_INTERVAL_SEC` | Min seconds between `/api/ps` probes (default `5`). UI refresh stays faster; in-flight overlays every frame. |
 | `ANNOTATION_MEMORY_BUDGET_GB` | **Legacy alias** — read once and migrated to `WORKER_MODEL_MEMORY_BUDGET_GB` on persist |
 | `JOB_MEMORY_ESTIMATE_GB` / `WORKER_MEMORY_HEADROOM_GB` | Legacy fallback slot math when fleet keys are absent |
 | `WORKER_CACHE_DIR` / `WORKER_OUTPUT_DIR` | Cache / output overrides |

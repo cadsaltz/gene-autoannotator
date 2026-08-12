@@ -32,7 +32,12 @@ from worker.router import Backend, ModelRouter
 from worker.router import ollama_http
 from worker.router.model_cache import ModelMemoryCache
 from worker.router.ollama_ps import residency_snapshot_from_ps
-from worker.router.residency import pack_factor_from_env, select_residency_mode
+from worker.router.residency import (
+    effective_residency_sizes,
+    pack_factor_from_env,
+    runtime_inflate_from_env,
+    select_residency_mode,
+)
 from worker.router.server import start_router_server, stop_router_server
 from worker.runtime import WorkerRuntime
 from worker.sources.batch import BatchJobSource
@@ -333,11 +338,19 @@ def main(argv=None):
         num_servers=fleet.num_servers,
     )
     # Size probe before fleet start (local/manifest estimates) so MAX_LOADED
-    # is applied when ollama serve launches.
-    sizes = {
+    # is applied when ollama serve launches. Inflate weights toward loaded
+    # footprint (KV/runtime); manifest sizes alone under-admit on overflow boxes.
+    weight_sizes = {
         name: fleet_models._model_size_bytes(name, host=None) for name in required
     }
     pack_factor = pack_factor_from_env()
+    runtime_inflate = runtime_inflate_from_env()
+    sizes = effective_residency_sizes(
+        weight_sizes,
+        inflate=runtime_inflate,
+        parallel=fleet.parallel,
+        c_slot_bytes=fleet.c_slot_bytes,
+    )
     residency = select_residency_mode(
         sizes,
         cache_budget_bytes=cache_budget,
@@ -356,7 +369,9 @@ def main(argv=None):
         f"{len(required)} max_loaded={residency.max_loaded} "
         f"cache_budget={cache_budget / 1024**3:.1f} GiB "
         f"pack_budget={residency.pack_budget_bytes / 1024**3:.1f} GiB "
-        f"(factor={pack_factor:.2f}) keep_alive={job_keep_alive}"
+        f"(factor={pack_factor:.2f} inflate={runtime_inflate:.2f} "
+        f"c_slot={fleet.c_slot_bytes / 1024**3:.2f} GiB×{fleet.parallel}) "
+        f"keep_alive={job_keep_alive}"
     )
     _progress("Resetting Ollama fleet (stop existing servers, start fresh)...")
     fleet_supervisor: FleetSupervisor | None = None
@@ -394,10 +409,16 @@ def main(argv=None):
             _progress("All required models already present")
 
         # Refresh sizes from the live fleet host and re-select if needed.
-        sizes = {
+        weight_sizes = {
             name: fleet_models._model_size_bytes(name, host=primary_host)
             for name in required
         }
+        sizes = effective_residency_sizes(
+            weight_sizes,
+            inflate=runtime_inflate,
+            parallel=fleet.parallel,
+            c_slot_bytes=fleet.c_slot_bytes,
+        )
         residency = select_residency_mode(
             sizes,
             cache_budget_bytes=cache_budget,
@@ -512,12 +533,22 @@ def main(argv=None):
         def _dashboard_meta_provider() -> dict[str, Any]:
             out: dict[str, Any] = {"slots": selected_slots}
             try:
-                snap = residency_snapshot_from_ps(
-                    primary_host,
-                    budget_bytes=residency.pack_budget_bytes,
-                )
-                if snap is not None:
+                if model_cache is not None:
+                    # Cache mode: residency is local bookkeeping — no /api/ps.
+                    snap = model_cache.residency_snapshot()
+                    flight = router.in_flight_by_model()
+                    for row in snap.get("models") or []:
+                        if isinstance(row, dict) and isinstance(row.get("model"), str):
+                            row["in_flight"] = int(flight.get(row["model"], row.get("in_flight") or 0))
                     out["models_in_mem"] = snap
+                else:
+                    snap = residency_snapshot_from_ps(
+                        primary_host,
+                        budget_bytes=residency.pack_budget_bytes,
+                        in_flight=router.in_flight_by_model(),
+                    )
+                    if snap is not None:
+                        out["models_in_mem"] = snap
             except Exception:
                 pass
             if fleet_supervisor is not None:
