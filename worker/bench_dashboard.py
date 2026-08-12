@@ -225,7 +225,10 @@ def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
     out = ["", header]
     if not models:
         return out
-    rows: list[tuple[str, str, str]] = []
+
+    ollama_phase = _ollama_phase_hint(meta)
+    rows: list[tuple[str, str, str, str]] = []
+    waiting_load = False
     for row in models:
         if not isinstance(row, dict):
             continue
@@ -241,19 +244,57 @@ def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
         except (TypeError, ValueError):
             flight = 0
         size_label = _format_gib(size) if size > 0 else "—"
+        note = ""
+        if flight > 0 and size <= 0:
+            waiting_load = True
+            note = "waiting on Ollama load"
+        elif flight > 0 and ollama_phase == "loading":
+            note = "loading into memory"
         rows.append(
             (
                 _flight_dots(in_flight=flight, slots=slots),
                 model,
                 size_label,
+                note,
             )
         )
     if not rows:
         return out
-    name_width = max(len(model) for _, model, _ in rows)
-    for dots, model, size_label in rows:
-        out.append(f"  {dots}  {model:<{name_width}}  {size_label}")
+    name_width = max(len(model) for _, model, _, _ in rows)
+    size_width = max(len(size_label) for _, _, size_label, _ in rows)
+    for dots, model, size_label, note in rows:
+        line = f"  {dots}  {model:<{name_width}}  {size_label:<{size_width}}"
+        if note:
+            line = f"{line}  |  {note}"
+        out.append(line)
+    if waiting_load:
+        out.append(
+            "  (chat in flight; Ollama cold-start / runner spawn before VRAM fills)"
+        )
     return out
+
+
+def _ollama_phase_hint(meta: dict[str, Any]) -> str | None:
+    servers = meta.get("ollama_servers")
+    if not isinstance(servers, list):
+        return None
+    phases: list[str] = []
+    for server in servers:
+        if not isinstance(server, dict):
+            continue
+        summary = server.get("summary")
+        phase = None
+        if isinstance(summary, dict):
+            phase = summary.get("phase")
+        if phase is None:
+            phase = server.get("phase")
+        if isinstance(phase, str) and phase:
+            phases.append(phase)
+    if "loading" in phases:
+        return "loading"
+    if phases:
+        return phases[0]
+    return None
 
 
 def _ollama_log_lines(meta: dict[str, Any]) -> list[str]:
@@ -262,6 +303,7 @@ def _ollama_log_lines(meta: dict[str, Any]) -> list[str]:
     servers = meta.get("ollama_servers")
     if not isinstance(servers, list) or not servers:
         return []
+    waiting_models = _waiting_on_load_models(meta)
     out: list[str] = [""]
     for server in servers:
         if not isinstance(server, dict):
@@ -274,10 +316,56 @@ def _ollama_log_lines(meta: dict[str, Any]) -> list[str]:
         out.append(f"OLLAMA  |  {host}  |  {pid_part} {status}  |  {log_path}")
         summary = server.get("summary")
         if isinstance(summary, dict) and summary:
-            out.extend(format_summary_lines(summary))
+            lines = format_summary_lines(summary)
+            phase = summary.get("phase") or "unknown"
+            if phase == "unknown" and waiting_models:
+                names = ", ".join(waiting_models)
+                out.append(
+                    f"  phase: waiting on load | chats held for {names} "
+                    f"(cold-start before VRAM)"
+                )
+                # Keep any alert lines from the formatter after the first phase line.
+                out.extend(lines[1:])
+            else:
+                out.extend(lines)
+        elif waiting_models:
+            names = ", ".join(waiting_models)
+            out.append(
+                f"  phase: waiting on load | chats held for {names} "
+                f"(cold-start before VRAM)"
+            )
         else:
             out.append("  phase: unknown | (waiting for serve logs)")
     return out
+
+
+def _waiting_on_load_models(meta: dict[str, Any]) -> list[str]:
+    snap = meta.get("models_in_mem")
+    if not isinstance(snap, dict):
+        return []
+    models = snap.get("models")
+    if not isinstance(models, list):
+        return []
+    waiting: list[str] = []
+    for row in models:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("model")
+        size = row.get("size_bytes")
+        flight = row.get("in_flight")
+        if not isinstance(name, str) or not name:
+            continue
+        try:
+            size_i = int(size or 0)
+        except (TypeError, ValueError):
+            size_i = 0
+        try:
+            flight_i = int(flight or 0)
+        except (TypeError, ValueError):
+            flight_i = 0
+        if flight_i > 0 and size_i <= 0:
+            waiting.append(name)
+    return waiting
 
 
 def render_dashboard(
