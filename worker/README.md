@@ -257,8 +257,8 @@ gate, and fail the job. Leave it unset for overnight serve runs with large model
 
 **Ollama disappeared mid-job?** Serve mode starts a managed `ollama serve` child.
 Crashes are usually OOM (performance models exceed VRAM) or the Linux OOM killer,
-not the router HTTP layer itself. The fleet now keeps **one model resident at a
-time** by default (`OLLAMA_MAX_LOADED_MODELS=1` unless your tier is `warm_stack`),
+not the router HTTP layer itself. The fleet sets `OLLAMA_MAX_LOADED_MODELS` to
+the full required model stack by default (router model cache handles eviction),
 and the supervisor **no longer kills** a busy Ollama just because `/api/tags` is
 slow during inference. Watch for `Ollama server ... exited unexpectedly` in logs.
 

@@ -111,9 +111,9 @@ def _ollama_serve_binary() -> str:
 def effective_max_loaded_models(cfg: FleetConfig) -> int:
     """How many models Ollama may keep resident at once.
 
-    Default one-at-a-time (matches direct-Ollama behavior on limited VRAM).
-    ``warm_stack`` tier allows all required models when they fit together.
-    Explicit ``OLLAMA_MAX_LOADED_MODELS`` in the environment wins.
+    Defaults to the full required model stack so the router model cache can
+    decide eviction. Explicit ``OLLAMA_MAX_LOADED_MODELS`` in the environment
+    wins.
     """
     raw = os.environ.get("OLLAMA_MAX_LOADED_MODELS", "").strip()
     if raw:
@@ -121,9 +121,7 @@ def effective_max_loaded_models(cfg: FleetConfig) -> int:
             return max(1, int(raw))
         except ValueError:
             pass
-    if cfg.memory_tier == "warm_stack" and cfg.model_count > 0:
-        return cfg.model_count
-    return 1
+    return max(1, int(cfg.model_count or 1))
 
 
 def _build_ollama_server_env(
