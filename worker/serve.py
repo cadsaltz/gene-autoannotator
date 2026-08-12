@@ -23,7 +23,7 @@ from worker.config import load_config
 from worker.fleet.models import required_model_names
 from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet
 from worker.fleet.supervisor import FleetSupervisor
-from worker.ollama_bootstrap import ensure_models, should_prewarm, warm_all_models
+from worker.ollama_bootstrap import ensure_models, should_prewarm
 from worker.probe import probe_system
 from worker.progress_reporter import ProgressReporter
 from worker.router import Backend, ModelRouter
@@ -252,16 +252,10 @@ def main(args=None):
             "yes",
             "on",
         }:
-            from worker.ollama_keep_alive import resolve_job_keep_alive
-
-            keep_alive = resolve_job_keep_alive(fleet_keep_alive=fleet.keep_alive)
             if should_prewarm(model_sizes=sizes, budget_bytes=budget):
-                warm_all_models(
-                    client=ollama.Client(host=primary_host),
-                    host=primary_host,
-                    keep_alive=keep_alive,
-                    required=sorted(required),
-                )
+                for name in sorted(required):
+                    model_cache.ensure(name)
+                    model_cache.release(name)
             else:
                 log.info(
                     "Skipping warm-all: stack needs %.1f GiB, budget %.1f GiB",

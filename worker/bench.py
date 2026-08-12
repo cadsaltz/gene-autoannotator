@@ -24,7 +24,7 @@ from worker.config import load_config
 from worker.fleet.models import required_model_names
 from worker.fleet.setup import ensure_fleet_config, refresh_fleet_footprints, reset_ollama_fleet
 from worker.fleet.supervisor import FleetSupervisor
-from worker.ollama_bootstrap import ensure_models, models_loaded, should_prewarm, warm_all_models
+from worker.ollama_bootstrap import ensure_models, models_loaded, should_prewarm
 from worker.probe import probe_system
 from worker.fleet import models as fleet_models
 from worker.fleet import sizing
@@ -375,25 +375,22 @@ def main(argv=None):
             model_sizes=sizes, budget_bytes=budget
         ):
             _progress(
-                f"Pre-warming {len(required)} model(s) (stack fits budget "
-                f"{budget / 1024**3:.1f} GiB) with keep_alive={job_keep_alive}..."
+                f"Pre-warming {len(required)} model(s) into model cache "
+                f"(budget {budget / 1024**3:.1f} GiB)..."
             )
-            warm_all_models(
-                client=ollama.Client(host=primary_host),
-                host=primary_host,
-                keep_alive=job_keep_alive,
-                required=sorted(required),
-            )
+            for name in sorted(required):
+                model_cache.ensure(name)
+                model_cache.release(name)
             missing = models_loaded(
                 client=ollama.Client(host=primary_host), required=sorted(required)
             )
             if missing:
                 _progress(
                     f"Warning: after pre-warm, not all models resident in Ollama: "
-                    f"{', '.join(missing)} (VRAM may be insufficient; they load on first use)"
+                    f"{', '.join(missing)} (they load on first use)"
                 )
             else:
-                _progress("All models loaded and pinned (keep_alive active)")
+                _progress("All models loaded into cache (idle, keep_alive=-1)")
         else:
             reason = (
                 "disabled by --no-warm-models"
