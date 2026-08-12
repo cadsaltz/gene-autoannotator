@@ -455,12 +455,18 @@ def main(argv=None):
         _install_shutdown_handlers(runtime)
 
         def _dashboard_meta_provider() -> dict[str, Any]:
-            if fleet_supervisor is None:
-                return {}
-            try:
-                return {"ollama_servers": fleet_supervisor.ollama_log_snapshot()}
-            except Exception:
-                return {}
+            out: dict[str, Any] = {}
+            if model_cache is not None:
+                try:
+                    out["models_in_mem"] = model_cache.residency_snapshot()
+                except Exception:
+                    pass
+            if fleet_supervisor is not None:
+                try:
+                    out["ollama_servers"] = fleet_supervisor.ollama_log_snapshot()
+                except Exception:
+                    pass
+            return out
 
         report = _run_with_dashboard(
             runtime,

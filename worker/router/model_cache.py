@@ -94,6 +94,22 @@ class ModelMemoryCache:
         with self._condition:
             return frozenset(self._entries)
 
+    def residency_snapshot(self) -> dict:
+        """Return resident models, sizes, and budget (no Ollama I/O)."""
+        with self._condition:
+            return {
+                "used_bytes": self._used_bytes_unlocked(),
+                "budget_bytes": self._budget_bytes,
+                "models": [
+                    {
+                        "model": name,
+                        "size_bytes": entry.size,
+                        "in_flight": entry.refcount,
+                    }
+                    for name, entry in sorted(self._entries.items())
+                ],
+            }
+
     def used_bytes(self) -> int:
         with self._condition:
             return self._used_bytes_unlocked()

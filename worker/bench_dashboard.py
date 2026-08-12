@@ -177,6 +177,7 @@ def _build_lines(
         f"RAM {hw.get('ram', '—')}"
     )
     lines.extend(_ollama_log_lines(meta))
+    lines.extend(_models_in_mem_lines(meta))
     lines.append("")
     lines.append(_SEPARATOR)
 
@@ -186,6 +187,67 @@ def _build_lines(
         lines.append(str(footer))
 
     return lines
+
+
+def _format_gib(nbytes: int | float) -> str:
+    return f"{float(nbytes) / (1024**3):.1f} GiB"
+
+
+def _flight_dots(*, in_flight: int, slots: int) -> str:
+    width = max(1, int(slots))
+    busy = max(0, min(int(in_flight), width))
+    return ("●" * busy) + ("○" * (width - busy))
+
+
+def _models_in_mem_lines(meta: dict[str, Any]) -> list[str]:
+    snap = meta.get("models_in_mem")
+    if not isinstance(snap, dict):
+        return []
+    models = snap.get("models")
+    if not isinstance(models, list) or not models:
+        return []
+    used = snap.get("used_bytes")
+    budget = snap.get("budget_bytes")
+    if not isinstance(used, (int, float)) or not isinstance(budget, (int, float)):
+        return []
+    slots_raw = meta.get("slots")
+    try:
+        slots = max(1, int(slots_raw))
+    except (TypeError, ValueError):
+        slots = 1
+    pct = 0 if budget <= 0 else int(round(100.0 * float(used) / float(budget)))
+    rows: list[tuple[str, str, str]] = []
+    for row in models:
+        if not isinstance(row, dict):
+            continue
+        model = row.get("model")
+        size = row.get("size_bytes")
+        in_flight = row.get("in_flight")
+        if not isinstance(model, str) or not model:
+            continue
+        if not isinstance(size, (int, float)):
+            continue
+        try:
+            flight = int(in_flight)
+        except (TypeError, ValueError):
+            continue
+        rows.append(
+            (
+                _flight_dots(in_flight=flight, slots=slots),
+                model,
+                _format_gib(size),
+            )
+        )
+    if not rows:
+        return []
+    name_width = max(len(model) for _, model, _ in rows)
+    out = [
+        "",
+        f"IN MEM  {float(used) / (1024**3):.1f}/{float(budget) / (1024**3):.1f} GiB ({pct}%)",
+    ]
+    for dots, model, size_label in rows:
+        out.append(f"  {dots}  {model:<{name_width}}  {size_label}")
+    return out
 
 
 def _ollama_log_lines(meta: dict[str, Any]) -> list[str]:
