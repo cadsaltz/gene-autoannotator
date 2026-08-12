@@ -25,6 +25,16 @@ Separately, `OLLAMA_MAX_LOADED_MODELS=1` forces a one-model-at-a-time policy. Th
 - Multi-host coordinated cache in v1 (per-Ollama-backend cache is enough; start with single-server correctness).
 - Replacing Ollama’s internal allocator; we orchestrate load/unload via its API.
 
+## Unload / load mechanism (Ollama API)
+
+The router does **not** free process memory itself. Ollama owns residency; the router only decides policy and issues API calls:
+
+- **Unload:** `POST /api/generate` with `{"model": "<name>", "keep_alive": 0}` (empty prompt), or chat with empty `messages` + `keep_alive: 0`, or `ollama stop <name>`. Response includes `done_reason: "unload"`.
+- **Load / pin:** chat/generate with `keep_alive: -1` (or forever alias) so Ollama does not timer-evict under the cache.
+- **Inspect:** `GET /api/ps` (`ollama ps`) to reconcile residents after load/unload.
+
+So: router = cache policy; Ollama = load/unload executor.
+
 ## Budget
 
 ```
