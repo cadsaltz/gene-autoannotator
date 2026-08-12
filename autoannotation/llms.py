@@ -476,6 +476,8 @@ def build_section_prompt(
             'identifier; set gene_id to null.'
         )
     fields_block = _section_fields_block(organism_profile, field_defs_profile=field_defs_profile)
+    base_type = section_type.split("#", 1)[0]
+    hint = SECTION_HINTS.get(base_type, "")
     if evidence_mode == 'ortholog':
         target_gene = (ortholog_context or {}).get('target_gene_id') or 'the target gene'
         target_name = (ortholog_context or {}).get('target_gene_name') or target_gene
@@ -484,7 +486,7 @@ def build_section_prompt(
             name_label,
             text,
             section_type,
-            SECTION_HINTS.get(section_type, ''),
+            hint,
             organism_label,
             target_gene,
             target_name,
@@ -495,7 +497,7 @@ def build_section_prompt(
         name_label,
         text,
         section_type,
-        SECTION_HINTS.get(section_type, ''),
+        hint,
         organism_label,
         fields_block,
     ) + missing_locus_rule

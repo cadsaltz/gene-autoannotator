@@ -1,3 +1,4 @@
+from autoannotation.llms import SECTION_HINTS, build_section_prompt
 from autoannotation.section_chunking import (
     chunk_section_text,
     expand_section,
@@ -58,3 +59,11 @@ def test_excerpt_max_chars_from_env():
 def test_expand_sections_flattens():
     sections = [("intro", "short"), ("methods", "also short")]
     assert expand_sections(sections, max_chars=100) == sections
+
+
+def test_build_section_prompt_uses_base_type_for_chunk_labels():
+    prompt = build_section_prompt(
+        "Rv0001", "dnaA", "excerpt text", section_type="results#2",
+    )
+    assert SECTION_HINTS["results"] in prompt
+    assert "Section type: results#2" in prompt
