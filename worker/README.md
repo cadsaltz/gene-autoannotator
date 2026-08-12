@@ -262,6 +262,12 @@ the full required model stack by default (router model cache handles eviction),
 and the supervisor **no longer kills** a busy Ollama just because `/api/tags` is
 slow during inference. Watch for `Ollama server ... exited unexpectedly` in logs.
 
+**Model memory cache:** The router treats VRAM+RAM (90% of each, capped by
+`WORKER_MODEL_MEMORY_BUDGET_GB`) as an LRU weight cache. It loads models on
+demand, evicts only idle residents via Ollama’s `keep_alive=0` unload API, and
+waits if every loaded model is busy. Bench/serve pre-warm the full stack only
+when it fits that budget; otherwise models load on first use.
+
 Environment variables:
 
 | Variable | Default | Purpose |

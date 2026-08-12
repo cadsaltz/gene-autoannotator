@@ -416,8 +416,8 @@ python -m worker bench \
 | `--cache` | `cold` or `warm` | `cold` |
 | `--report` | Bench report JSON path | `reports/<timestamp>.json` |
 | `--output-dir` | Annotation JSON output dir (local disk) | — |
-| `--keep-alive` | Ollama `keep_alive` for all LLM calls | From `OLLAMA_FLEET_KEEP_ALIVE` / env when omitted; else `-1` |
-| `--no-warm-models` | Skip pre-loading required models | off |
+| `--keep-alive` | Ollama `keep_alive` for LLM calls when not cache-managed | From `OLLAMA_FLEET_KEEP_ALIVE` / env when omitted |
+| `--no-warm-models` | Force skip pre-warm | off (also skips when full model stack does not fit cache budget) |
 | `--configure-fleet` | Prompt for Ollama fleet settings | off |
 | `--no-dashboard` | Linear logs instead of TTY dashboard | off |
 | `--log-file` | Verbose log path | alongside `--report` when dashboard active |
