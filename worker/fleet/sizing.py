@@ -7,8 +7,8 @@ from worker.fleet.config import FleetConfig
 from worker.fleet.models import required_model_names
 from worker.probe import SystemSpec
 
-VRAM_HEADROOM_RATIO = 0.15
-RAM_MODEL_RATIO = 0.50
+VRAM_HEADROOM_RATIO = 0.10
+RAM_HEADROOM_RATIO = 0.10
 MAX_PARALLEL = 16
 MAX_SERVERS = 16
 SUBPROCESS_OVERHEAD_BYTES = 2 * 1024**3  # Python/papers/cache per job
@@ -55,7 +55,7 @@ def vram_budget_for_fleet(spec: SystemSpec, num_servers: int) -> int:
 def ram_model_budget_bytes(spec: SystemSpec) -> int:
     if spec.system_ram_bytes <= 0:
         return 0
-    return int(spec.system_ram_bytes * RAM_MODEL_RATIO)
+    return int(spec.system_ram_bytes * (1 - RAM_HEADROOM_RATIO))
 
 
 def total_model_budget_bytes(spec: SystemSpec, num_servers: int) -> int:
@@ -79,6 +79,18 @@ def parse_model_memory_budget_gb(raw: str | None) -> float | None:
         # rather than silently clamping the fleet to zero bytes.
         return None
     return value
+
+
+def cache_budget_bytes(
+    spec: SystemSpec,
+    *,
+    user_budget_gb: float | None = None,
+    num_servers: int = 1,
+) -> int:
+    """Model-weight cache budget: 90% VRAM + 90% RAM, optional user GB cap."""
+    return effective_model_budget_bytes(
+        spec, user_budget_gb=user_budget_gb, num_servers=num_servers
+    )
 
 
 def effective_model_budget_bytes(
