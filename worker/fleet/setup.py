@@ -697,7 +697,7 @@ def _fleet_from_env(*, env_path: Path) -> FleetConfig | None:
         memory_tier = tier_raw  # type: ignore[assignment]
     keep_alive = (
         _env_value("OLLAMA_FLEET_KEEP_ALIVE", env_path=env_path)
-        or sizing.TIER_KEEP_ALIVE[memory_tier]
+        or OPERATOR_ENV_DEFAULTS["OLLAMA_FLEET_KEEP_ALIVE"]
     )
     return FleetConfig(
         num_servers=int(_env_value("OLLAMA_FLEET_SERVERS", env_path=env_path)),
@@ -790,7 +790,6 @@ def _normalize_fleet_config(
     cfg: FleetConfig,
     spec: SystemSpec,
     *,
-    preserve_keep_alive: bool = False,
     model_budget_bytes: int | None = None,
 ) -> FleetConfig:
     w_peak = cfg.w_peak_bytes or models.estimate_w_peak_bytes()
@@ -818,25 +817,22 @@ def _normalize_fleet_config(
             c_slot_bytes=c_slot,
             model_budget_bytes=model_budget_bytes,
         )
-        keep_alive = cfg.keep_alive if preserve_keep_alive else rec.keep_alive
         return FleetConfig(
             num_servers=rec.num_servers,
             parallel=rec.parallel,
             max_slots=cfg.max_slots,
-            keep_alive=keep_alive,
+            keep_alive=cfg.keep_alive,
             w_all_bytes=rec.w_all_bytes,
             w_peak_bytes=rec.w_peak_bytes,
             c_slot_bytes=rec.c_slot_bytes,
             memory_tier=rec.memory_tier,
         )
-    keep_alive = cfg.keep_alive if preserve_keep_alive else sizing.TIER_KEEP_ALIVE[tier]
     return replace(
         cfg,
         w_all_bytes=w_all,
         w_peak_bytes=w_peak,
         c_slot_bytes=c_slot,
         memory_tier=tier,
-        keep_alive=keep_alive,
     )
 
 
@@ -863,7 +859,6 @@ def refresh_fleet_footprints(
         w_peak_bytes=w_peak,
     )
     path = env_path or _default_env_path()
-    preserve_ka = _env_file_has_key("OLLAMA_FLEET_KEEP_ALIVE", env_path=path)
     user_budget_gb = sizing.parse_model_memory_budget_gb(
         _env_value("WORKER_MODEL_MEMORY_BUDGET_GB", env_path=path)
         or _env_value("ANNOTATION_MEMORY_BUDGET_GB", env_path=path)
@@ -874,7 +869,6 @@ def refresh_fleet_footprints(
     updated = _normalize_fleet_config(
         updated,
         spec,
-        preserve_keep_alive=preserve_ka,
         model_budget_bytes=model_budget_bytes,
     )
     _persist_fleet_config(path, updated)
@@ -909,11 +903,9 @@ def ensure_fleet_config(
         system_spec, user_budget_gb=user_budget_gb,
     )
     if cfg is not None:
-        preserve_ka = _env_file_has_key("OLLAMA_FLEET_KEEP_ALIVE", env_path=path)
         cfg = _normalize_fleet_config(
             cfg,
             system_spec,
-            preserve_keep_alive=preserve_ka,
             model_budget_bytes=model_budget_bytes,
         )
         errors, warnings = validate_or_warn(
@@ -923,7 +915,6 @@ def ensure_fleet_config(
             log.warning(warning)
         if errors:
             raise RuntimeError("; ".join(errors))
-        _apply_fleet_to_environ(cfg)
         ensure_operator_env(
             env_path=path,
             memory_tier=cfg.memory_tier,
@@ -933,6 +924,9 @@ def ensure_fleet_config(
                 else len(models.required_model_names())
             ),
         )
+        cfg = replace(cfg, keep_alive=os.environ["OLLAMA_FLEET_KEEP_ALIVE"])
+        _persist_fleet_config(path, cfg)
+        _apply_fleet_to_environ(cfg)
         return cfg
 
     c_slot = DEFAULT_C_SLOT_BYTES
@@ -966,8 +960,6 @@ def ensure_fleet_config(
             memory_tier=recommendation.memory_tier,
         )
 
-    _persist_fleet_config(path, cfg)
-    _apply_fleet_to_environ(cfg)
     ensure_operator_env(
         env_path=path,
         memory_tier=cfg.memory_tier,
@@ -977,4 +969,7 @@ def ensure_fleet_config(
             else len(models.required_model_names())
         ),
     )
+    cfg = replace(cfg, keep_alive=os.environ["OLLAMA_FLEET_KEEP_ALIVE"])
+    _persist_fleet_config(path, cfg)
+    _apply_fleet_to_environ(cfg)
     return cfg

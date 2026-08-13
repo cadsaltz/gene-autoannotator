@@ -16,10 +16,11 @@ from typing import Any
 
 import ollama
 
+from shared.env_persist import load_env_file, save_env_file
 from shared.job_contract import AnnotationJobRequest
 from worker import executor
 from worker.bench_dashboard import BenchDashboard
-from worker.bootstrap import ensure_worker_env
+from worker.bootstrap import default_env_path, ensure_worker_env
 from worker.config import load_config
 from worker.fleet.models import required_model_names
 from worker.fleet.setup import (
@@ -46,15 +47,20 @@ _interrupt_count = 0
 _runtime_for_shutdown: WorkerRuntime | None = None
 
 
-def _job_keep_alive_for_tier(
-    tier: str,
+def _persist_keep_alive_override(
+    value: str,
     *,
-    cli_value: str | None = None,
-) -> str:
-    """Fit → 5m; overflow/swap → tier default (unload); CLI wins when set."""
-    if cli_value is not None and str(cli_value).strip() != "":
-        return str(cli_value).strip()
-    return sizing.TIER_KEEP_ALIVE.get(tier, "5m")  # type: ignore[arg-type]
+    env_path: Path | None = None,
+) -> None:
+    keep_alive = str(value).strip()
+    if not keep_alive:
+        return
+    path = env_path or default_env_path()
+    saved = load_env_file(path)
+    saved["OLLAMA_FLEET_KEEP_ALIVE"] = keep_alive
+    save_env_file(path, saved)
+    os.environ["OLLAMA_FLEET_KEEP_ALIVE"] = keep_alive
+    os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = keep_alive
 
 
 def configure_bench_logging(*, log_file: Path | None = None, dashboard: bool = False) -> None:
@@ -280,6 +286,8 @@ def main(argv=None):
         skip_fleet_config=configure_fleet,
         require_coordinator=False,
     )
+    if getattr(args, "keep_alive", None):
+        _persist_keep_alive_override(args.keep_alive)
     fleet = ensure_fleet_config(interactive=configure_fleet)
     spec = probe_system()
     if getattr(args, "output_dir", None):
@@ -290,18 +298,11 @@ def main(argv=None):
     required = set(required_model_names())
     fleet = replace(fleet, model_count=len(required))
 
-    # Drop stale residency-era pins so tier policy (fit vs not) wins.
-    os.environ.pop("OLLAMA_MAX_LOADED_MODELS", None)
     max_loaded = effective_max_loaded_models(fleet)
-    os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(max_loaded)
 
-    job_keep_alive = _job_keep_alive_for_tier(
-        fleet.memory_tier,
-        cli_value=getattr(args, "keep_alive", None),
-    )
-    os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = str(job_keep_alive)
-    os.environ["OLLAMA_FLEET_KEEP_ALIVE"] = str(job_keep_alive)
-    fleet = replace(fleet, keep_alive=str(job_keep_alive))
+    keep_alive = os.environ["OLLAMA_FLEET_KEEP_ALIVE"]
+    os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = keep_alive
+    fleet = replace(fleet, keep_alive=keep_alive)
 
     user_budget_gb = sizing.parse_model_memory_budget_gb(
         os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
@@ -317,18 +318,18 @@ def main(argv=None):
         f"Bench setup: model_mode={model_mode}, fleet={fleet.num_servers}x"
         f"parallel={fleet.parallel}, slots={args.slots if args.slots is not None else fleet.max_slots}, "
         f"memory_tier={fleet.memory_tier}, models={len(required)}, "
-        f"max_loaded={max_loaded}, keep_alive={job_keep_alive}, "
+        f"max_loaded={max_loaded}, keep_alive={keep_alive}, "
         f"ollama_gate={fleet.parallel}/server"
     )
     if fleet.memory_tier == "warm_stack":
         _progress(
-            f"All models fit: MAX_LOADED={max_loaded}, keep_alive={job_keep_alive}, "
+            f"All models fit: MAX_LOADED={max_loaded}, keep_alive={keep_alive}, "
             "load on demand (no pre-warm)"
         )
     else:
         _progress(
             f"Models do not all fit: MAX_LOADED=1, load on demand "
-            f"(keep_alive={job_keep_alive}; switches evict)"
+            f"(keep_alive={keep_alive}; switches evict)"
         )
     _progress("Resetting Ollama fleet (stop existing servers, start fresh)...")
     fleet_supervisor: FleetSupervisor | None = None
@@ -368,17 +369,10 @@ def main(argv=None):
             fleet, spec, host=primary_host, measure_runtime_peak=False,
         )
         runtime_fleet = replace(fleet, max_slots=selected_slots, model_count=len(required))
-        # Re-apply max_loaded if footprint refresh changed tier.
-        os.environ.pop("OLLAMA_MAX_LOADED_MODELS", None)
         max_loaded = effective_max_loaded_models(runtime_fleet)
-        os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(max_loaded)
-        job_keep_alive = _job_keep_alive_for_tier(
-            runtime_fleet.memory_tier,
-            cli_value=getattr(args, "keep_alive", None),
-        )
-        os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = str(job_keep_alive)
-        os.environ["OLLAMA_FLEET_KEEP_ALIVE"] = str(job_keep_alive)
-        runtime_fleet = replace(runtime_fleet, keep_alive=str(job_keep_alive))
+        keep_alive = os.environ["OLLAMA_FLEET_KEEP_ALIVE"]
+        os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = keep_alive
+        runtime_fleet = replace(runtime_fleet, keep_alive=keep_alive)
 
         chat_timeout = os.getenv("OLLAMA_CHAT_TIMEOUT_SEC")
         timeout_note = (
@@ -390,7 +384,7 @@ def main(argv=None):
             f"Model footprints: W_all={fleet.w_all_bytes / (1024**3):.2f} GB, "
             f"W_peak={fleet.w_peak_bytes / (1024**3):.2f} GB, "
             f"tier={runtime_fleet.memory_tier}, max_loaded={max_loaded}, "
-            f"job_keep_alive={job_keep_alive}, "
+            f"job_keep_alive={keep_alive}, "
             f"ollama_chat_timeout={timeout_note}"
         )
         router_thread = start_router_server(

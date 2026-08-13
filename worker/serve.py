@@ -37,7 +37,6 @@ from worker.router.ollama_ps import residency_snapshot_from_ps
 from worker.router.server import start_router_server
 from worker.runtime import WorkerRuntime
 from worker.sources.coordinator import CoordinatorJobSource
-from worker.bench import _job_keep_alive_for_tier
 
 DEFAULT_LOG_FILENAME = "worker-serve.log"
 
@@ -232,14 +231,11 @@ def main(args=None):
     required = set(required_model_names())
     fleet = replace(fleet, model_count=len(required))
 
-    os.environ.pop("OLLAMA_MAX_LOADED_MODELS", None)
     max_loaded = effective_max_loaded_models(fleet)
-    os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(max_loaded)
 
-    job_keep_alive = _job_keep_alive_for_tier(fleet.memory_tier)
-    os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = str(job_keep_alive)
-    os.environ["OLLAMA_FLEET_KEEP_ALIVE"] = str(job_keep_alive)
-    fleet = replace(fleet, keep_alive=str(job_keep_alive))
+    keep_alive = os.environ["OLLAMA_FLEET_KEEP_ALIVE"]
+    os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = keep_alive
+    fleet = replace(fleet, keep_alive=keep_alive)
 
     user_budget_gb = sizing.parse_model_memory_budget_gb(
         os.getenv("WORKER_MODEL_MEMORY_BUDGET_GB")
@@ -254,7 +250,7 @@ def main(args=None):
         "Model residency: tier=%s max_loaded=%s keep_alive=%s (no pre-warm)",
         fleet.memory_tier,
         max_loaded,
-        job_keep_alive,
+        keep_alive,
     )
 
     fleet_supervisor: FleetSupervisor | None = None
@@ -266,13 +262,10 @@ def main(args=None):
             fleet, spec, host=primary_host, measure_runtime_peak=False,
         )
         fleet = replace(fleet, model_count=len(required))
-        os.environ.pop("OLLAMA_MAX_LOADED_MODELS", None)
         max_loaded = effective_max_loaded_models(fleet)
-        os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(max_loaded)
-        job_keep_alive = _job_keep_alive_for_tier(fleet.memory_tier)
-        os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = str(job_keep_alive)
-        os.environ["OLLAMA_FLEET_KEEP_ALIVE"] = str(job_keep_alive)
-        fleet = replace(fleet, keep_alive=str(job_keep_alive))
+        keep_alive = os.environ["OLLAMA_FLEET_KEEP_ALIVE"]
+        os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = keep_alive
+        fleet = replace(fleet, keep_alive=keep_alive)
 
     backends = [
         Backend(
