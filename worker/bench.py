@@ -162,8 +162,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--keep-alive",
         default=None,
         help=(
-            "Ollama keep_alive for LLM calls. When omitted: 5m if all models fit "
-            "(warm_stack), else 0 (max_loaded=1 so switches evict anyway)."
+            "Ollama keep_alive for LLM calls. When omitted: uses persisted "
+            "OLLAMA_FLEET_KEEP_ALIVE from worker.env (materialized by "
+            "ensure_operator_env)."
         ),
     )
     parser.add_argument(
