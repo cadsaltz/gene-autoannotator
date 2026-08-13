@@ -191,8 +191,11 @@ for:
 - **servers** — number of homogeneous `ollama serve` processes
 - **parallel per server** — `OLLAMA_NUM_PARALLEL` on each server
 - **max job slots** — `WORKER_MAX_SLOTS`, the concurrent subprocess cap
-- **keep-alive** — recommended `OLLAMA_FLEET_KEEP_ALIVE` from the memory tier
-  (written once if absent; left unchanged if already set in `worker.env`)
+
+Operator knobs (`OLLAMA_FLEET_SLOT_CTX`, `OLLAMA_FLEET_KEEP_ALIVE`,
+`OLLAMA_MAX_LOADED_MODELS`, `AUTOANNOTATION_SECTION_CHUNKING`) are
+**write-if-missing** on first ensure — defaults are persisted to `worker.env`
+and never overridden by VRAM tier on later starts.
 
 Recommended defaults come from `worker.fleet.sizing.recommend()`. Impossible
 configs are rejected; risky ones (e.g. more servers than GPUs) emit warnings
@@ -207,7 +210,9 @@ WORKER_MODEL_MEMORY_BUDGET_GB=24
 OLLAMA_FLEET_SERVERS=2
 OLLAMA_FLEET_PARALLEL=2
 WORKER_MAX_SLOTS=4
-OLLAMA_FLEET_KEEP_ALIVE=5m
+OLLAMA_FLEET_KEEP_ALIVE=0
+OLLAMA_MAX_LOADED_MODELS=1
+AUTOANNOTATION_SECTION_CHUNKING=true
 OLLAMA_FLEET_W_ALL_BYTES=2147483648
 OLLAMA_FLEET_C_SLOT_BYTES=429496729
 ```
@@ -257,11 +262,9 @@ gate, and fail the job. Leave it unset for overnight serve runs with large model
 
 **Ollama disappeared mid-job?** Serve mode starts a managed `ollama serve` child.
 Crashes are usually OOM (performance models exceed VRAM) or the Linux OOM killer,
-not the router HTTP layer itself. The fleet sets `OLLAMA_MAX_LOADED_MODELS` to
-the full required model count when the stack fits (`warm_stack`), otherwise `1`
-(load on demand; model switches evict). There is no router-side model cache.
-Pre-warm is skipped; models load on first use. `keep_alive` is `5m` when the
-stack fits, and the tier default (`0`) when it does not.
+not the router HTTP layer itself. **`OLLAMA_MAX_LOADED_MODELS`** and
+**`OLLAMA_FLEET_KEEP_ALIVE`** come from `worker.env` (materialized on first
+ensure; tier never overwrites them). Pre-warm is skipped; models load on first use.
 The supervisor **no longer kills** a busy Ollama just because `/api/tags` is
 slow during inference. Watch for `Ollama server ... exited unexpectedly` in logs.
 
@@ -332,10 +335,10 @@ fleet configuration flow and `WORKER_MODEL_MEMORY_BUDGET_GB`.
 | `WORKER_MODEL_MEMORY_BUDGET_GB` | from prompt | Model weights / KV / Ollama memory cap (GB). `-1` or omit = machine cap. Does not set slots. |
 | `OLLAMA_FLEET_SERVERS` | from sizing | Number of `ollama serve` processes. |
 | `OLLAMA_FLEET_PARALLEL` | from sizing | `OLLAMA_NUM_PARALLEL` per server. |
-| `OLLAMA_FLEET_SLOT_CTX` | `8192` | Per-slot context tokens; managed serve sets `OLLAMA_CONTEXT_LENGTH = slot × parallel`. |
-| `OLLAMA_CONTEXT_LENGTH` | computed | Total runner context (explicit non-zero override wins). Larger values may spill to RAM when VRAM is tight. |
+| `OLLAMA_FLEET_SLOT_CTX` | `8192` | Per-slot context tokens (operator knob). Managed serve sets child `OLLAMA_CONTEXT_LENGTH = slot × parallel`. When chunking is off, Ollama still truncates prompts exceeding slot context. |
+| `OLLAMA_MAX_LOADED_MODELS` | tier-based once | Write-if-missing: model count if `warm_stack`, else `1`. Never tier-overwritten after materialize. |
 | `WORKER_MAX_SLOTS` | from sizing | Concurrent job subprocess cap (separate from model memory budget). |
-| `OLLAMA_FLEET_KEEP_ALIVE` | from tier | Ollama unload policy (`0`, `5m`, `-1`, …). If set in env, respected on every start; if absent, written once from recommended tier. |
+| `OLLAMA_FLEET_KEEP_ALIVE` | `0` | Ollama unload policy (`0`, `5m`, `-1`, …). Write-if-missing; never overridden by tier. Copied to `AUTOANNOTATION_OLLAMA_KEEP_ALIVE`. |
 | `OLLAMA_FLEET_W_ALL_BYTES` | measured/estimated | All-models-warm VRAM footprint per server. |
 | `OLLAMA_FLEET_C_SLOT_BYTES` | `429496729` (~0.4 GB) | Per-lane context VRAM estimate. |
 
@@ -345,7 +348,8 @@ fleet configuration flow and `WORKER_MODEL_MEMORY_BUDGET_GB`.
 | --- | --- | --- |
 | `OLLAMA_ROUTER_URL` | set by worker | Router sidecar URL; propagated to job subprocesses. |
 | `AUTOANNOTATION_MODEL_MODE` | `performance` | Model stack: `performance`, `lite`, or `nano`. |
-| `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` | tier default | Ollama unload policy. Fit (`warm_stack`) → `5m`; overflow/swap → `0`. CLI `--keep-alive` overrides. |
+| `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` | synced from fleet | Copied from `OLLAMA_FLEET_KEEP_ALIVE` after materialize. Bench `--keep-alive` overrides for that run. |
+| `AUTOANNOTATION_SECTION_CHUNKING` | `true` | Write-if-missing. `false` = July-style full sections (no excerpt splitting). |
 | `AUTOANNOTATION_OLLAMA_WARM_ALL` | unset | Set to `1` in serve mode to pre-load all required models at startup. |
 | `WORKER_JOB_EXECUTION` | `subprocess` | Parent execution mode: `subprocess` or `inprocess`. |
 
@@ -445,8 +449,8 @@ deploy/scripts/install-worker.sh http://192.168.1.10:8000 "$(deploy/scripts/gene
 ```
 
 First run prompts for coordinator URL, token, model memory budget
-(`WORKER_MODEL_MEMORY_BUDGET_GB`), and fleet sizing (servers, parallel, slots,
-keep-alive). Values are saved to `worker.env`.
+(`WORKER_MODEL_MEMORY_BUDGET_GB`), and fleet sizing (servers, parallel, slots).
+Values are saved to `worker.env`.
 
 ### Two-machine LAN setup
 

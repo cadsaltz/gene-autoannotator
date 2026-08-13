@@ -397,7 +397,7 @@ python -m worker serve \
 
 With the dashboard on, verbose worker logs go to `worker-serve.log` (or `--log-file` / `WORKER_LOG_FILE`). Managed `ollama serve` stdout/stderr is teed to `ollama-server-<port>.log` next to that log file (else cwd), and the dashboard **OLLAMA** strip shows process status plus a parsed summary (phase, last `/api/chat`, alerts such as prompt truncation). Offline: `python -m worker.fleet.diagnose_ollama_log ollama-server-11434.log`.
 
-Managed fleet sets `OLLAMA_CONTEXT_LENGTH` to **`OLLAMA_NUM_PARALLEL × OLLAMA_FLEET_SLOT_CTX`** (default slot **8192**) so each parallel slot keeps a full prompt window. Ollama splits total context across parallel slots; without this, `parallel=2` and `-c 8192` yields ~4096/slot and truncates ~6k-token extraction prompts. Larger context may spill weights/KV to system RAM when VRAM is tight (slower, but jobs should complete). Override total with `OLLAMA_CONTEXT_LENGTH`, or per-slot with `OLLAMA_FLEET_SLOT_CTX`.
+Managed fleet sets each `ollama serve` child's `OLLAMA_CONTEXT_LENGTH` to **`OLLAMA_FLEET_SLOT_CTX × OLLAMA_FLEET_PARALLEL`** (default slot **8192**) so each parallel lane keeps a full prompt window. Ollama splits total context across parallel slots; without slot×parallel sizing, `parallel=2` and `-c 8192` yields ~4096/slot and truncates long extraction prompts. **`OLLAMA_FLEET_SLOT_CTX` is the operator knob**; total context is derived, not overridden via `OLLAMA_CONTEXT_LENGTH` in `worker.env`. When **`AUTOANNOTATION_SECTION_CHUNKING=false`**, oversized abstract/results/discussion sections are sent whole — Ollama still truncates prompts that exceed per-slot context. Larger context may spill weights/KV to system RAM when VRAM is tight (slower, but jobs should complete).
 
 ### Bench options
 
@@ -417,16 +417,16 @@ python -m worker bench \
 | `--cache` | `cold` or `warm` | `cold` |
 | `--report` | Bench report JSON path | `reports/<timestamp>.json` |
 | `--output-dir` | Annotation JSON output dir (local disk) | — |
-| `--keep-alive` | Ollama `keep_alive` for LLM calls | `5m` if stack fits, else `0` |
+| `--keep-alive` | Ollama `keep_alive` for LLM calls | Uses persisted `OLLAMA_FLEET_KEEP_ALIVE` when omitted |
 | `--no-warm-models` | Deprecated no-op (pre-warm always skipped) | — |
 | `--configure-fleet` | Prompt for Ollama fleet settings | off |
 | `--no-dashboard` | Linear logs instead of TTY dashboard | off |
 | `--log-file` | Verbose log path | under `--output-dir` when dashboard active (survives Docker `--rm`) |
 
-Model residency is two-tier only (no router cache, no pre-warm):
+Model residency uses env-authoritative caps (tier affects warnings/dashboard only):
 
-- **All models fit** (`warm_stack`): `OLLAMA_MAX_LOADED_MODELS` = model count, `keep_alive=5m`, load on demand.
-- **Otherwise** (`swap` / `vram_overflow`): `MAX_LOADED=1`, load on demand (switches evict; keep_alive is irrelevant).
+- **`OLLAMA_MAX_LOADED_MODELS`** — write-if-missing on first ensure: model count when tier is `warm_stack`, else `1`; never rewritten unless you edit `worker.env`.
+- **`OLLAMA_FLEET_KEEP_ALIVE`** — write-if-missing default `0`; bench `--keep-alive` overrides for that run only. No router cache; no pre-warm.
 
 ### Worker env (`worker.env.example`)
 
@@ -439,15 +439,16 @@ Model residency is two-tier only (no router cache, no pre-warm):
 | `WORKER_MODEL_MEMORY_BUDGET_GB` | Cap for model weights / KV / Ollama memory (GB). `-1` or omit = machine-derived max. Influences fleet **recommendations** and feasibility warnings; does **not** derive `WORKER_MAX_SLOTS`. |
 | `WORKER_MAX_SLOTS` | Concurrent annotation subprocess cap (from fleet setup prompt or manual edit) |
 | `OLLAMA_FLEET_SERVERS` / `OLLAMA_FLEET_PARALLEL` | Homogeneous Ollama fleet shape |
-| `OLLAMA_FLEET_KEEP_ALIVE` | Written from memory tier when absent; bench/serve apply tier policy (`5m` vs `0`) unless `--keep-alive` is set. |
+| `OLLAMA_FLEET_KEEP_ALIVE` | Write-if-missing default `0`; never overridden by VRAM tier. Copied to `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` for jobs. Bench `--keep-alive` overrides for that run. |
+| `OLLAMA_MAX_LOADED_MODELS` | Write-if-missing: model count when tier is `warm_stack`, else `1`; never tier-overwritten. |
+| `AUTOANNOTATION_SECTION_CHUNKING` | Write-if-missing default `true`. `false` = July-style full sections (no excerpt splitting); Ollama may still truncate when prompt exceeds slot context. |
 | `WORKER_DASHBOARD_OLLAMA_PS` | `1` (default) = dashboard IN MEM sizes from `/api/ps`; `0` = in-flight dots only (no HTTP). |
 | `WORKER_DASHBOARD_OLLAMA_PS_INTERVAL_SEC` | Min seconds between `/api/ps` probes (default `5`). UI refresh stays faster; in-flight overlays every frame. |
 | `ANNOTATION_MEMORY_BUDGET_GB` | **Legacy alias** — read once and migrated to `WORKER_MODEL_MEMORY_BUDGET_GB` on persist |
 | `JOB_MEMORY_ESTIMATE_GB` / `WORKER_MEMORY_HEADROOM_GB` | Legacy fallback slot math when fleet keys are absent |
 | `WORKER_CACHE_DIR` / `WORKER_OUTPUT_DIR` | Cache / output overrides |
 | `OLLAMA_HOST` / `OLLAMA_CHAT_TIMEOUT_SEC` / `OLLAMA_ROUTER_READ_TIMEOUT_SEC` | Ollama / router timeouts (`unset` = unlimited) |
-| `OLLAMA_FLEET_SLOT_CTX` | Per-parallel-slot context tokens (default `8192`); total = slot × `OLLAMA_FLEET_PARALLEL` |
-| `OLLAMA_CONTEXT_LENGTH` | Total runner context override (wins over slot×parallel) |
+| `OLLAMA_FLEET_SLOT_CTX` | Per-parallel-slot context tokens (default `8192`); managed serve total = slot × `OLLAMA_FLEET_PARALLEL` (not an operator file key) |
 
 Design / fleet details: `worker/README.md`.
 
