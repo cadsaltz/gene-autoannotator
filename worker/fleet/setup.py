@@ -740,6 +740,54 @@ def _apply_fleet_to_environ(cfg: FleetConfig) -> None:
         os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = cfg.keep_alive
 
 
+OPERATOR_ENV_DEFAULTS = {
+    "OLLAMA_FLEET_SLOT_CTX": "8192",
+    "OLLAMA_FLEET_KEEP_ALIVE": "0",
+    "AUTOANNOTATION_SECTION_CHUNKING": "true",
+}
+
+
+def ensure_operator_env(
+    *,
+    env_path: Path,
+    memory_tier: str,
+    model_count: int,
+) -> None:
+    saved = load_env_file(env_path)
+    changed = False
+
+    def _ensure(key: str, default: str) -> None:
+        nonlocal changed
+        if key not in saved or not str(saved.get(key, "")).strip():
+            saved[key] = default
+            changed = True
+
+    _ensure("OLLAMA_FLEET_SLOT_CTX", OPERATOR_ENV_DEFAULTS["OLLAMA_FLEET_SLOT_CTX"])
+    _ensure("OLLAMA_FLEET_KEEP_ALIVE", OPERATOR_ENV_DEFAULTS["OLLAMA_FLEET_KEEP_ALIVE"])
+    _ensure(
+        "AUTOANNOTATION_SECTION_CHUNKING",
+        OPERATOR_ENV_DEFAULTS["AUTOANNOTATION_SECTION_CHUNKING"],
+    )
+    max_loaded_default = (
+        str(max(1, int(model_count)))
+        if memory_tier == "warm_stack" and model_count > 0
+        else "1"
+    )
+    _ensure("OLLAMA_MAX_LOADED_MODELS", max_loaded_default)
+
+    if changed:
+        save_env_file(env_path, saved)
+
+    for key in (
+        "OLLAMA_FLEET_SLOT_CTX",
+        "OLLAMA_FLEET_KEEP_ALIVE",
+        "OLLAMA_MAX_LOADED_MODELS",
+        "AUTOANNOTATION_SECTION_CHUNKING",
+    ):
+        os.environ[key] = saved[key]
+    os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = saved["OLLAMA_FLEET_KEEP_ALIVE"]
+
+
 def _normalize_fleet_config(
     cfg: FleetConfig,
     spec: SystemSpec,
@@ -833,6 +881,8 @@ def refresh_fleet_footprints(
     )
     _persist_fleet_config(path, updated)
     _apply_fleet_to_environ(updated)
+    saved = load_env_file(path)
+    os.environ["AUTOANNOTATION_OLLAMA_KEEP_ALIVE"] = saved["OLLAMA_FLEET_KEEP_ALIVE"]
     log.info(
         "Fleet footprints refreshed from %s: tier=%s keep_alive=%s",
         source,
@@ -876,6 +926,15 @@ def ensure_fleet_config(
         if errors:
             raise RuntimeError("; ".join(errors))
         _apply_fleet_to_environ(cfg)
+        ensure_operator_env(
+            env_path=path,
+            memory_tier=cfg.memory_tier,
+            model_count=(
+                cfg.model_count
+                if cfg.model_count > 0
+                else len(models.required_model_names())
+            ),
+        )
         return cfg
 
     c_slot = DEFAULT_C_SLOT_BYTES
@@ -911,4 +970,13 @@ def ensure_fleet_config(
 
     _persist_fleet_config(path, cfg)
     _apply_fleet_to_environ(cfg)
+    ensure_operator_env(
+        env_path=path,
+        memory_tier=cfg.memory_tier,
+        model_count=(
+            cfg.model_count
+            if cfg.model_count > 0
+            else len(models.required_model_names())
+        ),
+    )
     return cfg
