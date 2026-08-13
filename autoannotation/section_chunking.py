@@ -9,6 +9,10 @@ from collections.abc import Mapping
 
 DEFAULT_EXCERPT_MAX_CHARS: int = 10_000
 
+CHUNKING_ENV = "AUTOANNOTATION_SECTION_CHUNKING"
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+_FALSY = frozenset({"0", "false", "no", "off"})
+
 _ENV_EXCERPT_MAX_CHARS = "AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS"
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])(?:\s+|$)")
@@ -27,6 +31,27 @@ def excerpt_max_chars_from_env(environ: Mapping[str, str] | None = None) -> int:
     if value <= 0:
         return DEFAULT_EXCERPT_MAX_CHARS
     return value
+
+
+def parse_section_chunking_flag(raw: str) -> bool:
+    normalized = str(raw).strip().lower()
+    if normalized in _TRUTHY:
+        return True
+    if normalized in _FALSY:
+        return False
+    raise ValueError(
+        f"Invalid {CHUNKING_ENV}={raw!r}; expected one of "
+        f"{sorted(_TRUTHY | _FALSY)}"
+    )
+
+
+def section_chunking_enabled(*, environ: Mapping[str, str] | None = None) -> bool:
+    if environ is None:
+        environ = os.environ
+    raw = environ.get(CHUNKING_ENV, "")
+    if not str(raw).strip():
+        return True
+    return parse_section_chunking_flag(raw)
 
 
 def split_paragraphs(text: str) -> list[str]:

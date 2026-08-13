@@ -33,3 +33,13 @@ def test_sections_for_extraction_keeps_small_sections():
     pm = FakePaperManager({"1": "short results text"})
     sections = _sections_for_extraction(pm, "1", max_chars=100)
     assert sections == [("results", "short results text")]
+
+
+def test_sections_for_extraction_skips_expand_when_chunking_disabled(monkeypatch):
+    monkeypatch.setenv("AUTOANNOTATION_SECTION_CHUNKING", "false")
+    p1 = "A" * 60
+    p2 = "B" * 60
+    fat = f"{p1}\n\n{p2}"
+    pm = FakePaperManager({"1": fat})
+    sections = _sections_for_extraction(pm, "1", max_chars=100)
+    assert sections == [("results", fat)]

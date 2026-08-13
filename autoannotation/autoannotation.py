@@ -76,6 +76,9 @@ def collect_paper_sections(paper_manager, pmc_id):
 
 def _sections_for_extraction(paper_manager, pmc_id, *, max_chars):
     raw_sections = collect_paper_sections(paper_manager, pmc_id)
+    from .section_chunking import section_chunking_enabled
+    if not section_chunking_enabled():
+        return raw_sections
     return expand_sections(raw_sections, max_chars=max_chars)
 
 

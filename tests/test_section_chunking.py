@@ -1,9 +1,13 @@
+import pytest
+
 from autoannotation.llms import SECTION_HINTS, build_section_prompt
 from autoannotation.section_chunking import (
     chunk_section_text,
     expand_section,
     expand_sections,
     excerpt_max_chars_from_env,
+    parse_section_chunking_flag,
+    section_chunking_enabled,
 )
 
 
@@ -59,6 +63,26 @@ def test_excerpt_max_chars_from_env():
 def test_expand_sections_flattens():
     sections = [("intro", "short"), ("methods", "also short")]
     assert expand_sections(sections, max_chars=100) == sections
+
+
+def test_parse_section_chunking_flag_truthy_falsy():
+    for raw in ("1", "true", "TRUE", "yes", "on"):
+        assert parse_section_chunking_flag(raw) is True
+    for raw in ("0", "false", "FALSE", "no", "off"):
+        assert parse_section_chunking_flag(raw) is False
+
+
+def test_parse_section_chunking_flag_invalid():
+    with pytest.raises(ValueError, match="AUTOANNOTATION_SECTION_CHUNKING"):
+        parse_section_chunking_flag("maybe")
+
+
+def test_section_chunking_enabled_defaults_true_when_unset():
+    assert section_chunking_enabled(environ={}) is True
+
+
+def test_section_chunking_enabled_reads_env():
+    assert section_chunking_enabled(environ={"AUTOANNOTATION_SECTION_CHUNKING": "false"}) is False
 
 
 def test_build_section_prompt_uses_base_type_for_chunk_labels():
