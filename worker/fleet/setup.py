@@ -62,25 +62,23 @@ DEFAULT_OLLAMA_SLOT_CTX = 8192
 def effective_ollama_context_length(*, parallel: int) -> int:
     """Total runner ``-c`` / ``OLLAMA_CONTEXT_LENGTH`` for managed serve.
 
-    Explicit ``OLLAMA_CONTEXT_LENGTH`` (non-zero) wins. Otherwise
-    ``parallel * OLLAMA_FLEET_SLOT_CTX`` (default 8192 per slot) so prompts are
-    not truncated when ``OLLAMA_NUM_PARALLEL > 1``. Larger context may spill
-    layers/KV to system RAM when VRAM is tight — preferred over job failure.
+    ``parallel * OLLAMA_FLEET_SLOT_CTX`` (required in env after materialize).
+    Larger context may spill layers/KV to system RAM when VRAM is tight —
+    preferred over job failure.
     """
-    raw = os.environ.get("OLLAMA_CONTEXT_LENGTH", "").strip()
-    if raw and raw != "0":
-        try:
-            return max(1, int(raw))
-        except ValueError:
-            pass
-    slot_raw = os.environ.get("OLLAMA_FLEET_SLOT_CTX", "").strip()
-    slot = DEFAULT_OLLAMA_SLOT_CTX
-    if slot_raw:
-        try:
-            slot = max(1, int(slot_raw))
-        except ValueError:
-            pass
-    return max(1, parallel) * slot
+    raw = os.environ.get("OLLAMA_FLEET_SLOT_CTX", "").strip()
+    if not raw:
+        raise ValueError(
+            "OLLAMA_FLEET_SLOT_CTX is required in the environment "
+            "(call ensure_operator_env / ensure_fleet_config first)"
+        )
+    try:
+        slot = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid OLLAMA_FLEET_SLOT_CTX={raw!r}") from exc
+    if slot < 1:
+        raise ValueError(f"Invalid OLLAMA_FLEET_SLOT_CTX={raw!r}")
+    return slot * max(1, int(parallel))
 
 
 def _ollama_executable() -> str:
@@ -117,21 +115,21 @@ def effective_max_loaded_models(
 ) -> int:
     """How many models Ollama may keep resident at once.
 
-    Explicit ``OLLAMA_MAX_LOADED_MODELS`` in the environment wins.
-    ``warm_stack`` (all models fit) allows the full required set.
-    Otherwise only one model may be resident (load on demand / swap).
+    Requires ``OLLAMA_MAX_LOADED_MODELS`` in the environment (after materialize).
     """
     raw = os.environ.get("OLLAMA_MAX_LOADED_MODELS", "").strip()
-    if raw:
-        try:
-            return max(1, int(raw))
-        except ValueError:
-            pass
-    if max_loaded is not None:
-        return max(1, int(max_loaded))
-    if cfg.memory_tier == "warm_stack" and cfg.model_count > 0:
-        return int(cfg.model_count)
-    return 1
+    if not raw:
+        raise ValueError(
+            "OLLAMA_MAX_LOADED_MODELS is required in the environment "
+            "(call ensure_operator_env / ensure_fleet_config first)"
+        )
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid OLLAMA_MAX_LOADED_MODELS={raw!r}") from exc
+    if value < 1:
+        raise ValueError(f"Invalid OLLAMA_MAX_LOADED_MODELS={raw!r}")
+    return value
 
 
 def _build_ollama_server_env(
