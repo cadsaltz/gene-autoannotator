@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+import pytest
+
 from shared.env_persist import load_env_file
 from worker.fleet import setup
 from worker.fleet.sizing import FleetRecommendation
@@ -57,6 +59,36 @@ def test_ensure_operator_env_max_loaded_warm_stack(tmp_path, monkeypatch):
         env_path=env_path, memory_tier="warm_stack", model_count=4,
     )
     assert load_env_file(env_path)["OLLAMA_MAX_LOADED_MODELS"] == "4"
+
+
+@pytest.mark.parametrize(
+    ("key", "invalid"),
+    [
+        ("OLLAMA_FLEET_SLOT_CTX", "0"),
+        ("OLLAMA_MAX_LOADED_MODELS", "not-an-int"),
+        ("AUTOANNOTATION_SECTION_CHUNKING", "maybe"),
+    ],
+)
+def test_ensure_operator_env_rejects_invalid_existing_values(
+    tmp_path, key, invalid,
+):
+    env_path = tmp_path / "worker.env"
+    env_path.write_text(f"{key}={invalid}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=key):
+        setup.ensure_operator_env(
+            env_path=env_path, memory_tier="warm_stack", model_count=4,
+        )
+
+
+def test_pin_keep_alive_does_not_overwrite_existing_file_value(tmp_path, monkeypatch):
+    env_path = tmp_path / "worker.env"
+    env_path.write_text("OLLAMA_FLEET_KEEP_ALIVE=-1\n", encoding="utf-8")
+    monkeypatch.setenv("OLLAMA_FLEET_KEEP_ALIVE", "0")
+
+    setup._pin_keep_alive_from_environ(env_path)
+
+    assert load_env_file(env_path)["OLLAMA_FLEET_KEEP_ALIVE"] == "-1"
 
 
 def test_apply_fleet_keep_alive_does_not_use_tier_when_file_set(tmp_path, monkeypatch):

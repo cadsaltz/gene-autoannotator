@@ -11,6 +11,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+from autoannotation.section_chunking import parse_section_chunking_flag
 from shared.env_persist import load_env_file, save_env_file
 from worker.fleet import models, sizing
 from worker.fleet.config import FleetConfig
@@ -673,7 +674,7 @@ def _pin_keep_alive_from_environ(env_path: Path) -> None:
     if not val:
         return
     saved = load_env_file(env_path)
-    if saved.get("OLLAMA_FLEET_KEEP_ALIVE") == val:
+    if "OLLAMA_FLEET_KEEP_ALIVE" in saved:
         return
     saved["OLLAMA_FLEET_KEEP_ALIVE"] = val
     save_env_file(env_path, saved)
@@ -745,6 +746,15 @@ OPERATOR_ENV_DEFAULTS = {
 }
 
 
+def _validate_positive_int_env(key: str, raw: str) -> None:
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid {key}={raw!r}; expected a positive integer") from exc
+    if value < 1:
+        raise ValueError(f"Invalid {key}={raw!r}; expected a positive integer")
+
+
 def ensure_operator_env(
     *,
     env_path: Path,
@@ -775,6 +785,14 @@ def ensure_operator_env(
 
     if changed:
         save_env_file(env_path, saved)
+
+    _validate_positive_int_env(
+        "OLLAMA_FLEET_SLOT_CTX", saved["OLLAMA_FLEET_SLOT_CTX"],
+    )
+    _validate_positive_int_env(
+        "OLLAMA_MAX_LOADED_MODELS", saved["OLLAMA_MAX_LOADED_MODELS"],
+    )
+    parse_section_chunking_flag(saved["AUTOANNOTATION_SECTION_CHUNKING"])
 
     for key in (
         "OLLAMA_FLEET_SLOT_CTX",

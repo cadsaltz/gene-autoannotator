@@ -426,7 +426,7 @@ python -m worker bench \
 Model residency uses env-authoritative caps (tier affects warnings/dashboard only):
 
 - **`OLLAMA_MAX_LOADED_MODELS`** — write-if-missing on first ensure: model count when tier is `warm_stack`, else `1`; never rewritten unless you edit `worker.env`.
-- **`OLLAMA_FLEET_KEEP_ALIVE`** — write-if-missing default `0`; bench `--keep-alive` overrides for that run only. No router cache; no pre-warm.
+- **`OLLAMA_FLEET_KEEP_ALIVE`** — write-if-missing default `0`; bench `--keep-alive` persists the override to `worker.env`. No router cache; no pre-warm.
 
 ### Worker env (`worker.env.example`)
 
@@ -439,7 +439,7 @@ Model residency uses env-authoritative caps (tier affects warnings/dashboard onl
 | `WORKER_MODEL_MEMORY_BUDGET_GB` | Cap for model weights / KV / Ollama memory (GB). `-1` or omit = machine-derived max. Influences fleet **recommendations** and feasibility warnings; does **not** derive `WORKER_MAX_SLOTS`. |
 | `WORKER_MAX_SLOTS` | Concurrent annotation subprocess cap (from fleet setup prompt or manual edit) |
 | `OLLAMA_FLEET_SERVERS` / `OLLAMA_FLEET_PARALLEL` | Homogeneous Ollama fleet shape |
-| `OLLAMA_FLEET_KEEP_ALIVE` | Write-if-missing default `0`; never overridden by VRAM tier. Copied to `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` for jobs. Bench `--keep-alive` overrides for that run. |
+| `OLLAMA_FLEET_KEEP_ALIVE` | Write-if-missing default `0`; never overridden by VRAM tier. Copied to `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` for jobs. Bench `--keep-alive` persists the override to `worker.env`. |
 | `OLLAMA_MAX_LOADED_MODELS` | Write-if-missing: model count when tier is `warm_stack`, else `1`; never tier-overwritten. |
 | `AUTOANNOTATION_SECTION_CHUNKING` | Write-if-missing default `true`. `false` = July-style full sections (no excerpt splitting); Ollama may still truncate when prompt exceeds slot context. |
 | `WORKER_DASHBOARD_OLLAMA_PS` | `1` (default) = dashboard IN MEM sizes from `/api/ps`; `0` = in-flight dots only (no HTTP). |
