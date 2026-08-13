@@ -34,7 +34,8 @@ fi
 export OLLAMA_MODELS="$MODELS_DIR"
 export WORKER_CACHE_DIR="$CACHE_DIR"
 export WORKER_OUTPUT_DIR="$OUTPUT_DIR"
-export WORKER_ENV_FILE="${WORKER_ENV_FILE:-$OUTPUT_DIR/worker.env}"
+# Default WORKER_ENV_FILE is repo-root worker.env (/app/worker.env in the image).
+# Bind-mount the host file there (run-worker-bench.sh --env-file) for one truth.
 
 ARGS=(bench --jobs "$JOBS_PATH" --output-dir "$OUTPUT_DIR" --report "$REPORT_PATH" --cache "$CACHE_MODE")
 if [[ -n "${WORKER_BENCH_SLOTS:-}" ]]; then

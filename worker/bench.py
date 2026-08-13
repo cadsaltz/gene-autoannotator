@@ -275,10 +275,6 @@ def main(argv=None):
             flush=True,
         )
         return 2
-    if not os.getenv("WORKER_ENV_FILE"):
-        os.environ["WORKER_ENV_FILE"] = str(
-            Path(os.getenv("WORKER_OUTPUT_DIR", "/tmp")) / "worker.env"
-        )
     ensure_worker_env(
         interactive=False,
         skip_fleet_config=configure_fleet,

@@ -430,7 +430,7 @@ Model residency is two-tier only (no router cache, no pre-warm):
 
 ### Worker env (`worker.env.example`)
 
-`worker.env` is the source of truth: keys you set are not silently overwritten on restart (except one-time migration from legacy names). Model memory budget and job slots are **separate** knobs.
+`worker.env` at the **repo root** is the source of truth (resolved via `WORKER_ENV_FILE`, defaulting to that absolute path — not the output directory). Keys you set are not silently overwritten on restart (except one-time migration from legacy names). Model memory budget and job slots are **separate** knobs.
 
 | Variable | Purpose |
 |----------|---------|

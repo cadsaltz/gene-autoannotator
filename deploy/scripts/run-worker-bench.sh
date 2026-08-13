@@ -165,7 +165,11 @@ DOCKER_CMD=(
 )
 
 if [[ -n "$ENV_FILE" ]]; then
+  # Inject into process env AND mount as /app/worker.env so fleet persist/read
+  # use the same file as local CLI (repo-root worker.env).
   DOCKER_CMD+=(--env-file "$ENV_FILE")
+  DOCKER_CMD+=(-v "$ENV_FILE:/app/worker.env")
+  DOCKER_CMD+=(-e "WORKER_ENV_FILE=/app/worker.env")
 fi
 
 DOCKER_CMD+=(

@@ -355,7 +355,7 @@ fleet configuration flow and `WORKER_MODEL_MEMORY_BUDGET_GB`.
 | --- | --- | --- |
 | `WORKER_CACHE_DIR` | `./.cache` | Annotation cache root (bench cold purge targets `llm_cache` / `llm_responses` here). |
 | `WORKER_OUTPUT_DIR` | `gen_json` | Annotation JSON output directory. |
-| `WORKER_ENV_FILE` | `worker.env` | Persisted env file for coordinator URL, token, fleet config. |
+| `WORKER_ENV_FILE` | `<repo>/worker.env` | Persisted env file for coordinator URL, token, fleet config. Absolute repo-root path by default (not cwd, not output-dir). |
 | `ANNOTATION_MEMORY_BUDGET_GB` | — | **Legacy alias** for `WORKER_MODEL_MEMORY_BUDGET_GB`; read once and migrated on persist. Fallback slot math when fleet keys absent. |
 | `JOB_MEMORY_ESTIMATE_GB` | `20.0` | Legacy per-job estimate (fallback only). |
 | `WORKER_MEMORY_HEADROOM_GB` | `4.0` | Legacy headroom (fallback only). |

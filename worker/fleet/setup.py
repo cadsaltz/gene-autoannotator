@@ -27,7 +27,9 @@ FLEET_ENV_KEYS = (
 
 
 def _default_env_path() -> Path:
-    return Path(os.getenv("WORKER_ENV_FILE", "worker.env"))
+    from worker.bootstrap import default_env_path
+
+    return default_env_path()
 
 
 DEFAULT_OLLAMA_BASE_PORT = 11434

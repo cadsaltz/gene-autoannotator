@@ -15,8 +15,20 @@ BUDGET_ENV_KEY = "WORKER_MODEL_MEMORY_BUDGET_GB"
 LEGACY_BUDGET_ENV_KEY = "ANNOTATION_MEMORY_BUDGET_GB"
 
 
+def repo_root() -> Path:
+    """Repository root (parent of the ``worker/`` package)."""
+    return Path(__file__).resolve().parent.parent
+
+
 def default_env_path() -> Path:
-    return Path(os.getenv("WORKER_ENV_FILE", "worker.env"))
+    """Single source of truth for worker env: repo-root ``worker.env``.
+
+    Override only with ``WORKER_ENV_FILE`` when you intentionally point elsewhere.
+    """
+    override = (os.getenv("WORKER_ENV_FILE") or "").strip()
+    if override:
+        return Path(override).expanduser()
+    return repo_root() / "worker.env"
 
 
 def _read_line(prompt: str) -> str:
