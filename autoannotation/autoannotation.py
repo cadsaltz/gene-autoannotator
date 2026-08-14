@@ -549,6 +549,14 @@ def get_gene_annotation(
                 target_go_attachment.resolution
             )
 
+    if merged_annotation is None and not used:
+        merged_annotation = metadata.empty_annotation_from_metadata(
+            annotation_metadata,
+            gene_id=gene or display_gene,
+            name=name,
+            profile=profile_context,
+        )
+
     profile_field_defs = field_defs.resolve_annotation_field_defs(profile_context)
     eligible_fields = []
     if merged_annotation is not None:
@@ -621,6 +629,11 @@ def get_gene_annotation(
                 ran=True,
                 skipped_reason='no_ortholog_papers',
                 fields_requested=eligible_fields,
+            )
+            existing_notes = merged_annotation.get('annotation_notes')
+            merged_annotation['annotation_notes'] = (
+                f'{existing_notes}\n\n{metadata.EMPTY_ORTHOLOG_NOTES}'
+                if existing_notes else metadata.EMPTY_ORTHOLOG_NOTES
             )
         else:
             # Ortholog pass uses the same LLM inference path as the target;

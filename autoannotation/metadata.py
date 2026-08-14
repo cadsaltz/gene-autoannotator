@@ -12,6 +12,11 @@ SELECTION_MODE_BUDGET = 'cumulative_relevance_budget'
 
 METADATA_FIELDS = ('annotation_metadata', 'annotation_notes')
 COMPARISON_IGNORE_FIELDS = frozenset(METADATA_FIELDS)
+EMPTY_TARGET_NOTES = (
+    'No papers were available for this gene; '
+    'no literature-backed target annotation was produced.'
+)
+EMPTY_ORTHOLOG_NOTES = 'The ortholog pass also found no papers.'
 FIELD_PROVENANCE_DIRECT = 'direct'
 FIELD_PROVENANCE_ORTHolog_DERIVED = 'ortholog_derived'
 FIELD_PROVENANCE_TARGET_PLUS_ORTHOLOG = 'target_plus_ortholog'
@@ -111,6 +116,19 @@ def build_field_coverage(annotation_fields, profile=None):
         else:
             coverage[field] = 'supported'
     return coverage
+
+
+def empty_annotation_from_metadata(annotation_metadata, *, gene_id, name, profile):
+    doc = {
+        'gene_id': gene_id,
+        'name': name,
+        'annotation_notes': EMPTY_TARGET_NOTES,
+        'annotation_metadata': dict(annotation_metadata or {}),
+    }
+    for field_def in field_defs.resolve_effective_fields(profile):
+        doc[field_def.key] = None
+    doc['annotation_metadata']['field_coverage'] = build_field_coverage(doc, profile=profile)
+    return doc
 
 
 def build_literature_context_for_notes(
