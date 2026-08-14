@@ -2,49 +2,45 @@
 
 **Date:** 2026-08-13  
 **Status:** Approved for implementation planning  
-**Scope:** Persist a blank annotation JSON when a job finds no papers to analyze. No LLM calls. Jobs that analyze papers are unchanged.
+**Scope:** Always persist annotation JSON. When the target pass analyzes no papers, seed a blank target annotation so the existing ortholog relevance gate can still run. No LLM on a pass that has no papers. Jobs that analyzed target papers are unchanged.
 
 ## Current behavior
 
-`get_gene_annotation` still returns a result dict when retrieval/selection yields nothing: `gene_distillation` and `gene_annotation` are `None`, metadata is built (quality flags include `no_papers_retrieved` / `no_eligible_papers` / `no_papers_analyzed`). No extractor/consensus/aggregation calls run.
+Target pass with zero papers: no extractor/consensus/aggregation LLM. `gene_distillation` is `None`, `merged_annotation` stays `None`.
 
-`autoannotation/__main__.py` then bails:
+Ortholog **would** pass the relevance gate (`cumulative_relevance` is 0.0 < 9.0) if `allow_ortholog_fallback` is on and a hit exists. It **does not run**, because:
 
 ```python
-if parsed is None:
-    if result.get("gene_distillation") is None:
-        ...  # "No annotation produced"
-        return  # no file
+if merged_annotation is None or not eligible_fields:
+    skipped_reason = 'no_eligible_fields'
 ```
 
-The worker/CLI job still completes successfully. Coordinator/Mongo get no annotation document from disk. Ortholog LLM is already skipped when `merged_annotation is None`.
+`__main__.py` then returns without writing JSON.
 
-## Goal
+## Desired behavior
 
-Every completed job writes `gen_<id>.json` under the usual output dir. Zero-paper jobs write a schema-shaped annotation with null biology fields and a curator note. Zero extra LLM calls.
+| Target papers | Ortholog papers (if fallback on) | Result |
+| --- | --- | --- |
+| none | pass not eligible / off / no hit | Blank JSON; notes say no target papers |
+| none | none | Blank JSON; notes say no papers on target (and ortholog if it ran) |
+| none | some | Blank target fields + ortholog-derived fills as today; notes say no target papers |
+| some | (unchanged) | Unchanged |
 
-## Non-goals
+Ortholog trigger stays **exactly** the existing `_decide_ortholog_action` (fallback flag + cum relevance + hit). Seeding a blank target must not skip that pass.
 
-- Changing jobs that analyzed any paper (including LLM-filter failure after papers).
-- Forcing an ortholog literature pass when the target had no papers.
-- GO ranking on empty text (existing skip remains).
+LLM: none for a pass with `used_ids` empty. Ortholog **may** call LLMs if it has papers (same as any ortholog pass).
 
 ## Design
 
-Handle this only at the persist boundary (`__main__.py`), after `get_gene_annotation` returns.
+In `get_gene_annotation`, after the target pass, if `gene_distillation is None` and target `used_pmc_ids` is empty:
 
-**Trigger (all of):** `gene_annotation is None`, `gene_distillation is None`, `used_ids` is empty.
+1. Build blank annotation (`gene_id`/`name`, biology fields `null`, `annotation_notes` about no target papers, existing `annotation_metadata`, `field_coverage` all `insufficient_evidence`).
+2. Set `merged_annotation` to that doc **before** `fields_eligible_for_ortholog` and `_decide_ortholog_action`.
 
-**Not triggered:** any job that entered extraction (`used_ids` non-empty). Those keep today’s write-or-skip behavior.
+Then existing ortholog + merge + `__main__.py` write path apply.
 
-**Blank document:**
+If ortholog runs and also has no distillation, keep the blank doc; append a short notes sentence that the ortholog pass also found no papers. If ortholog fills fields, keep the no-target-papers note and existing ortholog merge notes.
 
-- `gene_id` / `name` from resolved target metadata (or submitted identifiers).
-- Every profile biology field `null` (`functional_category` null, not `[]`).
-- `annotation_notes`: short fixed text that no papers were available and no literature-backed annotation was produced.
-- `annotation_metadata`: the dict already on the result (duration, literature zeros, quality flags). Attach `field_coverage` all `insufficient_evidence`.
-- Do not add `go_terms`.
+Do **not** seed a blank annotation when target `used_pmc_ids` is non-empty but distillation failed (paper jobs unchanged).
 
-Reuse `field_defs.resolve_effective_fields` + existing `build_field_coverage`. Write with the same path convention as successful jobs.
-
-Ortholog: leave `get_gene_annotation` as-is so filling JSON at write time cannot accidentally enable an ortholog LLM pass.
+`__main__.py`: if `gene_annotation` is set, write as today. Zero-paper jobs now have `gene_annotation` set so they persist. Leave the “No annotation produced” return only for the paper-but-no-distillation case.

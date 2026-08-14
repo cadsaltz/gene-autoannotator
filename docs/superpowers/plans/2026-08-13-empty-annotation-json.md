@@ -4,41 +4,42 @@
 >
 > **Spec:** `docs/superpowers/specs/2026-08-13-empty-annotation-json-design.md`
 
-**Goal:** Write a blank schema-shaped annotation JSON when a job analyzes zero papers, with no LLM calls and no change to jobs that have papers.
+**Goal:** Persist JSON for every zero-paper target job; seed a blank target annotation so the existing ortholog relevance gate can still run.
 
-**Architecture:** After `get_gene_annotation`, if there is no distillation and `used_ids` is empty, build a null-field annotation from existing metadata and write it with the current output-path logic.
+**Architecture:** After a target pass with no analyzed papers, build a null-field annotation and assign `merged_annotation` before ortholog decision. Ortholog LLM runs only if that pass has papers. `__main__.py` writes when `gene_annotation` is set.
 
-**Tech Stack:** Python 3, pytest, `autoannotation/__main__.py`, `autoannotation/metadata.py` or `field_defs.py`.
+**Tech Stack:** Python 3, pytest, `autoannotation/autoannotation.py`, `autoannotation/metadata.py`.
 
 ## Global Constraints
 
-- Trigger only when `gene_annotation is None` and `gene_distillation is None` and `used_ids` is empty.
-- Do not call Ollama. Do not change `get_gene_annotation` ortholog gating.
-- Jobs with any analyzed paper: unchanged.
-- `annotation_notes` states that no papers were available.
-- Same `gen_<id>.json` path rules as today.
+- Seed blank target only when target `used_pmc_ids` is empty and `gene_distillation is None`.
+- Do not change jobs that analyzed any target paper.
+- Ortholog still uses `_decide_ortholog_action` (fallback + cum relevance + hit).
+- No LLM on a pass with no papers; ortholog with papers uses the existing pass.
+- `annotation_notes` records no target papers; if ortholog also has no papers, mention that too.
 - TDD; named git paths only.
 
 ## File map
 
 | Path | Action | Responsibility |
 |------|--------|----------------|
-| `autoannotation/metadata.py` | Modify | `empty_annotation_from_metadata(...)` helper |
-| `autoannotation/__main__.py` | Modify | Use helper instead of early return |
-| `tests/test_empty_annotation_json.py` | Create | Helper + persist trigger |
+| `autoannotation/metadata.py` | Modify | `empty_annotation_from_metadata`; notes constants |
+| `autoannotation/autoannotation.py` | Modify | Seed blank target before ortholog; append ortholog-no-papers note |
+| `tests/test_empty_annotation_json.py` | Create | Helper + seed-before-ortholog + persist |
 
 ---
 
-### Task 1: Blank annotation helper + persist when no papers analyzed
+### Task 1: Seed blank target annotation when no papers analyzed
 
 **Files:**
 - Modify: `autoannotation/metadata.py`
-- Modify: `autoannotation/__main__.py`
+- Modify: `autoannotation/autoannotation.py`
 - Create: `tests/test_empty_annotation_json.py`
 
 **Interfaces:**
-- Produces: `empty_annotation_from_metadata(annotation_metadata, *, gene_id, name, profile) -> dict`
-- Notes constant: `'No papers were available for this gene; no literature-backed annotation was produced.'`
+- `EMPTY_TARGET_NOTES = 'No papers were available for this gene; no literature-backed target annotation was produced.'`
+- `EMPTY_ORTHOLOG_NOTES = 'The ortholog pass also found no papers.'`
+- `empty_annotation_from_metadata(annotation_metadata, *, gene_id, name, profile) -> dict`
 
 - [ ] **Step 1: Write failing tests**
 
@@ -50,89 +51,106 @@ from autoannotation.organisms import resolve_profile
 
 def test_empty_annotation_null_fields_and_notes():
     profile = resolve_profile("mtb-h37rv")
-    meta = {
-        "profile_id": "mtb-h37rv",
-        "literature": {"papers_analyzed": 0},
-        "quality_flags": ["no_papers_retrieved", "no_papers_analyzed"],
-    }
+    meta = {"profile_id": "mtb-h37rv", "quality_flags": ["no_papers_analyzed"]}
     doc = metadata.empty_annotation_from_metadata(
         meta, gene_id="Rv9999", name="fake", profile=profile,
     )
     assert doc["gene_id"] == "Rv9999"
-    assert doc["name"] == "fake"
     assert doc["function"] is None
     assert doc["functional_category"] is None
-    assert doc["annotation_notes"] == (
-        "No papers were available for this gene; "
-        "no literature-backed annotation was produced."
-    )
+    assert doc["annotation_notes"] == metadata.EMPTY_TARGET_NOTES
     assert doc["annotation_metadata"]["field_coverage"]["function"] == "insufficient_evidence"
-    assert "go_terms" not in doc
 
 
-def test_main_writes_json_when_no_papers(tmp_path, monkeypatch):
-    from autoannotation import __main__ as cli
+def test_get_gene_annotation_seeds_blank_when_target_has_no_papers(monkeypatch):
+    import autoannotation.autoannotation as aa
 
-    fake = {
-        "gene_distillation": None,
-        "gene_annotation": None,
-        "pmc_ids": [],
-        "used_ids": [],
-        "cumulative_relevance": 0.0,
-        "selection_mode": "all_eligible_limited_literature",
-        "annotation_metadata": {
-            "profile_id": "mtb-h37rv",
-            "resolved_locus": "Rv9999",
-            "resolved_name": None,
-        },
-    }
-    monkeypatch.setattr(cli, "get_gene_annotation", lambda **kwargs: fake)
-    result = cli.main(profile="mtb-h37rv", locus="Rv9999", output_dir=str(tmp_path), quiet=True)
-    path = tmp_path / "gen_Rv9999.json"
-    assert path.is_file()
-    assert result["output_path"] == str(path)
+    class FakePass:
+        gene_distillation = None
+        ranked_papers = []
+        selection = type("S", (), {
+            "selected_records": [],
+            "selection_mode": "all_eligible_limited_literature",
+            "eligible_count": 0,
+        })()
+        used_pmc_ids = []
+        pmids_analyzed = []
+        sections_analyzed = 0
+        cumulative_relevance = 0.0
+
+    monkeypatch.setattr(aa, "run_paper_annotation_pass", lambda *a, **k: FakePass())
+    monkeypatch.setattr(
+        aa, "_decide_ortholog_action",
+        lambda **k: aa.OrthologDecision(hit=None, skipped_reason="fallback_disabled_for_job"),
+    )
+    result = aa.get_gene_annotation(
+        profile="mtb-h37rv", locus="Rv9999",
+        allow_online_name_lookup=False, allow_ortholog_fallback=False,
+    )
+    assert result["gene_annotation"] is not None
+    assert result["gene_annotation"]["function"] is None
+    assert result["used_ids"] == []
 
 
-def test_main_still_skips_write_when_papers_used_but_no_distillation(tmp_path, monkeypatch):
-    from autoannotation import __main__ as cli
+def test_blank_target_still_requests_ortholog_when_relevance_is_zero(monkeypatch):
+    import autoannotation.autoannotation as aa
+    seen = {}
 
-    fake = {
-        "gene_distillation": None,
-        "gene_annotation": None,
-        "pmc_ids": ["1"],
-        "used_ids": ["1"],
-        "cumulative_relevance": 1.0,
-        "selection_mode": "cumulative_relevance_budget",
-        "annotation_metadata": {"profile_id": "mtb-h37rv"},
-    }
-    monkeypatch.setattr(cli, "get_gene_annotation", lambda **kwargs: fake)
-    result = cli.main(profile="mtb-h37rv", locus="Rv0001", output_dir=str(tmp_path), quiet=True)
-    assert result is None
-    assert not (tmp_path / "gen_Rv0001.json").exists()
+    class FakePass:
+        gene_distillation = None
+        ranked_papers = []
+        selection = type("S", (), {
+            "selected_records": [],
+            "selection_mode": "all_eligible_limited_literature",
+            "eligible_count": 0,
+        })()
+        used_pmc_ids = []
+        pmids_analyzed = []
+        sections_analyzed = 0
+        cumulative_relevance = 0.0
+
+    def fake_decide(**kwargs):
+        seen["cumulative_relevance"] = kwargs["cumulative_relevance"]
+        seen["allow"] = kwargs["allow_ortholog_fallback"]
+        return aa.OrthologDecision(hit=None, skipped_reason="no_ortholog_found")
+
+    monkeypatch.setattr(aa, "run_paper_annotation_pass", lambda *a, **k: FakePass())
+    monkeypatch.setattr(aa, "_decide_ortholog_action", fake_decide)
+    result = aa.get_gene_annotation(
+        profile="mtb-h37rv", locus="Rv9999",
+        allow_online_name_lookup=False, allow_ortholog_fallback=True,
+    )
+    assert seen["allow"] is True
+    assert seen["cumulative_relevance"] == 0.0
+    assert result["gene_annotation"] is not None
+    # Must not skip as no_eligible_fields solely because target was empty
+    assert result["annotation_metadata"]["ortholog_pass"]["skipped_reason"] != "no_eligible_fields"
 ```
+
+If `ortholog_pass` is only on the merged annotation, assert via `result["gene_annotation"]["annotation_metadata"]["ortholog_pass"]`.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_empty_annotation_json.py -v`  
-Expected: FAIL (`empty_annotation_from_metadata` missing; main still returns without write)
+Expected: FAIL
 
-- [ ] **Step 3: Implement helper + `__main__` branch**
+- [ ] **Step 3: Implement**
 
 ```python
-# autoannotation/metadata.py
-EMPTY_ANNOTATION_NOTES = (
+# metadata.py
+EMPTY_TARGET_NOTES = (
     "No papers were available for this gene; "
-    "no literature-backed annotation was produced."
+    "no literature-backed target annotation was produced."
 )
+EMPTY_ORTHOLOG_NOTES = "The ortholog pass also found no papers."
 
 
 def empty_annotation_from_metadata(annotation_metadata, *, gene_id, name, profile):
     from . import field_defs
-
     doc = {
         "gene_id": gene_id,
         "name": name,
-        "annotation_notes": EMPTY_ANNOTATION_NOTES,
+        "annotation_notes": EMPTY_TARGET_NOTES,
         "annotation_metadata": dict(annotation_metadata or {}),
     }
     for field_def in field_defs.resolve_effective_fields(profile):
@@ -141,32 +159,23 @@ def empty_annotation_from_metadata(annotation_metadata, *, gene_id, name, profil
     return doc
 ```
 
-In `__main__.py`, replace the early return:
+In `get_gene_annotation`, after building `annotation_metadata` and the `if gene_distillation is not None:` block, add:
 
 ```python
-if parsed is None:
-    if result.get("gene_distillation") is None:
-        used = result.get("used_ids") or []
-        if used:
-            if not quiet:
-                print(f"No annotation produced for {output_gene}")
-            return
-        from autoannotation import metadata as metadata_mod
-        from autoannotation import organisms
-        meta = result.get("annotation_metadata") or {}
-        profile_id = meta.get("profile_id") or profile or "mtb-h37rv"
-        profile_obj = organisms.profile_from_mapping(profile_config) if profile_config else organisms.resolve_profile(profile_id)
-        parsed = metadata_mod.empty_annotation_from_metadata(
-            meta,
-            gene_id=meta.get("resolved_locus") or output_gene,
-            name=meta.get("resolved_name") or name,
-            profile=profile_obj,
-        )
+if merged_annotation is None and not used:
+    merged_annotation = metadata.empty_annotation_from_metadata(
+        annotation_metadata,
+        gene_id=gene or display_gene,
+        name=name,
+        profile=profile_context,
+    )
 ```
 
-Then fall through to the existing `os.makedirs` / `json.dump` path.
+When ortholog pass ran but `gene_distillation is None`, append `EMPTY_ORTHOLOG_NOTES` to `annotation_notes` on `merged_annotation`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+Do not change `__main__.py` early-return for `used_ids` non-empty. Zero-paper jobs now have `gene_annotation` set so the existing write path runs.
+
+- [ ] **Step 4: Run tests**
 
 Run: `python -m pytest tests/test_empty_annotation_json.py -v`  
 Expected: PASS
@@ -174,6 +183,6 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add autoannotation/metadata.py autoannotation/__main__.py tests/test_empty_annotation_json.py
-git commit -m "feat(autoannotation): write blank JSON when no papers analyzed"
+git add autoannotation/metadata.py autoannotation/autoannotation.py tests/test_empty_annotation_json.py
+git commit -m "feat(autoannotation): persist blank JSON and allow ortholog after no target papers"
 ```
