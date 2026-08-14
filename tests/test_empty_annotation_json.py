@@ -120,3 +120,71 @@ def test_blank_target_appends_empty_ortholog_notes_when_ortholog_has_no_papers(m
     assert metadata.EMPTY_TARGET_NOTES in notes
     assert metadata.EMPTY_ORTHOLOG_NOTES in notes
     assert result["gene_annotation"]["annotation_metadata"]["ortholog_pass"]["skipped_reason"] == "no_ortholog_papers"
+
+
+def test_paper_job_leaves_notes_unchanged_when_ortholog_has_no_papers(monkeypatch):
+    import json
+    import autoannotation.autoannotation as aa
+    from autoannotation.orthology import OrthologHit
+
+    target_notes = "Analyzed papers for this gene."
+
+    class TargetPass:
+        gene_distillation = json.dumps({
+            "gene_id": "Rv9999",
+            "name": "fake",
+            "function": "Something.",
+            "functional_category": ["unknown"],
+            "annotation_notes": target_notes,
+        })
+        ranked_papers = []
+        selection = type("S", (), {
+            "selected_records": [],
+            "selection_mode": "all_eligible_limited_literature",
+            "eligible_count": 1,
+        })()
+        used_pmc_ids = ["1"]
+        pmids_analyzed = ["123"]
+        sections_analyzed = 1
+        cumulative_relevance = 0.0
+
+    class OrthologPass:
+        gene_distillation = None
+        ranked_papers = []
+        selection = type("S", (), {
+            "selected_records": [],
+            "selection_mode": "all_eligible_limited_literature",
+            "eligible_count": 0,
+        })()
+        used_pmc_ids = []
+        pmids_analyzed = []
+        sections_analyzed = 0
+        cumulative_relevance = 0.0
+
+    def fake_pass(*_a, **kwargs):
+        if kwargs.get("evidence_mode") == "ortholog":
+            return OrthologPass()
+        return TargetPass()
+
+    hit = OrthologHit(
+        source_organism_code="mory",
+        source_organism_name="Mycobacterium orygis",
+        source_gene_id="MO_000001",
+        source_gene_name="dnaA",
+        score=507.0,
+        identity=0.82,
+        lookup_source="kegg_ssdb",
+    )
+    monkeypatch.setattr(aa, "run_paper_annotation_pass", fake_pass)
+    monkeypatch.setattr(
+        aa, "_decide_ortholog_action",
+        lambda **k: aa.OrthologDecision(hit=hit, skipped_reason=None),
+    )
+    result = aa.get_gene_annotation(
+        profile="mtb-h37rv", locus="Rv9999",
+        allow_online_name_lookup=False, allow_ortholog_fallback=True,
+    )
+    notes = result["gene_annotation"]["annotation_notes"]
+    assert notes == target_notes
+    assert metadata.EMPTY_ORTHOLOG_NOTES not in notes
+    assert result["used_ids"] == ["1"]

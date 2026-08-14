@@ -630,11 +630,12 @@ def get_gene_annotation(
                 skipped_reason='no_ortholog_papers',
                 fields_requested=eligible_fields,
             )
-            existing_notes = merged_annotation.get('annotation_notes')
-            merged_annotation['annotation_notes'] = (
-                f'{existing_notes}\n\n{metadata.EMPTY_ORTHOLOG_NOTES}'
-                if existing_notes else metadata.EMPTY_ORTHOLOG_NOTES
-            )
+            if not used:
+                existing_notes = merged_annotation.get('annotation_notes')
+                merged_annotation['annotation_notes'] = (
+                    f'{existing_notes}\n\n{metadata.EMPTY_ORTHOLOG_NOTES}'
+                    if existing_notes else metadata.EMPTY_ORTHOLOG_NOTES
+                )
         else:
             # Ortholog pass uses the same LLM inference path as the target;
             # only ortholog_allowed fields may be copied onto the target annotation.
