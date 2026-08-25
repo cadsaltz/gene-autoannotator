@@ -241,8 +241,12 @@ class JobStore:
         return self.get_job(queued["id"])
 
     def assign_job_to_worker(self, worker_id, *, lease_seconds=31536000):
+        """Atomically claim one queued job for a fleet worker."""
         with self._connect() as connection:
             connection.row_factory = sqlite3.Row
+            # This is the only fleet claim path. BEGIN IMMEDIATE reserves the
+            # write lock before selecting, so concurrent claimers cannot select
+            # the same queued job.
             connection.execute("BEGIN IMMEDIATE")
             queued = connection.execute(
                 """
@@ -261,7 +265,7 @@ class JobStore:
                 SET status = 'running', current_step = 'running', worker_id = ?,
                     lease_expires_at = ?, attempts = attempts + 1,
                     started_at = COALESCE(started_at, ?)
-                WHERE id = ?
+                WHERE id = ? AND status = 'queued'
                 """,
                 (worker_id, _iso_in(lease_seconds), _now_iso(), queued["id"]),
             )
@@ -422,6 +426,15 @@ class JobStore:
                 (batch_id, limit),
             ).fetchall()
         return [self._row_to_job(row) for row in rows]
+
+    def count_queued_jobs(self) -> int:
+        """Return the queued job count without transitioning job status."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS n FROM annotation_jobs WHERE status = ?",
+                ("queued",),
+            ).fetchone()
+        return int(row[0])
 
     def queue_summary(self):
         with self._connect() as connection:

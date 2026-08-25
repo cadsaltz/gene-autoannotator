@@ -780,6 +780,11 @@ def create_app(
     def clear_jobs_history():
         return {"deleted": store.clear_finished_jobs()}
 
+    @app.get("/jobs/queue-summary")
+    def queued_jobs_summary():
+        # Peek only: status transitions are reserved for fleet claim endpoints.
+        return {"queued": store.count_queued_jobs()}
+
     @app.get("/jobs/{job_id}", response_model=JobRecordResponse)
     def get_job(job_id: str):
         job = store.get_job(job_id)
@@ -869,6 +874,7 @@ def create_app(
             return Response(status_code=204)
         if request.free_slots < max(ready_slots):
             return Response(status_code=204)
+        # Keep every fleet assignment on the store's serialized claim path.
         job = store.assign_job_to_worker(worker_id, lease_seconds=lease_seconds)
         if job is None:
             return Response(status_code=204)
