@@ -1,0 +1,78 @@
+{
+  "fixture_id": "gene_sets/bias_cluster_v1",
+  "selection_criteria": "Distinct genes referenced by paper_snapshots/bias_cluster_v1 items.",
+  "items": [
+    {
+      "gene_id": "Rv0002",
+      "gene_name": "dnaN",
+      "locus": "Rv0002",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv0003",
+      "gene_name": "recF",
+      "locus": "Rv0003",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv0032",
+      "gene_name": "bioF2",
+      "locus": "Rv0032",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv0033",
+      "gene_name": "acpA",
+      "locus": "Rv0033",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv0969",
+      "gene_name": "ctpV",
+      "locus": "Rv0969",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv1636",
+      "gene_name": "TB15.3",
+      "locus": "Rv1636",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv2007c",
+      "gene_name": "fdxA",
+      "locus": "Rv2007c",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv2057c",
+      "gene_name": "rpmG1",
+      "locus": "Rv2057c",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv2070c",
+      "gene_name": "cobK",
+      "locus": "Rv2070c",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv2418c",
+      "gene_name": "octT",
+      "locus": "Rv2418c",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv3221A",
+      "gene_name": "rshA",
+      "locus": "Rv3221A",
+      "profile_id": "mtb-h37rv"
+    },
+    {
+      "gene_id": "Rv3459c",
+      "gene_name": "rpsK",
+      "locus": "Rv3459c",
+      "profile_id": "mtb-h37rv"
+    }
+  ]
+}

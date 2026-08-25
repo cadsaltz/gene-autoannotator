@@ -37,5 +37,11 @@ bench_outputs/
 bench_out/
 reports/
 tests/
+# Paper experiment unit tests live under experiments/ (root tests/ stays ignored).
+!experiments/paper/tests/
+!experiments/paper/tests/**
+
+# Live/dry-run experiment outputs stay local.
+experiments/paper/results/*/
 
 worker-serve.log
