@@ -1,5 +1,5 @@
 experiment_id: split-vs-not
-config_version: 1
+config_version: 2
 owner: Caden
 parent_experiment_id: bias-1-vs-3-small
 parent_run_dir: results/bias-1-vs-3-small/pilot1
@@ -8,14 +8,14 @@ max_trials: 15
 claim: >
   A substantial fraction of field-level decisions are split across extractors,
   which motivates a consensus / tie-break stage (and measures where crowds help).
-status: fixtures-ready
+status: runnable
 
 models:
   extractors:
-    - qwen3.5:0.8b    # A
-    - gemma3:1b       # B
-    - llama3.2:1b     # C
-  consensus: qwen3:0.6b
+    - qwen3:14b           # A
+    - gemma3:12b          # B
+    - mistral-nemo:12b    # C
+  consensus: qwen3:8b
 
 fixtures:
   papers: fixtures/paper_snapshots/bias_cluster_v1.json
@@ -36,4 +36,4 @@ metrics:
 
 notes: |
   Often derivable from records.jsonl of bias-1-vs-3-small; may not need a separate runner.
-  Shares frozen fixtures with bias-1-vs-3-small and cost-benefit-1-vs-3.
+  Shares frozen fixtures and performance-tier models with bias-1-vs-3-small.

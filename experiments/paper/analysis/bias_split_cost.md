@@ -8,8 +8,9 @@ paper-facing aggregates remain unanalyzed until `paper10` completes.
 
 ## Prerequisites
 
-From repo root, with `.venv` activated and Ollama models pulled per
-`experiments/paper/configs/bias-1-vs-3-small.yaml`:
+From repo root, with `.venv` activated and Ollama **performance** models pulled
+per `experiments/paper/configs/bias-1-vs-3-small.yaml`
+(`qwen3:14b`, `gemma3:12b`, `mistral-nemo:12b`, `qwen3:8b`):
 
 ```bash
 cd /path/to/gene-autoannotator
