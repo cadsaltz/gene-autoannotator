@@ -107,6 +107,17 @@ The coordinator is a **control plane only** — it queues jobs and hands them to
 external workers (see `worker/README.md`). It never runs annotation jobs
 in-process.
 
+Persistent laptop workers and scheduler-launched HPC workers can pull from the
+same backend queue. The backend does not push jobs to either fleet:
+
+```bash
+# laptop
+BACKEND_URL=https://api.example WORKER_API_TOKEN=… python -m worker serve
+
+# HPC scrontab
+*/5 * * * * cd /opt/gene-autoannotator && .venv/bin/python -m dispatcher once
+```
+
 Environment variables:
 
 - `WORKER_API_TOKEN`: shared secret required on the worker endpoints

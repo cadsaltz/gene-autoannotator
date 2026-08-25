@@ -49,6 +49,18 @@ flowchart LR
 Serve mode registers with the coordinator, heartbeats aggregate slot state, and
 claims jobs until drained or interrupted.
 
+Serve and scheduler-launched workers can consume the same backend queue. Both
+fleets pull work by claiming jobs; the backend does not push jobs to either
+fleet:
+
+```bash
+# laptop
+BACKEND_URL=https://api.example WORKER_API_TOKEN=… python -m worker serve
+
+# HPC scrontab
+*/5 * * * * cd /opt/gene-autoannotator && .venv/bin/python -m dispatcher once
+```
+
 ```bash
 COORDINATOR_URL=http://<coord-host>:8000 \
 WORKER_API_TOKEN=<token> \
