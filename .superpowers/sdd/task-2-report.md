@@ -68,3 +68,25 @@ Added a read-only queued-job count and exposed it through
 ## Concerns
 
 None.
+
+## Important Review Fixes
+
+- Added a two-party barrier to the concurrent claim test so both worker threads
+  reach the claim call before either proceeds.
+- Added a regression test that forces the guarded assignment update to affect
+  zero rows and verifies the store returns `None` while leaving the job queued.
+- `assign_job_to_worker` now checks that the guarded update changed exactly one
+  row before returning the selected job.
+
+### Fix Evidence
+
+1. RED:
+   `.venv/bin/pytest tests/test_job_claim_race.py::test_assign_job_returns_none_when_guarded_update_loses_race -v`
+   failed because `assign_job_to_worker` returned the still-queued job after the
+   trigger forced the guarded update to affect zero rows.
+2. GREEN:
+   `.venv/bin/pytest tests/test_job_claim_race.py -v` passed all 4 tests.
+3. RELATED:
+   `.venv/bin/pytest tests/test_job_claim_race.py tests/test_coordinator_job_store.py tests/test_coordinator_claim_bias.py tests/test_worker_integration.py tests/test_coordinator_api.py -q`
+   passed all 91 tests.
+4. IDE diagnostics reported no errors in the modified Python files.

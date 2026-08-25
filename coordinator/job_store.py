@@ -259,7 +259,7 @@ class JobStore:
             if queued is None:
                 connection.commit()
                 return None
-            connection.execute(
+            cursor = connection.execute(
                 """
                 UPDATE annotation_jobs
                 SET status = 'running', current_step = 'running', worker_id = ?,
@@ -269,6 +269,9 @@ class JobStore:
                 """,
                 (worker_id, _iso_in(lease_seconds), _now_iso(), queued["id"]),
             )
+            if cursor.rowcount != 1:
+                connection.commit()
+                return None
             connection.commit()
         return self.get_job(queued["id"])
 
