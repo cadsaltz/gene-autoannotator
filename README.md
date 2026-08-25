@@ -23,13 +23,32 @@ Main generated fields are `gene_id`, `name`, `function`, `functional_category`, 
 ## Repo Map
 
 - `autoannotation/`: core Python pipeline, organism profiles, PMC retrieval, LLM prompts, metadata, and CLI.
-- `coordinator/`: FastAPI API, SQLite job queue, local JSON organism profiles, optional MongoDB annotation history/search, and in-process runner.
+- `coordinator/`: FastAPI control plane, SQLite job queue, local JSON organism profiles, optional MongoDB annotation history/search, and pull-based worker API. The package retains its legacy name pending a later rename.
 - `frontend/`: Next.js UI for job submission, profile management, queue monitoring, and direct MongoDB annotation search/review.
+- `dispatcher/`: SCRI/scrontab entry point that peeks at backend queue depth and submits capped one-shot Slurm workers.
+- `worker/`: Pull-based annotation compute in persistent `serve`, one-shot `run`, and local `bench` modes.
 - `compareannotations/`: trusted-vs-generated scoring tools using exact matching, GO/category graph logic, embeddings/NLI, and an Ollama judge.
 - `tests/`: mostly deterministic unit/API tests; some model-style tests require local model dependencies.
 - `gen_json/`, `trust_json/`, `test_json/`: generated examples, trusted annotation fixtures, and small comparison fixtures.
 - `run_pipeline.py`: manual benchmark script for a fixed MTB gene list; appends scores to `pipeline_scores.jsonl`.
 - `get_papers.py`: diagnostic CLI for paper retrieval/ranking without running LLM annotation.
+
+## Web Architecture
+
+One backend owns the durable SQLite queue. It is a control plane only and never
+runs production annotation jobs in-process or opens connections to compute
+hosts. Persistent laptop workers use `python -m worker serve`; the SCRI
+dispatcher periodically peeks at queue depth and submits Slurm allocations that
+use `python -m worker run --claim-one`. Both worker types initiate outbound
+connections and atomically claim from the same backend queue.
+
+The Next.js frontend proxies job and fleet requests to FastAPI. FastAPI writes
+completed annotations to MongoDB, while Next.js server routes read MongoDB for
+annotation search/review. MongoDB is not the job queue, and organism profiles
+remain local JSON files. See
+[`docs/deploy-cloud-backend-hpc-dispatcher.md`](docs/deploy-cloud-backend-hpc-dispatcher.md)
+for the cloud frontend/backend, MongoDB, SCRI dispatcher, optional laptop, and
+rollback deployment path.
 
 ## Dependencies
 
@@ -38,7 +57,7 @@ Runtime assumptions:
 - Python 3.11+ recommended.
 - Node.js/npm for the frontend.
 - Internet access to NCBI Entrez/PubMed Central and optional UniProt lookup.
-- Local Ollama with the configured annotation/comparison models pulled.
+- Ollama on each annotation worker (or on the local machine for CLI/comparison workflows) with the configured models available.
 - SQLite for job queue state.
 - MongoDB optional, used by the backend for annotation history writes and by the Next.js server for annotation search/review reads. Organism profiles are local JSON files (`data/profiles` / `PROFILES_DIR`), not MongoDB.
 
@@ -94,7 +113,8 @@ Useful environment variables:
 - `OLLAMA_HOST=http://host:11434` when Ollama is not local.
 - `MONGO_URI` or `MONGODB_URI` to enable annotation history/search. Set it for the FastAPI backend so completed jobs can be saved, and set it in `frontend/.env.local` so Next.js can read stored annotations directly.
 - `PROFILES_DIR=data/profiles` for local organism profile JSON storage (default).
-- `COORDINATOR_API_BASE_URL=http://127.0.0.1:8000` for the Next.js proxy/server calls (legacy `BACKEND_API_BASE_URL` still honored as a fallback).
+- `BACKEND_URL=https://api.example.org` for workers and the dispatcher (`COORDINATOR_URL` remains a legacy fallback).
+- `BACKEND_API_BASE_URL=http://127.0.0.1:8000` for Next.js proxy/server calls (`COORDINATOR_API_BASE_URL` remains a legacy fallback).
 - `CORS_ORIGINS` and `CORS_ORIGIN_REGEX` for FastAPI browser access.
 - `GO_BASIC_OBO_PATH=data/go-basic.obo` for richer functional-category comparison.
 
@@ -186,8 +206,9 @@ Some comparison/model tests may need HuggingFace model downloads and local Ollam
 - `GET /profiles`: local organism profiles (`PROFILES_DIR` / `data/profiles`).
 - `POST /profiles`, `GET /profiles/{profile_id}`, `PUT /profiles/{profile_id}`, `DELETE /profiles/{profile_id}`: create, read, update, and delete local profile files.
 - `POST /validate`: target preflight for a profile or ad hoc organism plus name, locus, or both. It returns the resolved profile, submitted/resolved identifiers, primary identifier, and warnings.
-- `POST /jobs`: queue an annotation job after the same target preflight; the stored job request includes `target_preflight`.
+- `POST /jobs`: queue an annotation job after the same target preflight; the stored job request includes `target_preflight`. Returns 503 if no worker has an available slot.
 - `GET /jobs?order=queue|newest`: list job history and queue summary.
+- `GET /jobs/queue-summary`: read-only queued count used by the SCRI dispatcher; it does not claim or transition jobs.
 - `DELETE /jobs/history`: clear completed/failed jobs only.
 - `GET /jobs/{job_id}` and `/jobs/{job_id}/result`: job metadata/result.
 - `GET /annotations/search?query=...`: FastAPI-compatible annotation search endpoint; the frontend now uses its own Next.js `/api/annotations/...` routes for Mongo reads.
@@ -195,10 +216,11 @@ Some comparison/model tests may need HuggingFace model downloads and local Ollam
 
 ## Current Limitations
 
-- No authentication, authorization, rate limiting, job cancellation, retries, or queue size limits.
-- Jobs run in the FastAPI process; this is not a durable worker system.
-- Only one annotation job runs at a time.
-- Web progress is coarse (`queued`, `running`, `saving_result`, `completed`, `failed`).
+- End-user account authentication is not implemented. Task 9's auth model is pending lead confirmation; `WORKER_API_TOKEN` protects worker endpoints when configured but is not user authentication.
+- No user authorization, rate limiting, job cancellation, or queue size limits. Failed jobs have bounded retries, but there is no general operator retry UI.
+- The backend queue is durable SQLite on one backend host, but the current deployment is not a horizontally replicated control plane. Multiple independent backend volumes would create multiple queues.
+- Compute capacity depends on pull-based workers. Submissions return 503 when no connected worker reports an available slot.
+- Progress is worker-reported and phase/section based rather than a precise completion estimate.
 - API request paths such as `cache_dir` and `output_dir` are trusted server paths.
 - MongoDB is optional; if unavailable to FastAPI, jobs can complete but completed annotations will not be saved to MongoDB. Profile CRUD uses local files and does not require MongoDB. If MongoDB is unavailable to the Next.js server, annotation search/review will not work even if FastAPI is online.
 - Literature parsing handles common top-level PMC/JATS sections and may miss nested or unusual section layouts.
@@ -212,7 +234,7 @@ Some comparison/model tests may need HuggingFace model downloads and local Ollam
 Likely next improvements:
 
 - More precise job progress from the backend, ideally per paper/section/model step.
-- Security around the job API, such as auth or a passcode-enforced queue.
+- An accounts gate after the lead confirms the Task 9 authentication model.
 - Safer path handling and deployment guidance before exposing the API beyond trusted users.
 - Better separation of fast unit tests from model/integration tests.
 - Requirement-file cleanup once the runtime dependency set stabilizes.
