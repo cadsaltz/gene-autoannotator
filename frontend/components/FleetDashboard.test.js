@@ -53,6 +53,17 @@ test("fleet dashboard polls health and worker endpoints every 12 seconds", async
   assert.match(dashboard, /Last heartbeat \{formatHeartbeatAge\(worker\.last_heartbeat_at\)\}/);
 });
 
+test("fleet dashboard uses backend and fleet worker labels", async () => {
+  const dashboard = await readProjectFile("components/FleetDashboard.js");
+
+  assert.match(dashboard, /Monitor backend connectivity/);
+  assert.match(dashboard, /label="Frontend → Backend"/);
+  assert.match(dashboard, /"Backend API reachable"/);
+  assert.match(dashboard, /label="Backend → MongoDB writes"/);
+  assert.match(dashboard, />\s*Fleet workers\s*</);
+  assert.doesNotMatch(dashboard, /coordinator/i);
+});
+
 test("job workspace renders the jobs health banner", async () => {
   const workspace = await readProjectFile("components/JobWorkspace.js");
 
@@ -61,4 +72,12 @@ test("job workspace renders the jobs health banner", async () => {
   assert.match(workspace, /<JobsHealthBanner health=\{health\} annotationHealth=\{annotationHealth\} \/>/);
   assert.match(workspace, /getAnnotationHealth/);
   assert.doesNotMatch(workspace, /formatFleetStatusStrip/);
+});
+
+test("job workspace polls the backend jobs queue every 5 seconds", async () => {
+  const workspace = await readProjectFile("components/JobWorkspace.js");
+
+  assert.match(workspace, /const payload = await listJobs\("queue"\)/);
+  assert.match(workspace, /window\.setInterval\(refreshJobs, 5000\)/);
+  assert.doesNotMatch(workspace, /coordinator/i);
 });

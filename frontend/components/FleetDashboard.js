@@ -158,8 +158,8 @@ export default function FleetDashboard() {
           Fleet &amp; health
         </h1>
         <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
-          Monitor coordinator connectivity, storage, queue pressure, and registered annotation
-          workers. This page refreshes every 12 seconds.
+          Monitor backend connectivity, storage, queue pressure, and registered fleet workers.
+          This page refreshes every 12 seconds.
         </p>
         <div className="mt-6">
           <button
@@ -174,9 +174,9 @@ export default function FleetDashboard() {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <HealthBadge
-          label="Frontend → Coordinator"
+          label="Frontend → Backend"
           status={health?.status}
-          detail={health?.status === "ok" ? "Coordinator API reachable" : health?.resources?.message}
+          detail={health?.status === "ok" ? "Backend API reachable" : health?.resources?.message}
         />
         <HealthBadge
           label="Frontend → MongoDB reads"
@@ -188,7 +188,7 @@ export default function FleetDashboard() {
           }
         />
         <HealthBadge
-          label="Coordinator → MongoDB writes"
+          label="Backend → MongoDB writes"
           status={health?.stores?.annotations?.status}
           detail={health?.stores?.annotations?.message || health?.stores?.annotations?.database}
         />
@@ -217,7 +217,9 @@ export default function FleetDashboard() {
       </section>
 
       <section className="workbench-card p-6">
-        <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">Workers</h2>
+        <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">
+          Fleet workers
+        </h2>
         <p className="workbench-muted mt-2 text-sm">
           {workers.length > 0
             ? `${workers.length} registered worker${workers.length === 1 ? "" : "s"}`
