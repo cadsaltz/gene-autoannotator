@@ -146,8 +146,12 @@ WORKER_API_TOKEN=<token> \
 python -m worker run --claim-one
 ```
 
-An empty queue returns exit code 0 without starting annotation. A claimed job is
-completed or failed through the backend before the process exits.
+An empty queue returns exit code 0 before starting the local Ollama fleet. When
+a job is claimed, run mode probes the allocation, launches the supervised
+Ollama fleet, ensures required models, starts the localhost router, and exports
+`OLLAMA_ROUTER_URL` before annotation. The ephemeral registration advertises
+one slot and uses the Slurm job id (or process id) in its worker name so it
+cannot collide with a persistent serve worker on the same hostname.
 
 To execute a payload already materialized by a scheduler, skip registration and
 claiming:

@@ -82,9 +82,48 @@ fleet sizing, bench, and serve tests. The focused Task 3 suite is green.
 
 ## Concerns
 
-- `run` assumes the allocation environment has already provisioned the local
-  Ollama execution environment, as required by the scheduler launcher; this
-  task only adds one-shot backend orchestration.
 - Backend transport errors while registering, claiming, completing, or failing
   remain fatal and surface as process errors, matching existing worker client
   behavior.
+
+## Review follow-up: fleet provisioning and ephemeral capacity
+
+Addressed the Critical/Important Task 3 review findings:
+
+- `--claim-one` still registers and claims before any expensive fleet work, so
+  an empty queue exits 0 without probing hardware, launching Ollama, pulling
+  models, starting a router, or invoking annotation.
+- A claimed job (and `--job-file`) now provisions the local execution stack
+  using the same fleet helpers as serve/bench:
+  `ensure_worker_env`, `ensure_fleet_config`, `probe_system`,
+  `reset_ollama_fleet`, `ensure_models`, `refresh_fleet_footprints`, and
+  `start_router_server`. The resulting localhost URL is exported as
+  `OLLAMA_ROUTER_URL` before `WorkerRuntime` executes the annotation.
+- One-shot claim registration now advertises `max_slots=1` and uses
+  `<hostname>-slurm-<SLURM_JOB_ID>` when available, otherwise
+  `<hostname>-pid-<pid>`, avoiding collisions with a persistent serve worker.
+- Run mode shuts down its router and supervised Ollama fleet on completion or
+  failure.
+
+### Review regression tests
+
+The focused suite now covers:
+
+- no-job exit without fleet bootstrap or annotation;
+- ephemeral Slurm worker identity and one-slot registration capacity;
+- fleet bootstrap invocation before executing a claimed job;
+- existing claimed completion/failure, job-file, and CLI dispatch behavior.
+
+```text
+.venv/bin/python -m pytest tests/test_worker_run_claim_one.py -q
+7 passed
+
+.venv/bin/python -m py_compile worker/run.py tests/test_worker_run_claim_one.py
+exit 0
+```
+
+An additional related-suite run completed with 32 passing and three pre-existing
+failures in `test_worker_serve.py` / `test_worker_bench.py`: the serve fixture
+does not materialize `OLLAMA_MAX_LOADED_MODELS`, and two bench tests patch a
+removed `models_loaded` symbol. These failures are unchanged by the Task 3
+follow-up.
