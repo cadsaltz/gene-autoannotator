@@ -10,8 +10,8 @@ This deployment keeps one public control plane and one durable job queue:
 - The SCRI login-node dispatcher only peeks at queue depth and submits Slurm
   allocations. A Slurm worker performs the atomic claim after it starts.
 
-The existing package and Compose service are still named `coordinator`. The
-public role is called the backend; the package rename is a later task.
+The canonical Python package and Compose service are named `backend`.
+`coordinator.api` remains available temporarily as a compatibility entrypoint.
 
 ## 1. Cloud frontend and backend
 
@@ -63,8 +63,8 @@ docker compose -f deploy/compose/docker-compose.coordinator.yml ps
 curl -fsS https://api.example.org/health
 ```
 
-Compose starts the `frontend` and `coordinator` services. The frontend receives
-`BACKEND_API_BASE_URL=http://coordinator:8000`; both services receive `.env`.
+Compose starts the `frontend` and `backend` services. The frontend receives
+`BACKEND_API_BASE_URL=http://backend:8000`; both services receive `.env`.
 The backend runs from `/app` with `/state` as its working directory. Its
 relative SQLite path therefore resolves to
 `/state/coordinator/jobs.sqlite3`, persisted in the `coordinator-data` volume,

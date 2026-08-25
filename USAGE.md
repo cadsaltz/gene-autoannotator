@@ -337,15 +337,15 @@ More design notes: `goresolve/README.md`.
 
 ---
 
-## Coordinator
+## Backend
 
 FastAPI control plane: job queue, local profiles, worker claim/progress APIs. It does **not** run annotations in-process; workers do.
 
 ```bash
 cp coordinator.env.example .env   # edit token / public URL / Mongo as needed
-uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
+uvicorn backend.api:app --host 0.0.0.0 --port 8000
 # or:
-WORKER_API_TOKEN=dev-token uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
+WORKER_API_TOKEN=dev-token uvicorn backend.api:app --host 0.0.0.0 --port 8000
 ```
 
 Health check: `curl http://127.0.0.1:8000/health`
@@ -364,7 +364,7 @@ Health check: `curl http://127.0.0.1:8000/health`
 | `PROFILES_DIR` | Local profile JSON | `data/profiles` |
 | `OLLAMA_HOST` / model vars | Only relevant if something in this process talks to Ollama | — |
 
-API catalog: `coordinator/README.md`. Job submit returns **503** when no workers have available slots.
+API catalog: `backend/README.md`. Job submit returns **503** when no workers have available slots.
 
 ---
 

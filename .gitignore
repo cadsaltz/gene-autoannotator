@@ -12,6 +12,9 @@ coordinator.env
 coordinator/*.sqlite3
 coordinator/*.sqlite3-shm
 coordinator/*.sqlite3-wal
+backend/*.sqlite3
+backend/*.sqlite3-shm
+backend/*.sqlite3-wal
 
 creds/
 pipeline_scores.jsonl

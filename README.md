@@ -23,7 +23,8 @@ Main generated fields are `gene_id`, `name`, `function`, `functional_category`, 
 ## Repo Map
 
 - `autoannotation/`: core Python pipeline, organism profiles, PMC retrieval, LLM prompts, metadata, and CLI.
-- `coordinator/`: FastAPI control plane, SQLite job queue, local JSON organism profiles, optional MongoDB annotation history/search, and pull-based worker API. The package retains its legacy name pending a later rename.
+- `backend/`: FastAPI control plane, SQLite job queue, local JSON organism profiles, optional MongoDB annotation history/search, and pull-based worker API.
+- `coordinator/`: deprecated compatibility shim for the former `coordinator.api` entrypoint.
 - `frontend/`: Next.js UI for job submission, profile management, queue monitoring, and direct MongoDB annotation search/review.
 - `dispatcher/`: SCRI/scrontab entry point that peeks at backend queue depth and submits capped one-shot Slurm workers.
 - `worker/`: Pull-based annotation compute in persistent `serve`, one-shot `run`, and local `bench` modes.
@@ -169,7 +170,7 @@ worker tokens, MongoDB, or other coordinator settings):
 
 ```bash
 cp coordinator.env.example .env   # optional; edit as needed
-uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
+uvicorn backend.api:app --host 0.0.0.0 --port 8000
 ```
 
 Run the frontend:

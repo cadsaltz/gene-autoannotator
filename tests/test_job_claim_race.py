@@ -4,9 +4,9 @@ from threading import Barrier
 
 from fastapi.testclient import TestClient
 
-from coordinator.annotation_store import InMemoryAnnotationStore
-from coordinator.api import create_app
-from coordinator.job_store import JobStore
+from backend.annotation_store import InMemoryAnnotationStore
+from backend.api import create_app
+from backend.job_store import JobStore
 
 
 def test_two_claimers_only_one_wins(tmp_path):

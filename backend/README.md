@@ -40,7 +40,7 @@ and configure `WORKER_API_TOKEN` before connecting external workers.
 Run the API server:
 
 ```bash
-uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
+uvicorn backend.api:app --host 0.0.0.0 --port 8000
 ```
 
 On startup the coordinator logs its listen address, suggested worker
@@ -138,7 +138,7 @@ Environment variables:
 Start the coordinator:
 
 ```bash
-WORKER_API_TOKEN=dev-token uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
+WORKER_API_TOKEN=dev-token uvicorn backend.api:app --host 0.0.0.0 --port 8000
 ```
 
 Job submission returns **503** when no workers are connected with available slots.

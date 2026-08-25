@@ -10,7 +10,7 @@ from .targets import TARGET_WARNING_MESSAGES
 def _profile_lookup_from_env():
     """Prefer the local profile store so UI-saved kegg codes work."""
     try:
-        from coordinator.profile_store import profile_store_from_env
+        from backend.profile_store import profile_store_from_env
     except Exception:
         return None
     try:

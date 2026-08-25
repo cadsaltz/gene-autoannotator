@@ -425,7 +425,7 @@ fleet configuration flow and `WORKER_MODEL_MEMORY_BUDGET_GB`.
 - Repository installed with dependencies (`requirements.txt` + `requirements-web.txt`).
 - **Ollama** installed; the worker launches its own fleet processes (no manual
   `ollama serve` needed).
-- For **serve** mode: a reachable coordinator (see `coordinator/README.md`).
+- For **serve** mode: a reachable backend (see `backend/README.md`).
 - For **bench** mode: sufficient local VRAM/RAM for the chosen fleet and model mode.
 
 Required LLM models are derived from `autoannotation.models` and auto-pulled on
@@ -433,10 +433,10 @@ the primary fleet backend before jobs start.
 
 ## Local end-to-end smoke test (serve, needs Ollama)
 
-**Terminal 1 — coordinator:**
+**Terminal 1 — backend:**
 
 ```bash
-WORKER_API_TOKEN=dev-token uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
+WORKER_API_TOKEN=dev-token uvicorn backend.api:app --host 0.0.0.0 --port 8000
 ```
 
 **Terminal 2 — worker:**
@@ -513,7 +513,7 @@ Values are saved to `worker.env`.
 
 1. Generate token: `deploy/scripts/generate-worker-token.sh`
 2. Set `WORKER_API_TOKEN` and `COORDINATOR_PUBLIC_URL=http://<lan-ip>:8000`
-3. Start: `uvicorn coordinator.api:app --host 0.0.0.0 --port 8000`
+3. Start: `uvicorn backend.api:app --host 0.0.0.0 --port 8000`
 
 **Worker machine(s)**
 
