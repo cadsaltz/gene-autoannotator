@@ -1,0 +1,4 @@
+# Keep directory; ignore bulky per-run raw artifacts by default.
+**/records.jsonl
+**/raw/
+**/*.jsonl.gz

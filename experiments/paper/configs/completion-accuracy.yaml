@@ -1,0 +1,26 @@
+experiment_id: completion-accuracy
+config_version: 0
+owner: TBD
+claim: >
+  End-to-end pipeline completion and accuracy metrics on a locked evaluation set.
+status: planned
+
+models:
+  extractors: []
+  consensus: null
+  aggregation: null
+
+fixtures:
+  genes: fixtures/gene_sets/PLACEHOLDER.json
+  gold: fixtures/gold/PLACEHOLDER.json
+
+conditions:
+  - full_pipeline_default
+
+metrics:
+  - job_completion_rate
+  - field_fill_rate
+  - field_accuracy_vs_gold
+
+notes: |
+  Deferred ("Later" in slideshow). Define evaluation set before tuning on it.

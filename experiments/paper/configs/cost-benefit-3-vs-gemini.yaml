@@ -1,0 +1,33 @@
+experiment_id: cost-benefit-3-vs-gemini
+config_version: 0
+owner: Ethan
+claim: >
+  Quantify cost and quality of the small-model crowd versus Gemini, with and
+  without supplied section summaries.
+status: planned
+
+models:
+  extractors: []
+  consensus: null
+  baselines:
+    - gemini: null
+
+fixtures:
+  genes: fixtures/gene_sets/PLACEHOLDER.json
+  papers: fixtures/paper_snapshots/PLACEHOLDER.json
+  gold: fixtures/gold/PLACEHOLDER.json
+
+conditions:
+  - extractors_k3_plus_consensus
+  - gemini_direct
+  - gemini_with_supplied_summaries
+
+metrics:
+  - quality_delta_vs_gold
+  - wall_time_sec
+  - llm_calls
+  - tokens_or_proxy
+  - api_cost_proxy
+
+notes: |
+  "Supplied summaries" arm must freeze the summary text used as Gemini input.

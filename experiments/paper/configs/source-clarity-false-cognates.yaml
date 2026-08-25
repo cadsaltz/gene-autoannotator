@@ -1,0 +1,24 @@
+experiment_id: source-clarity-false-cognates
+config_version: 0
+owner: TBD
+claim: >
+  The system avoids conflating false-cognate gene names / organism mentions;
+  failure cases are characterized with clear examples.
+status: planned
+
+models:
+  extractors: []
+  consensus: null
+
+fixtures:
+  constructed: fixtures/constructed/PLACEHOLDER_false_cognates.json
+
+conditions:
+  - full_or_section_pipeline_on_cognate_cases
+
+metrics:
+  - correct_organism_attribution_rate
+  - false_cognate_confusion_rate
+
+notes: |
+  Strong paper material as negative examples + mitigation, even with small n.

@@ -1,0 +1,28 @@
+experiment_id: ortholog-benefit
+config_version: 0
+owner: TBD
+claim: >
+  Ortholog-backed evidence improves annotation quality or coverage when direct
+  target-gene literature is insufficient.
+status: planned
+
+models:
+  extractors: []
+  consensus: null
+
+fixtures:
+  genes: fixtures/gene_sets/PLACEHOLDER.json
+  papers: fixtures/paper_snapshots/PLACEHOLDER.json
+  gold: fixtures/gold/PLACEHOLDER.json
+
+conditions:
+  - direct_literature_only
+  - direct_plus_ortholog_fallback
+
+metrics:
+  - coverage_lift
+  - quality_delta_vs_gold
+  - incorrect_transfer_rate
+
+notes: |
+  Critical to measure harmful transfer, not only coverage gains.

@@ -1,0 +1,26 @@
+experiment_id: split-vs-not
+config_version: 0
+owner: Caden
+claim: >
+  A substantial fraction of field-level decisions are split across extractors,
+  which motivates a consensus / tie-break stage (and measures where crowds help).
+status: planned
+
+models:
+  extractors: []
+  consensus: null
+
+fixtures:
+  genes: fixtures/gene_sets/PLACEHOLDER.json
+  papers: fixtures/paper_snapshots/PLACEHOLDER.json
+
+conditions:
+  - extractors_k3_pre_consensus
+
+metrics:
+  - unanimous_field_rate
+  - split_field_rate
+  - split_rate_by_field_type
+
+notes: |
+  Often derivable from records.jsonl of bias-1-vs-3-small; may not need a separate runner.

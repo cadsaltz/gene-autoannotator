@@ -1,0 +1,26 @@
+experiment_id: tiebreak-nonsense
+config_version: 0
+owner: Caden
+claim: >
+  The consensus / tie-breaker rejects nonsense or unsupported candidate values
+  instead of adopting them into the merged annotation.
+status: planned
+
+models:
+  extractors: []          # optional if candidates are constructed
+  consensus: null
+
+fixtures:
+  constructed: fixtures/constructed/PLACEHOLDER_nonsense.json
+  gold: fixtures/gold/PLACEHOLDER.json
+
+conditions:
+  - tiebreak_on_nonsense_candidates
+
+metrics:
+  - nonsense_rejection_rate
+  - nonsense_adoption_rate
+  - null_or_abstain_rate
+
+notes: |
+  Prefer constructed candidates with known-bad strings so ground truth is by design.

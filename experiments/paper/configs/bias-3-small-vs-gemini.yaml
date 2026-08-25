@@ -1,0 +1,30 @@
+experiment_id: bias-3-small-vs-gemini
+config_version: 0
+owner: Ethan
+claim: >
+  A wisdom-of-crowds stack of small models is competitive with (or complementary
+  to) a strong single model on the same evidence.
+status: planned
+
+models:
+  extractors: []
+  consensus: null
+  baselines:
+    - gemini: null        # TODO: exact API model id
+
+fixtures:
+  genes: fixtures/gene_sets/PLACEHOLDER.json
+  papers: fixtures/paper_snapshots/PLACEHOLDER.json
+  gold: fixtures/gold/PLACEHOLDER.json
+
+conditions:
+  - extractors_k3_plus_consensus
+  - gemini_direct
+
+metrics:
+  - field_agreement_with_gold
+  - disagreement_with_crowd
+  - cost_proxy
+
+notes: |
+  Align gene/paper fixtures with Caden's 1-vs-3 set for cross-paper comparability.

@@ -1,0 +1,31 @@
+experiment_id: cost-benefit-1-vs-3
+config_version: 0
+owner: Caden
+claim: >
+  The quality benefit of three extractors plus consensus outweighs (or is
+  quantified against) the additional compute cost versus a single extractor.
+status: planned
+
+models:
+  extractors: []
+  consensus: null
+  baselines:
+    - single: null
+
+fixtures:
+  genes: fixtures/gene_sets/PLACEHOLDER.json
+  papers: fixtures/paper_snapshots/PLACEHOLDER.json
+  gold: fixtures/gold/PLACEHOLDER.json
+
+conditions:
+  - extractor_single
+  - extractors_k3_plus_consensus
+
+metrics:
+  - quality_delta_vs_gold
+  - wall_time_sec
+  - llm_calls
+  - tokens_or_proxy
+
+notes: |
+  Prefer joint runs with bias-1-vs-3-small so quality and cost share one manifest.

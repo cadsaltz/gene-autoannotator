@@ -1,0 +1,30 @@
+experiment_id: bias-1-vs-3-small
+config_version: 0
+owner: Caden
+claim: >
+  Using three unrelated small extractor LLMs plus consensus reduces bias and
+  hallucination relative to a single small extractor on the same evidence.
+status: planned
+
+models:
+  extractors: []          # TODO: pin three exact tags
+  consensus: null         # TODO
+  baselines:
+    - single: null        # TODO: one exact tag (often one of the three, run alone)
+
+fixtures:
+  genes: fixtures/gene_sets/PLACEHOLDER.json
+  papers: fixtures/paper_snapshots/PLACEHOLDER.json
+  gold: fixtures/gold/PLACEHOLDER.json
+
+conditions:
+  - extractor_single
+  - extractors_k3_plus_consensus
+
+metrics:
+  - field_agreement_with_gold
+  - hallucination_or_unsupported_rate  # define operationally before first run
+  - cross_extractor_disagreement_rate
+
+notes: |
+  Share frozen papers/genes with cost-benefit-1-vs-3 and split-vs-not when possible.

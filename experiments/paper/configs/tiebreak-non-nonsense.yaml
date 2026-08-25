@@ -1,0 +1,26 @@
+experiment_id: tiebreak-non-nonsense
+config_version: 0
+owner: Caden
+claim: >
+  When extractors disagree with plausible alternatives, the tie-breaker selects
+  the evidence-supported value (or abstains) rather than inventing a fourth answer.
+status: planned
+
+models:
+  extractors: []
+  consensus: null
+
+fixtures:
+  constructed: fixtures/constructed/PLACEHOLDER_splits.json
+  gold: fixtures/gold/PLACEHOLDER.json
+
+conditions:
+  - tiebreak_on_plausible_splits
+
+metrics:
+  - supported_choice_rate
+  - unsupported_invention_rate
+  - abstain_rate
+
+notes: |
+  Planted splits should be labeled with which candidate(s) are supported by the excerpt.
