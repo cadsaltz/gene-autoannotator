@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import time
+from typing import Any
 
 import ollama
 
@@ -72,20 +73,43 @@ def is_unknown_value(value):
     return False
 
 
+def stamp_supplied_identity(
+    normalized: dict[str, Any],
+    *,
+    gene_id: str | None,
+    gene_name: str | None,
+    organism_profile=None,
+) -> dict[str, Any]:
+    """Inject job-supplied locus/name after biology-only section extraction."""
+    stamped = dict(normalized)
+    stamped['gene_id'] = gene_id
+    if gene_id is not None and (
+        organism_profile is not None and organism_profile.profile_id == 'mtb-h37rv'
+    ):
+        stamped['rv_id'] = gene_id
+    elif 'rv_id' in stamped and gene_id is None:
+        stamped.pop('rv_id', None)
+    display_name = gene_name or gene_id
+    if display_name is not None:
+        stamped['name'] = display_name
+    return stamped
+
+
 def normalize_annotation_fields(
     parsed, *, require_biology_keys=False, organism_profile=None, field_defs_profile=None,
 ):
-    """Map empty or placeholder values to JSON null while preserving supplied identity."""
-    normalized = {
-        'gene_id': parsed.get('gene_id') or parsed.get('rv_id'),
-        'name': parsed.get('name'),
-    }
+    """Map empty or placeholder values to JSON null; identity keys copied when present."""
+    normalized: dict[str, Any] = {}
+    if parsed.get('gene_id') or parsed.get('rv_id'):
+        normalized['gene_id'] = parsed.get('gene_id') or parsed.get('rv_id')
+    if parsed.get('name') is not None:
+        normalized['name'] = parsed.get('name')
     if 'rv_id' in parsed:
         normalized['rv_id'] = parsed.get('rv_id')
     elif (
-        organism_profile is not None
+        normalized.get('gene_id')
+        and organism_profile is not None
         and organism_profile.profile_id == 'mtb-h37rv'
-        and normalized['gene_id']
     ):
         normalized['rv_id'] = normalized['gene_id']
 
@@ -343,6 +367,33 @@ def _biology_properties_from_profile(organism_profile=None, field_defs_profile=N
     return properties
 
 
+def build_section_extraction_schema(
+    organism_profile=None,
+    *,
+    field_defs_profile=None,
+):
+    """JSON schema for section extraction: biology fields only (no identity keys)."""
+    schema_profile = field_defs_profile or organism_profile
+    llm_fields = (
+        field_defs.llm_schema_fields(schema_profile)
+        if schema_profile is not None
+        else ()
+    )
+    if llm_fields:
+        required = [field_def.key for field_def in llm_fields]
+    else:
+        required = list(BIOLOGY_FIELDS)
+    return {
+        'type': 'object',
+        'properties': _biology_properties_from_profile(
+            organism_profile,
+            field_defs_profile=field_defs_profile,
+        ),
+        'required': required,
+        'additionalProperties': False,
+    }
+
+
 def build_json_schema(
     organism_profile=None,
     *,
@@ -384,22 +435,22 @@ def build_json_schema(
     }
 
 
-json_schema_section = build_json_schema()
-json_schema_default = build_json_schema(require_biology=True)
+json_schema_section = build_section_extraction_schema()
+json_schema_default = build_section_extraction_schema()
 json_schema_aggregate = build_json_schema(require_biology=True, aggregate=True)
 
 # section field extraction prompt
 prompt1_tmpl = '''
-Using ONLY the supplied excerpt, return a JSON object for {5} gene {0}
-(named {1}).
+Using ONLY the supplied excerpt, extract biology fields for {5} gene {0}
+(named {1}). Only include facts about this gene; ignore other genes mentioned in the excerpt.
 
 Section type: {3}
 {4}
 
 Rules:
-- Always set gene_id and name exactly as supplied above.
-- Include every biology field key listed below. Use JSON null for any field this excerpt does
-  NOT explicitly support. Do not guess, infer from gene class, or use general organism knowledge.
+- Return JSON with only the biology field keys listed below.
+- Use JSON null for any field this excerpt does NOT explicitly support about gene {0}.
+- Do not guess, infer from gene class, or use general organism knowledge.
 - Do not use empty strings for unknown fields; use null.
 - For essential_in_vitro and essential_in_vivo, use true or false only when this excerpt reports
   direct experimental evidence (e.g., deletion, transposon, CRISPRi). Otherwise use null.
@@ -414,7 +465,7 @@ Excerpt:
 
 
 prompt1_ortholog_tmpl = '''
-Using ONLY the supplied excerpt, return a JSON object for {5} gene {0}
+Using ONLY the supplied excerpt, extract biology fields for {5} gene {0}
 (named {1}).
 
 This is an ORTHOLOG inference pass. The excerpt describes the ortholog (source) gene only.
@@ -426,9 +477,9 @@ Section type: {3}
 {4}
 
 Rules:
-- Always set gene_id and name exactly as supplied above (the ortholog identifiers).
-- Include every biology field key listed below. Use JSON null for any field this excerpt does
-  NOT explicitly support. Do not guess, infer from gene class, or use general organism knowledge.
+- Return JSON with only the biology field keys listed below.
+- Use JSON null for any field this excerpt does NOT explicitly support about gene {0}.
+- Do not guess, infer from gene class, or use general organism knowledge.
 - Do not use empty strings for unknown fields; use null.
 - For essential_in_vitro and essential_in_vivo, use true or false only when this excerpt reports
   direct experimental evidence (e.g., deletion, transposon, CRISPRi). Otherwise use null.
@@ -472,8 +523,7 @@ def build_section_prompt(
     missing_locus_rule = ''
     if gene is None:
         missing_locus_rule = (
-            '\n- No locus identifier was supplied or resolved. Do not invent a locus '
-            'identifier; set gene_id to null.'
+            '\n- No locus identifier was supplied or resolved. Extract biology for the named gene only.'
         )
     fields_block = _section_fields_block(organism_profile, field_defs_profile=field_defs_profile)
     base_type = section_type.split("#", 1)[0]
@@ -515,11 +565,12 @@ Return JSON with exactly those keys. Use null for any field you cannot reconcile
 
 Rules:
 - Reconcile only from the candidate values provided. You do not have access to the source text.
+- When multiple candidates agree on the same fact (exactly or as paraphrases), return that fact using concise wording drawn from the candidates.
+- When one candidate value clearly matches the majority (2 of 3 or more), prefer that value.
 - You may combine overlapping meaning from multiple candidates for the same field using concise wording.
 - Do not add facts not present in any candidate.
-- If candidates describe incompatible biology for a field, return null for that field.
-- Do NOT choose one candidate over others when they conflict — return null instead.
-- For list fields, include only category labels that appear in multiple candidates or clearly overlap in meaning.
+- If candidates describe incompatible biology for a field with no clear majority, return null for that field.
+- For list fields, include category labels that appear in multiple candidates or clearly overlap in meaning.
 - Prefer concise phrasing drawn from the candidates.
 '''
 
@@ -651,6 +702,36 @@ class LlmHandler:
             field_defs_profile=field_defs_profile,
         )
         return json.dumps(normalized)
+
+    def _finalize_section_extraction_json(
+        self,
+        gene_json,
+        *,
+        gene_id,
+        gene_name,
+        organism_profile=None,
+        field_defs_profile=None,
+        model: str = 'unknown',
+        stamp_identity: bool = True,
+    ):
+        normalized_str = self.normalize_response_json(
+            gene_json,
+            require_biology_keys=True,
+            organism_profile=organism_profile,
+            field_defs_profile=field_defs_profile,
+            model=model,
+            role='section_summary',
+        )
+        if not stamp_identity:
+            return normalized_str
+        parsed = json.loads(normalized_str)
+        stamped = stamp_supplied_identity(
+            parsed,
+            gene_id=gene_id,
+            gene_name=gene_name,
+            organism_profile=organism_profile,
+        )
+        return json.dumps(stamped)
 
     def __init__(self, cache_dir='./.cache'):
         self.cache_dir = cache_dir
@@ -1055,9 +1136,8 @@ class LlmHandler:
         evidence_mode='target', ortholog_context=None, field_defs_profile=None,
     ):
         organism_profile = organism_profile or organisms.resolve_profile('mtb-h37rv')
-        json_schema = json_schema or build_json_schema(
+        json_schema = json_schema or build_section_extraction_schema(
             organism_profile,
-            allow_missing_locus=gene_id is None,
             field_defs_profile=field_defs_profile,
         )
         prompt = build_section_prompt(
@@ -1080,12 +1160,13 @@ class LlmHandler:
                 'section_summary', model, cached_dur, cache_hit=True,
                 usage=self._read_cache_usage(model, prompt, json_schema),
             )
-            return self.normalize_response_json(
+            return self._finalize_section_extraction_json(
                 cached_response,
+                gene_id=gene_id,
+                gene_name=gene_name,
                 organism_profile=organism_profile,
                 field_defs_profile=field_defs_profile,
                 model=model,
-                role='section_summary',
             ), cached_dur
 
         log.debug((
@@ -1111,16 +1192,26 @@ class LlmHandler:
                 f'Got response ({len(response_text)} chars) back from {model} in ' + \
                     utils.seconds_to_str(duration_sec)
             )
-            response_text = self.normalize_response_json(
+            biology_only = self._finalize_section_extraction_json(
                 response_text,
+                gene_id=gene_id,
+                gene_name=gene_name,
                 organism_profile=organism_profile,
                 field_defs_profile=field_defs_profile,
                 model=model,
-                role='section_summary',
+                stamp_identity=False,
             )
             usage = self._usage_from_response(response, duration_sec)
             self._record_usage('section_summary', model, duration_sec, usage=usage)
-            self._write_cache(model, prompt, json_schema, response_text, duration_sec, usage)
+            self._write_cache(model, prompt, json_schema, biology_only, duration_sec, usage)
+            response_text = self._finalize_section_extraction_json(
+                biology_only,
+                gene_id=gene_id,
+                gene_name=gene_name,
+                organism_profile=organism_profile,
+                field_defs_profile=field_defs_profile,
+                model=model,
+            )
         except (KeyError, RuntimeError) as exc:
             if retry:
                 return self.get_llm_gene_info_json(

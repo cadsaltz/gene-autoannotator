@@ -14,6 +14,7 @@ from experiments.paper.runners.common import (
     load_paper_snapshot_fixture,
     load_yaml_config,
     new_run_id,
+    parse_distribution,
     select_trials,
     stable_json_hash,
     write_aggregate_csv,
@@ -276,6 +277,8 @@ def run_bias_experiment(
     run_id: str | None = None,
     dry_run: bool = False,
     resume: bool = False,
+    distribution=None,
+    seed: int | None = None,
 ) -> Path:
     config_path = Path(config_path)
     config = load_yaml_config(config_path)
@@ -287,8 +290,24 @@ def run_bias_experiment(
     paper_fixture_path = _fixture_path(fixture_config['papers'])
     paper_fixture = json.loads(paper_fixture_path.read_text())
     items = load_paper_snapshot_fixture(paper_fixture_path)
-    requested_trials = config.get('n_trials', 10) if n_trials is None else n_trials
-    selected = select_trials(items, requested_trials)
+    distribution = parse_distribution(distribution if distribution is not None else config.get('distribution'))
+    if distribution is not None:
+        requested_trials = sum(distribution.values())
+    else:
+        requested_trials = config.get('n_trials', 10) if n_trials is None else n_trials
+    if n_trials is not None and n_trials != requested_trials:
+        raise ValueError(
+            f'--n-trials={n_trials} conflicts with distribution total {requested_trials}'
+        )
+    max_trials = config.get('max_trials', len(items))
+    selection_seed = seed if seed is not None else config.get('selection_seed', 42)
+    selected = select_trials(
+        items,
+        requested_trials,
+        distribution=distribution,
+        seed=selection_seed,
+        max_trials=max_trials,
+    )
 
     fixture_documents = {'papers': paper_fixture}
     if fixture_config.get('genes'):
@@ -332,6 +351,8 @@ def run_bias_experiment(
             for name, document in fixture_documents.items()
         },
         'n_trials': len(selected),
+        'distribution': distribution,
+        'selection_seed': selection_seed if distribution else None,
         'model_tags': {
             'extractors': extractor_models,
             'consensus': consensus_model,
@@ -410,6 +431,17 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Run the primary 1-vs-3 bias experiment.')
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--n-trials', type=int)
+    parser.add_argument(
+        '--distribution',
+        action='append',
+        default=[],
+        help='Organism quota as profile:count (repeatable). Example: mtb-h37rv:5',
+    )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        help='Shuffle seed when using --distribution (default from config or 42).',
+    )
     parser.add_argument('--run-id')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument(
@@ -422,12 +454,15 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    distribution = parse_distribution(args.distribution) if args.distribution else None
     output_dir = run_bias_experiment(
         config_path=args.config,
         n_trials=args.n_trials,
         run_id=args.run_id,
         dry_run=args.dry_run,
         resume=args.resume,
+        distribution=distribution,
+        seed=args.seed,
     )
     print(output_dir)
 

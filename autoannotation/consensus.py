@@ -464,13 +464,7 @@ def hybrid_section_consensus(
         merged, provenance, normalized, unresolved=unresolved, fields=fields,
     )
 
-    llm_eligible = filter_llm_eligible_fields(
-        normalized, unresolved=unresolved, fields=fields,
-    )
-    for field_key in unresolved:
-        if field_key not in llm_eligible:
-            merged[field_key] = None
-            provenance[field_key] = 'semantic_conflict'
+    llm_eligible = list(unresolved)
 
     if not llm_eligible or batch_merger is None:
         return merged, provenance, 0

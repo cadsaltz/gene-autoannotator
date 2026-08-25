@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import random
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -18,7 +20,40 @@ BIOLOGY_FIELDS = (
     'essential_in_vivo',
 )
 
-MAX_TRIALS = 15
+PROFILE_ALIASES = {
+    'mtb': 'mtb-h37rv',
+    'ecoli': 'ecoli-k12-mg1655',
+    'e-coli': 'ecoli-k12-mg1655',
+    'tcruzi': 'tcruzi-clbrener',
+    't-cruzi': 'tcruzi-clbrener',
+}
+
+
+def resolve_profile_id(value: str) -> str:
+    return PROFILE_ALIASES.get(value.strip().lower(), value.strip())
+
+
+def parse_distribution(
+    raw: str | dict[str, int] | list[str] | None,
+) -> dict[str, int] | None:
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return {resolve_profile_id(key): int(value) for key, value in raw.items()}
+    specs: list[str]
+    if isinstance(raw, str):
+        specs = [part.strip() for part in raw.split(',') if part.strip()]
+    else:
+        specs = [str(part).strip() for part in raw if str(part).strip()]
+    if not specs:
+        return None
+    parsed: dict[str, int] = {}
+    for spec in specs:
+        if ':' not in spec:
+            raise ValueError(f'distribution entry must be profile:count, got {spec!r}')
+        profile, count_text = spec.split(':', 1)
+        parsed[resolve_profile_id(profile)] = int(count_text.strip())
+    return parsed
 
 
 def load_yaml_config(path: Path) -> dict[str, Any]:
@@ -38,11 +73,51 @@ def load_paper_snapshot_fixture(path: Path) -> list[dict[str, Any]]:
     return items
 
 
-def select_trials(items: list[dict[str, Any]], n_trials: int) -> list[dict[str, Any]]:
-    if n_trials < 1 or n_trials > MAX_TRIALS:
-        raise ValueError(f'n_trials must be in 1..{MAX_TRIALS}, got {n_trials}')
+def _group_by_profile(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for item in items:
+        grouped[item['profile_id']].append(item)
+    return dict(grouped)
+
+
+def select_trials(
+    items: list[dict[str, Any]],
+    n_trials: int,
+    *,
+    distribution: dict[str, int] | None = None,
+    seed: int | None = None,
+    max_trials: int | None = None,
+) -> list[dict[str, Any]]:
+    if n_trials < 1:
+        raise ValueError(f'n_trials must be >= 1, got {n_trials}')
+    pool_cap = max_trials if max_trials is not None else len(items)
+    if n_trials > pool_cap:
+        raise ValueError(f'n_trials={n_trials} exceeds allowed maximum {pool_cap}')
     if n_trials > len(items):
         raise ValueError(f'n_trials={n_trials} exceeds fixture pool size {len(items)}')
+
+    if distribution:
+        expected = sum(distribution.values())
+        if expected != n_trials:
+            raise ValueError(
+                f'distribution counts sum to {expected} but n_trials={n_trials}'
+            )
+        grouped = _group_by_profile(items)
+        rng = random.Random(seed)
+        selected: list[dict[str, Any]] = []
+        for profile_id in sorted(distribution):
+            count = distribution[profile_id]
+            pool = list(grouped.get(profile_id, []))
+            if count > len(pool):
+                raise ValueError(
+                    f'distribution requests {count} trials for {profile_id} '
+                    f'but fixture only has {len(pool)}'
+                )
+            rng.shuffle(pool)
+            selected.extend(pool[:count])
+        selected.sort(key=lambda item: item.get('trial_id', ''))
+        return selected
+
     return list(items[:n_trials])
 
 

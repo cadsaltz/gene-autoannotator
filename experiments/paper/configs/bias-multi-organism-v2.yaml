@@ -1,0 +1,54 @@
+experiment_id: bias-1-vs-3-small
+config_version: 3
+owner: Caden
+n_trials: 300
+max_trials: 300
+selection_seed: 42
+claim: >
+  Multi-organism extension of the 1-vs-3 bias experiment using a 300-trial frozen
+  pool (100 MTB, 100 E. coli, 100 T. cruzi sections). Supports configurable
+  organism distribution at run time.
+status: runnable
+
+models:
+  extractors:
+    - qwen3:14b
+    - gemma3:12b
+    - mistral-nemo:12b
+  consensus: qwen3:8b
+
+fixtures:
+  papers: fixtures/paper_snapshots/bias_cluster_v2.json
+  genes: fixtures/gene_sets/bias_cluster_v2.json
+
+# Default full-pool run. Override at CLI, e.g.:
+#   --distribution mtb-h37rv:5 --distribution ecoli-k12-mg1655:5 --distribution tcruzi-clbrener:5
+#   --distribution mtb-h37rv:100
+distribution:
+  mtb-h37rv: 100
+  ecoli-k12-mg1655: 100
+  tcruzi-clbrener: 100
+
+nli:
+  model_id: roberta-large-mnli
+
+cache_policy: cold_llm_preferred
+
+conditions:
+  - extractor_A
+  - extractor_B
+  - extractor_C
+  - consensus_D
+  - single_A
+  - single_B
+  - single_C
+
+metrics:
+  - field_supported_rate
+  - field_unsupported_rate
+  - field_null_rate
+  - cross_extractor_disagreement_rate
+
+notes: |
+  bias_cluster_v2 fixture built via experiments/paper/scripts/build_multi_organism_fixture.py.
+  Use --distribution on the runner to subsample by organism without editing the fixture.
