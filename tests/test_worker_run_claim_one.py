@@ -44,6 +44,9 @@ def test_run_loads_worker_env_before_config(monkeypatch):
         def claim(self, _free_slots):
             return None
 
+        def deregister(self):
+            pass
+
     monkeypatch.delenv("WORKER_API_TOKEN", raising=False)
     monkeypatch.setattr(run, "ensure_worker_env", fake_ensure_worker_env)
     monkeypatch.setattr(run, "load_config", fake_load_config)
@@ -73,6 +76,9 @@ def test_run_claim_one_exits_clean_when_no_job(monkeypatch):
         def claim(self, free_slots):
             calls["claim"].append(free_slots)
             return None
+
+        def deregister(self):
+            pass
 
     monkeypatch.setattr(run, "load_config", _config)
     monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
@@ -107,6 +113,9 @@ def test_run_claim_one_registers_ephemeral_single_slot_worker(monkeypatch):
         def claim(self, _free_slots):
             return None
 
+        def deregister(self):
+            pass
+
     monkeypatch.setenv("SLURM_JOB_ID", "98765")
     monkeypatch.setattr(run, "load_config", _config)
     monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
@@ -134,6 +143,12 @@ def test_run_claim_one_completes_claimed_job(monkeypatch):
                 "job_id": "job-1",
                 "request": {"profile": "mtb-h37rv", "locus": "Rv0001"},
             }
+
+        def heartbeat(self, **_fields):
+            return {}
+
+        def deregister(self):
+            pass
 
         def complete(self, job_id, result):
             completed.append((job_id, result))
@@ -165,6 +180,139 @@ def test_run_claim_one_completes_claimed_job(monkeypatch):
     assert completed == [("job-1", {"locus": "Rv0001", "job_id": "job-1"})]
 
 
+def test_run_claim_one_heartbeats_while_the_job_runs(monkeypatch):
+    heartbeats = []
+
+    class FakeClient:
+        def __init__(self, _config):
+            pass
+
+        def register(self):
+            return "worker-1"
+
+        def claim(self, _free_slots):
+            return {
+                "job_id": "job-1",
+                "request": {"profile": "mtb-h37rv", "locus": "Rv0001"},
+            }
+
+        def heartbeat(self, **fields):
+            heartbeats.append(fields)
+            return {}
+
+        def complete(self, job_id, result):
+            pass
+
+        def deregister(self):
+            pass
+
+        def fail(self, job_id, error, retryable):
+            raise AssertionError(f"unexpected failure: {job_id} {error} {retryable}")
+
+    monkeypatch.setattr(run, "load_config", _config)
+    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(
+        run,
+        "_bootstrap_local_fleet",
+        lambda: (argparse.Namespace(max_slots=1), None, None),
+        raising=False,
+    )
+    monkeypatch.setattr(run, "_execute_job", lambda request, **_kwargs: {"locus": request["locus"]})
+
+    assert run.main(argparse.Namespace(claim_one=True, job_file=None)) == 0
+    assert heartbeats
+    assert heartbeats[0]["state"] == "ready"
+    assert heartbeats[0]["free_slots"] == 1
+    assert "memory_available_bytes" in heartbeats[0]
+
+
+def test_run_claim_one_deregisters_on_exit(monkeypatch):
+    events = []
+
+    class FakeClient:
+        def __init__(self, _config):
+            pass
+
+        def register(self):
+            events.append("register")
+            return "worker-1"
+
+        def claim(self, _free_slots):
+            return {
+                "job_id": "job-1",
+                "request": {"profile": "mtb-h37rv", "locus": "Rv0001"},
+            }
+
+        def heartbeat(self, **_fields):
+            return {}
+
+        def complete(self, job_id, _result):
+            events.append(f"complete:{job_id}")
+
+        def deregister(self):
+            events.append("deregister")
+
+        def fail(self, job_id, error, retryable):
+            raise AssertionError(f"unexpected failure: {job_id} {error} {retryable}")
+
+    monkeypatch.setattr(run, "load_config", _config)
+    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(
+        run,
+        "_bootstrap_local_fleet",
+        lambda: (argparse.Namespace(max_slots=1), None, None),
+        raising=False,
+    )
+    monkeypatch.setattr(run, "_execute_job", lambda request, **_kwargs: {"locus": request["locus"]})
+
+    assert run.main(argparse.Namespace(claim_one=True, job_file=None)) == 0
+    assert events == ["register", "complete:job-1", "deregister"]
+
+
+def test_run_claim_one_deregisters_when_no_job_is_available(monkeypatch):
+    events = []
+
+    class FakeClient:
+        def __init__(self, _config):
+            pass
+
+        def register(self):
+            events.append("register")
+            return "worker-1"
+
+        def claim(self, _free_slots):
+            return None
+
+        def deregister(self):
+            events.append("deregister")
+
+    monkeypatch.setattr(run, "load_config", _config)
+    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+
+    assert run.main(argparse.Namespace(claim_one=True, job_file=None)) == 0
+    assert events == ["register", "deregister"]
+
+
+def test_run_claim_one_survives_a_failing_deregister(monkeypatch):
+    class FakeClient:
+        def __init__(self, _config):
+            pass
+
+        def register(self):
+            return "worker-1"
+
+        def claim(self, _free_slots):
+            return None
+
+        def deregister(self):
+            raise RuntimeError("backend unreachable")
+
+    monkeypatch.setattr(run, "load_config", _config)
+    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+
+    assert run.main(argparse.Namespace(claim_one=True, job_file=None)) == 0
+
+
 def test_run_claim_one_fails_claimed_job_and_exits_nonzero(monkeypatch):
     failed = []
 
@@ -180,6 +328,12 @@ def test_run_claim_one_fails_claimed_job_and_exits_nonzero(monkeypatch):
                 "job_id": "job-1",
                 "request": {"profile": "mtb-h37rv", "locus": "Rv0001"},
             }
+
+        def heartbeat(self, **_fields):
+            return {}
+
+        def deregister(self):
+            pass
 
         def complete(self, job_id, result):
             raise AssertionError(f"unexpected completion: {job_id} {result}")
@@ -222,6 +376,9 @@ def test_run_claim_one_fails_claimed_job_when_fleet_bootstrap_fails(monkeypatch)
                 "job_id": "job-1",
                 "request": {"profile": "mtb-h37rv", "locus": "Rv0001"},
             }
+
+        def deregister(self):
+            pass
 
         def fail(self, job_id, error, retryable):
             failed.append((job_id, error, retryable))

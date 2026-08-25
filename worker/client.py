@@ -26,6 +26,14 @@ class CoordinatorClient:
         self.worker_id = response.json()["worker_id"]
         return self.worker_id
 
+    def deregister(self):
+        if self.worker_id is None:
+            return
+        response = self._http.delete(f"/workers/{self.worker_id}", headers=self._auth)
+        if response.status_code == 404:
+            return
+        response.raise_for_status()
+
     def heartbeat(self, active_jobs, free_slots, memory_available_bytes, cpu_percent, state):
         response = self._http.post(
             f"/workers/{self.worker_id}/heartbeat",

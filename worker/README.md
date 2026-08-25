@@ -165,6 +165,12 @@ Ollama fleet, ensures required models, starts the localhost router, and exports
 one slot and uses the Slurm job id (or process id) in its worker name so it
 cannot collide with a persistent serve worker on the same hostname.
 
+Run mode heartbeats for as long as the claimed job runs, so the backend keeps
+the job's lease fresh and does not requeue work that is still progressing. On
+exit — whether the job completed, failed, or the queue was empty — the
+ephemeral worker deregisters itself, leaving no stale entry in `GET /workers`.
+A deregistration failure is logged and never changes the exit code.
+
 To execute a payload already materialized by a scheduler, skip registration and
 claiming:
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import time
 from dataclasses import replace
@@ -27,6 +28,8 @@ from worker.router import Backend, ModelRouter
 from worker.router.server import start_router_server, stop_router_server
 from worker.runtime import JobSpec, WorkerRuntime
 from worker.runtime import execute_annotation_job as _execute_job
+
+log = logging.getLogger(__name__)
 
 
 class _OneShotJobSource:
@@ -79,6 +82,51 @@ def _make_execute_fn(reporter: ProgressReporter):
         return _execute_job(request_dict, job_id=job_id, on_progress=combined_progress)
 
     return execute
+
+
+def _memory_available_bytes() -> int:
+    try:
+        import psutil
+
+        return int(psutil.virtual_memory().available)
+    except Exception:  # noqa: BLE001 - assume plenty if psutil is missing.
+        return 1 << 62
+
+
+def _cpu_percent() -> float:
+    try:
+        import psutil
+
+        return float(psutil.cpu_percent(interval=None))
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def _heartbeat_fn(client: CoordinatorClient):
+    """Keep the backend's view of this allocation fresh.
+
+    Without heartbeats the backend cannot tell a long-running Slurm job from a
+    dead one: the worker looks offline while its lease is still renewed only by
+    progress reports.
+    """
+
+    def heartbeat(*, active_jobs: int, free_slots: int) -> None:
+        client.heartbeat(
+            active_jobs=active_jobs,
+            free_slots=free_slots,
+            memory_available_bytes=_memory_available_bytes(),
+            cpu_percent=_cpu_percent(),
+            state="ready",
+        )
+
+    return heartbeat
+
+
+def _deregister_quietly(client: CoordinatorClient) -> None:
+    try:
+        client.deregister()
+    except Exception as exc:  # noqa: BLE001 - exit cleanup must never fail the run.
+        log.warning("Could not deregister worker on exit: %s", exc)
 
 
 def _ephemeral_worker_name(config) -> str:
@@ -147,12 +195,49 @@ def _shutdown_local_fleet(supervisor, router_thread) -> None:
         supervisor.shutdown()
 
 
+def _run_job(client, config, job: JobSpec, fleet, supervisor, router_thread, *, heartbeat_fn) -> int:
+    try:
+        reporter = ProgressReporter(client)
+        source = _OneShotJobSource(client, job, reporter)
+        runtime = WorkerRuntime(
+            config=replace(config, max_slots=1),
+            fleet_config=fleet,
+            job_source=source,
+            execute_fn=_make_execute_fn(reporter),
+            heartbeat_fn=heartbeat_fn,
+        )
+        runtime.run()
+        return 1 if source.failed else 0
+    finally:
+        _shutdown_local_fleet(supervisor, router_thread)
+
+
+def _run_claimed_job(client, config) -> int:
+    claim = client.claim(1)
+    if claim is None:
+        return 0
+    job = JobSpec(job_id=str(claim["job_id"]), request=dict(claim["request"]))
+    try:
+        fleet, supervisor, router_thread = _bootstrap_local_fleet()
+    except Exception as exc:  # noqa: BLE001 - never strand the job we just claimed.
+        client.fail(job.job_id, str(exc), retryable=True)
+        return 1
+    return _run_job(
+        client,
+        config,
+        job,
+        fleet,
+        supervisor,
+        router_thread,
+        heartbeat_fn=_heartbeat_fn(client),
+    )
+
+
 def main(args: argparse.Namespace) -> int:
     ensure_worker_env(interactive=False, skip_fleet_config=True)
     config = load_config()
 
-    claim_one = bool(getattr(args, "claim_one", False))
-    if claim_one:
+    if bool(getattr(args, "claim_one", False)):
         config = replace(
             config,
             worker_name=_ephemeral_worker_name(config),
@@ -160,33 +245,22 @@ def main(args: argparse.Namespace) -> int:
         )
         client = CoordinatorClient(config)
         client.register()
-        claim = client.claim(1)
-        if claim is None:
-            return 0
-        job = JobSpec(job_id=str(claim["job_id"]), request=dict(claim["request"]))
-    else:
-        client = CoordinatorClient(config)
-        job = _job_from_file(args.job_file)
+        try:
+            return _run_claimed_job(client, config)
+        finally:
+            # The allocation is ending, so drop the registration instead of
+            # leaving a phantom worker until the offline window elapses.
+            _deregister_quietly(client)
 
-    try:
-        fleet, supervisor, router_thread = _bootstrap_local_fleet()
-    except Exception as exc:
-        if claim_one:
-            client.fail(job.job_id, str(exc), retryable=True)
-            return 1
-        raise
-
-    try:
-        reporter = ProgressReporter(client)
-        source = _OneShotJobSource(client, job, reporter)
-        runtime_config = replace(config, max_slots=1)
-        runtime = WorkerRuntime(
-            config=runtime_config,
-            fleet_config=fleet,
-            job_source=source,
-            execute_fn=_make_execute_fn(reporter),
-        )
-        runtime.run()
-        return 1 if source.failed else 0
-    finally:
-        _shutdown_local_fleet(supervisor, router_thread)
+    client = CoordinatorClient(config)
+    job = _job_from_file(args.job_file)
+    fleet, supervisor, router_thread = _bootstrap_local_fleet()
+    return _run_job(
+        client,
+        config,
+        job,
+        fleet,
+        supervisor,
+        router_thread,
+        heartbeat_fn=None,
+    )
