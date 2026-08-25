@@ -69,9 +69,13 @@ def test_queue_summary_endpoint_peeks_without_claiming(tmp_path):
         job_store=store,
         annotation_store=InMemoryAnnotationStore(),
         start_worker=False,
+        worker_api_token="test-token",
     )
 
-    response = TestClient(app).get("/jobs/queue-summary")
+    response = TestClient(app).get(
+        "/jobs/queue-summary",
+        headers={"Authorization": "Bearer test-token"},
+    )
 
     assert response.status_code == 200
     assert response.json() == {"queued": 1}
