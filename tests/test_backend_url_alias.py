@@ -1,5 +1,7 @@
 import os
+from unittest.mock import patch
 
+from shared.env_persist import load_env_file
 from worker.env_urls import resolve_backend_url
 
 
@@ -81,3 +83,32 @@ def test_worker_bootstrap_cli_url_overrides_backend_env(tmp_path, monkeypatch):
 
     assert resolve_backend_url() == "https://backend-b.example"
     assert worker_config.load_config().coordinator_url == "https://backend-b.example"
+
+
+def test_worker_bootstrap_cli_url_replaces_persisted_backend_alias(
+    tmp_path, monkeypatch
+):
+    from worker import bootstrap
+
+    env_path = tmp_path / "worker.env"
+    env_path.write_text(
+        "BACKEND_URL=https://backend-old.example\n"
+        "WORKER_API_TOKEN=token\n"
+        "WORKER_MODEL_MEMORY_BUDGET_GB=64\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(bootstrap, "default_env_path", lambda: env_path)
+    monkeypatch.setattr(bootstrap, "ensure_model_mode", lambda **_kwargs: "performance")
+
+    with patch.dict(os.environ, {}, clear=True):
+        bootstrap.ensure_worker_env(
+            cli_overrides={"COORDINATOR_URL": "https://backend-new.example/"},
+            interactive=False,
+            skip_fleet_config=True,
+        )
+        persisted = load_env_file(env_path)
+        with patch.dict(os.environ, persisted, clear=True):
+            assert resolve_backend_url() == "https://backend-new.example"
+
+    assert persisted["BACKEND_URL"] == "https://backend-new.example/"
+    assert persisted["COORDINATOR_URL"] == "https://backend-new.example/"

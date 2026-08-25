@@ -196,6 +196,10 @@ def ensure_worker_env(
             )
 
     if explicit_coordinator_url:
+        saved = load_env_file(path)
+        saved["BACKEND_URL"] = url
+        saved["COORDINATOR_URL"] = url
+        save_env_file(path, saved)
         os.environ["BACKEND_URL"] = url
         os.environ["COORDINATOR_URL"] = url
     else:
