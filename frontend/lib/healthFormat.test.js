@@ -62,12 +62,12 @@ test("formatWorkerSlotsLabel prefers heartbeat free slots", () => {
   );
 });
 
-test("collectFleetHealthIssues reports coordinator outage first", () => {
+test("collectFleetHealthIssues reports backend outage first", () => {
   const issues = collectFleetHealthIssues(
     { status: "offline", resources: { message: "connection refused" } },
     { status: "ok" },
   );
-  assert.deepEqual(issues, [{ label: "Coordinator", message: "connection refused" }]);
+  assert.deepEqual(issues, [{ label: "Backend", message: "connection refused" }]);
 });
 
 test("collectFleetHealthIssues reports missing workers and storage problems", () => {

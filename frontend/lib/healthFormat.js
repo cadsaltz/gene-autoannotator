@@ -112,8 +112,8 @@ export function collectFleetHealthIssues(health, annotationHealth) {
 
   if (!health || health.status !== "ok") {
     issues.push({
-      label: "Coordinator",
-      message: health?.resources?.message || "Coordinator API unreachable",
+      label: "Backend",
+      message: health?.resources?.message || "Backend API unreachable",
     });
     return issues;
   }
@@ -129,7 +129,7 @@ export function collectFleetHealthIssues(health, annotationHealth) {
   if (annotationStore?.status !== "ok") {
     issues.push({
       label: "MongoDB writes",
-      message: annotationStore?.message || "Coordinator cannot write annotations to MongoDB",
+      message: annotationStore?.message || "Backend cannot write annotations to MongoDB",
     });
   }
 
