@@ -240,7 +240,7 @@ class JobStore:
             connection.commit()
         return self.get_job(queued["id"])
 
-    def assign_job_to_worker(self, worker_id, *, lease_seconds=31536000):
+    def assign_job_to_worker(self, worker_id, *, lease_seconds=21600):
         """Atomically claim one queued job for a fleet worker."""
         with self._connect() as connection:
             connection.row_factory = sqlite3.Row
@@ -275,12 +275,24 @@ class JobStore:
             connection.commit()
         return self.get_job(queued["id"])
 
-    def renew_lease(self, job_id, *, lease_seconds=31536000):
+    def renew_lease(self, job_id, *, lease_seconds=21600):
         with self._connect() as connection:
             connection.execute(
                 "UPDATE annotation_jobs SET lease_expires_at = ? WHERE id = ? AND status = 'running'",
                 (_iso_in(lease_seconds), job_id),
             )
+
+    def renew_worker_leases(self, worker_id, *, lease_seconds=21600):
+        """Extend the lease of every job still running on a live worker."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE annotation_jobs SET lease_expires_at = ?
+                WHERE worker_id = ? AND status = 'running'
+                """,
+                (_iso_in(lease_seconds), worker_id),
+            )
+            return cursor.rowcount
 
     def requeue_expired_leases(self, *, max_attempts=3):
         now = _now_iso()

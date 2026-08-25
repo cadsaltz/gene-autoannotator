@@ -106,6 +106,11 @@ class WorkerRegistry:
             )
             return cursor.rowcount > 0
 
+    def delete(self, worker_id):
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM workers WHERE id = ?", (worker_id,))
+            return cursor.rowcount > 0
+
     def get(self, worker_id, *, offline_after_seconds=60):
         with self._connect() as connection:
             connection.row_factory = sqlite3.Row

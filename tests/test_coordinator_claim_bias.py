@@ -78,29 +78,48 @@ def test_claim_uses_request_free_slots_when_heartbeat_stale(tmp_path):
     assert claim.json()["request"]["locus"] == "Rv0099"
 
 
-def test_assign_only_when_worker_has_max_free_slots(tmp_path):
+def test_single_slot_worker_claims_alongside_larger_idle_worker(tmp_path):
+    # A one-slot Slurm worker is often the only worker that will ever ask for
+    # work, so it must not be starved by an idle multi-slot laptop.
     client, store = _make_client(tmp_path)
     headers = {"Authorization": "Bearer test-token"}
 
-    big_worker_id = _register(client, headers, worker_name="big", hostname="big", max_slots=4)
-    small_worker_id = _register(client, headers, worker_name="small", hostname="small", max_slots=2)
+    _register(client, headers, worker_name="big", hostname="big", max_slots=4)
+    small_worker_id = _register(client, headers, worker_name="small", hostname="small", max_slots=1)
     _queue_job(store, "Rv0001")
 
     small_claim = client.post(
         f"/workers/{small_worker_id}/claim",
-        json={"free_slots": 2},
+        json={"free_slots": 1},
         headers=headers,
     )
-    assert small_claim.status_code == 204
 
-    big_claim = client.post(
+    assert small_claim.status_code == 200
+    assert store.get_job(small_claim.json()["job_id"])["worker_id"] == small_worker_id
+
+
+def test_claim_is_fifo_across_workers(tmp_path):
+    client, store = _make_client(tmp_path)
+    headers = {"Authorization": "Bearer test-token"}
+
+    small_worker_id = _register(client, headers, worker_name="small", hostname="small", max_slots=1)
+    big_worker_id = _register(client, headers, worker_name="big", hostname="big", max_slots=4)
+    _queue_job(store, "Rv0001")
+    _queue_job(store, "Rv0002")
+
+    first = client.post(
+        f"/workers/{small_worker_id}/claim",
+        json={"free_slots": 1},
+        headers=headers,
+    )
+    second = client.post(
         f"/workers/{big_worker_id}/claim",
         json={"free_slots": 4},
         headers=headers,
     )
-    assert big_claim.status_code == 200
-    assert big_claim.json()["job_id"]
-    assert store.get_job(big_claim.json()["job_id"])["worker_id"] == big_worker_id
+
+    assert first.json()["request"]["locus"] == "Rv0001"
+    assert second.json()["request"]["locus"] == "Rv0002"
 
 
 def test_both_workers_at_max_free_slots_can_claim(tmp_path):

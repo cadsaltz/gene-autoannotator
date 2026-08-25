@@ -356,7 +356,8 @@ Health check: `curl http://127.0.0.1:8000/health`
 |----------|---------|-----------------|
 | `WORKER_API_TOKEN` | Bearer token for `/workers/*` and job progress/complete/fail | **If unset, worker endpoints are unauthenticated** |
 | `COORDINATOR_PUBLIC_URL` | Advertised URL for workers (`/coordinator-info`) | — |
-| `LEASE_SECONDS` | Claim lease before reaper may requeue | `31536000` (365d) |
+| `WORKER_CAPACITY_REQUIRED` | Reject submissions while no worker has a free slot | on for `backend.api:app`; set `0` for HPC-only deploys |
+| `LEASE_SECONDS` | Claim lease before reaper may requeue; renewed by progress and heartbeats | `21600` (6h) |
 | `MAX_ATTEMPTS` | Retries before permanent fail | `3` |
 | `WORKER_OFFLINE_SECONDS` | Heartbeat window for “offline” | `60` |
 | `REQUIRED_WORKER_VERSION` | Optional min worker version hint | — |
@@ -364,7 +365,8 @@ Health check: `curl http://127.0.0.1:8000/health`
 | `PROFILES_DIR` | Local profile JSON | `data/profiles` |
 | `OLLAMA_HOST` / model vars | Only relevant if something in this process talks to Ollama | — |
 
-API catalog: `backend/README.md`. Job submit returns **503** when no workers have available slots.
+API catalog: `backend/README.md`. Job submit returns **503** when no workers have
+available slots, unless `WORKER_CAPACITY_REQUIRED=0`.
 
 ---
 

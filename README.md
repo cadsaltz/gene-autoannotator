@@ -207,9 +207,9 @@ Some comparison/model tests may need HuggingFace model downloads and local Ollam
 - `GET /profiles`: local organism profiles (`PROFILES_DIR` / `data/profiles`).
 - `POST /profiles`, `GET /profiles/{profile_id}`, `PUT /profiles/{profile_id}`, `DELETE /profiles/{profile_id}`: create, read, update, and delete local profile files.
 - `POST /validate`: target preflight for a profile or ad hoc organism plus name, locus, or both. It returns the resolved profile, submitted/resolved identifiers, primary identifier, and warnings.
-- `POST /jobs`: queue an annotation job after the same target preflight; the stored job request includes `target_preflight`. Returns 503 if no worker has an available slot.
+- `POST /jobs`: queue an annotation job after the same target preflight; the stored job request includes `target_preflight`. Returns 503 if no worker has an available slot, unless `WORKER_CAPACITY_REQUIRED=0`.
 - `GET /jobs?order=queue|newest`: list job history and queue summary.
-- `GET /jobs/queue-summary`: read-only queued count used by the SCRI dispatcher; it does not claim or transition jobs.
+- `GET /jobs/queue-summary`: read-only queued count used by the SCRI dispatcher; it requires the worker token and does not claim or transition jobs.
 - `DELETE /jobs/history`: clear completed/failed jobs only.
 - `GET /jobs/{job_id}` and `/jobs/{job_id}/result`: job metadata/result.
 - `GET /annotations/search?query=...`: FastAPI-compatible annotation search endpoint; the frontend now uses its own Next.js `/api/annotations/...` routes for Mongo reads.
@@ -220,7 +220,7 @@ Some comparison/model tests may need HuggingFace model downloads and local Ollam
 - End-user account authentication is not implemented. Task 9's auth model is pending lead confirmation; `WORKER_API_TOKEN` protects worker endpoints when configured but is not user authentication.
 - No user authorization, rate limiting, job cancellation, or queue size limits. Failed jobs have bounded retries, but there is no general operator retry UI.
 - The backend queue is durable SQLite on one backend host, but the current deployment is not a horizontally replicated control plane. Multiple independent backend volumes would create multiple queues.
-- Compute capacity depends on pull-based workers. Submissions return 503 when no connected worker reports an available slot.
+- Compute capacity depends on pull-based workers. Submissions return 503 when no connected worker reports an available slot; an HPC-only deploy, where workers exist only after the dispatcher reacts to a queued job, must set `WORKER_CAPACITY_REQUIRED=0`.
 - Progress is worker-reported and phase/section based rather than a precise completion estimate.
 - API request paths such as `cache_dir` and `output_dir` are trusted server paths.
 - MongoDB is optional; if unavailable to FastAPI, jobs can complete but completed annotations will not be saved to MongoDB. Profile CRUD uses local files and does not require MongoDB. If MongoDB is unavailable to the Next.js server, annotation search/review will not work even if FastAPI is online.

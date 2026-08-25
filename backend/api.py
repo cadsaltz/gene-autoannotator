@@ -117,6 +117,12 @@ def _regex_model_health():
 
 DEFAULT_DB_PATH = Path("coordinator/jobs.sqlite3")
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "2000"))
+# Six hours is long enough for an HPC allocation to finish one annotation while
+# still recovering a job whose Slurm allocation died without failing it. Live
+# workers keep their leases fresh through progress reports and heartbeats.
+DEFAULT_LEASE_SECONDS = 21600
+TRUE_VALUES = {"1", "true", "yes", "on"}
+FALSE_VALUES = {"0", "false", "no", "off"}
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -149,6 +155,15 @@ PROFILE_CONFIG_FIELDS = (
 )
 
 
+def _env_flag(name, default):
+    raw = (os.getenv(name) or "").strip().lower()
+    if raw in TRUE_VALUES:
+        return True
+    if raw in FALSE_VALUES:
+        return False
+    return default
+
+
 def create_app(
     *,
     job_store=None,
@@ -166,7 +181,10 @@ def create_app(
     batches = batch_store or BatchStore(store.db_path)
     workers = worker_registry or WorkerRegistry(store.db_path)
     worker_token = worker_api_token if worker_api_token is not None else os.getenv("WORKER_API_TOKEN")
-    lease_seconds = int(os.getenv("LEASE_SECONDS", "31536000"))
+    # An HPC-only deploy has no warm worker to satisfy the gate, so
+    # WORKER_CAPACITY_REQUIRED=0 must be able to turn it off at deploy time.
+    capacity_required = _env_flag("WORKER_CAPACITY_REQUIRED", worker_capacity_required)
+    lease_seconds = int(os.getenv("LEASE_SECONDS", str(DEFAULT_LEASE_SECONDS)))
     max_attempts = int(os.getenv("MAX_ATTEMPTS", "3"))
     offline_after_seconds = int(os.getenv("WORKER_OFFLINE_SECONDS", "60"))
     annotations = (
@@ -178,7 +196,7 @@ def create_app(
     worker_lock = threading.Lock()
 
     def _require_worker_fleet():
-        if not worker_capacity_required or run_jobs_inline:
+        if not capacity_required or run_jobs_inline:
             return
         summary = workers.summary(offline_after_seconds=offline_after_seconds)
         if summary["connected"] == 0 or summary["total_slots"] == 0:
@@ -781,8 +799,9 @@ def create_app(
         return {"deleted": store.clear_finished_jobs()}
 
     @app.get("/jobs/queue-summary")
-    def queued_jobs_summary():
+    def queued_jobs_summary(authorization: str | None = Header(default=None)):
         # Peek only: status transitions are reserved for fleet claim endpoints.
+        _require_worker_token(authorization)
         return {"queued": store.count_queued_jobs()}
 
     @app.get("/jobs/{job_id}", response_model=JobRecordResponse)
@@ -845,6 +864,9 @@ def create_app(
         _require_worker_token(authorization)
         if not workers.heartbeat(worker_id, request.model_dump()):
             raise HTTPException(status_code=404, detail="Worker not registered")
+        # A heartbeat proves the worker is alive, so its running jobs are not
+        # stranded and the reaper should not requeue them mid-run.
+        store.renew_worker_leases(worker_id, lease_seconds=lease_seconds)
         required_version = os.getenv("REQUIRED_WORKER_VERSION")
         worker = workers.get(worker_id, offline_after_seconds=offline_after_seconds)
         drain = worker is not None and worker["state"] == "draining"
@@ -861,19 +883,11 @@ def create_app(
         if worker is None or worker["state"] != "ready":
             return Response(status_code=204)
 
-        # Use the live claim request for this worker so claims are not blocked by a
-        # stale heartbeat that still shows free_slots=0 between heartbeats.
-        ready_slots: list[int] = []
-        for peer in workers.list_workers(offline_after_seconds=offline_after_seconds):
-            if peer["state"] != "ready":
-                continue
-            slots = request.free_slots if peer["id"] == worker_id else peer["free_slots"]
-            if slots > 0:
-                ready_slots.append(slots)
-        if not ready_slots:
-            return Response(status_code=204)
-        if request.free_slots < max(ready_slots):
-            return Response(status_code=204)
+        # Any ready worker that says it has a free slot may claim, and the
+        # worker's own request decides that rather than its last heartbeat,
+        # which can be stale. The atomic store claim is what prevents double
+        # assignment; preferring the worker with the most free slots would
+        # starve single-slot HPC workers whenever an idle laptop is registered.
         # Keep every fleet assignment on the store's serialized claim path.
         job = store.assign_job_to_worker(worker_id, lease_seconds=lease_seconds)
         if job is None:
@@ -926,6 +940,15 @@ def create_app(
     def drain_worker(worker_id: str, authorization: str | None = Header(default=None)):
         _require_worker_token(authorization)
         if not workers.set_state(worker_id, "draining"):
+            raise HTTPException(status_code=404, detail="Worker not registered")
+        return Response(status_code=204)
+
+    @app.delete("/workers/{worker_id}", status_code=204)
+    def deregister_worker(worker_id: str, authorization: str | None = Header(default=None)):
+        # Ephemeral Slurm workers call this on exit so a finished allocation
+        # does not linger in the fleet view until the offline window elapses.
+        _require_worker_token(authorization)
+        if not workers.delete(worker_id):
             raise HTTPException(status_code=404, detail="Worker not registered")
         return Response(status_code=204)
 

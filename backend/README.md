@@ -124,8 +124,14 @@ Environment variables:
   (`/workers/*`, `/jobs/{id}/progress|complete|fail`). Workers must send it as
   `Authorization: Bearer <token>`. **If unset, the worker endpoints are
   unauthenticated.**
-- `LEASE_SECONDS` (default `31536000`, 365 days): how long a claimed job's lease is valid
-  before the reaper may requeue it.
+- `WORKER_CAPACITY_REQUIRED` (default on for `backend.api:app`): reject job
+  submission with 503 while no worker is connected with a free slot. Set it to
+  `0` for an HPC-primary deploy where workers only exist after the dispatcher
+  reacts to a queued job.
+- `LEASE_SECONDS` (default `21600`, 6 hours): how long a claimed job's lease is valid
+  before the reaper may requeue it. Progress reports and worker heartbeats renew
+  the lease, so a live worker keeps its job past the lease window; a worker that
+  dies (for example a killed Slurm allocation) releases its job after it.
 - `MAX_ATTEMPTS` (default `3`): maximum number of times a job is retried before it
   is marked failed.
 - `WORKER_OFFLINE_SECONDS` (default `60`): a worker with no heartbeat within this
@@ -141,7 +147,8 @@ Start the coordinator:
 WORKER_API_TOKEN=dev-token uvicorn backend.api:app --host 0.0.0.0 --port 8000
 ```
 
-Job submission returns **503** when no workers are connected with available slots.
+Job submission returns **503** when no workers are connected with available
+slots, unless `WORKER_CAPACITY_REQUIRED=0`.
 
 ## Endpoint Summary
 

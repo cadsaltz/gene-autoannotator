@@ -38,7 +38,8 @@ WORKER_API_TOKEN=replace-with-a-long-random-token
 BACKEND_PUBLIC_URL=https://api.example.org
 MONGO_URI=mongodb+srv://USER:PASSWORD@HOST/gene_autoannotator
 PROFILES_DIR=/app/data/profiles
-LEASE_SECONDS=31536000
+WORKER_CAPACITY_REQUIRED=0
+LEASE_SECONDS=21600
 MAX_ATTEMPTS=3
 WORKER_OFFLINE_SECONDS=60
 CORS_ORIGINS=https://annotations.example.org
@@ -48,10 +49,40 @@ Generate the worker token with `deploy/scripts/generate-worker-token.sh`. Use
 the same token on the backend, dispatcher, and every worker, but keep it out of
 shell history, source control, and Slurm logs.
 
-`WORKER_API_TOKEN` protects worker registration, claim, progress, completion,
-failure, and drain endpoints when configured. It is not end-user account
-authentication. `GET /jobs/queue-summary` is currently a public read-only
-endpoint; the dispatcher still sends the bearer token with its request.
+`WORKER_API_TOKEN` protects worker registration, deregistration, claim,
+progress, completion, failure, drain, and `GET /jobs/queue-summary` when
+configured. It is not end-user account authentication.
+
+### Submission capacity gate (required reading for HPC-only deploys)
+
+`backend.api:app` rejects `POST /jobs` and `POST /batches` with 503 while no
+worker is connected with a free slot. That default assumes a warm worker, and it
+deadlocks an HPC-only deploy: the dispatcher only submits Slurm allocations once
+jobs are queued, so nothing can ever be queued if submission requires a worker
+that does not exist yet.
+
+Choose one:
+
+- **HPC-only (recommended for this deployment):** set
+  `WORKER_CAPACITY_REQUIRED=0`, as in the `.env` above. Submissions are always
+  accepted and wait in the queue until the next dispatcher pass launches a
+  worker.
+- **Warm-worker deploys:** keep `WORKER_CAPACITY_REQUIRED=1` and run at least
+  one always-on laptop worker (section 4). Users then get an immediate 503 when
+  no capacity is connected, instead of a job that waits for capacity.
+
+### Lease duration and Slurm walltime
+
+`LEASE_SECONDS` is how long a claimed job stays assigned to a worker that stops
+reporting. Live workers renew the lease on every progress report and heartbeat,
+so a long job on a healthy worker is never requeued. A worker that dies — a
+killed or preempted Slurm allocation, a node failure — only releases its job
+after the lease expires, so a very long lease strands the job.
+
+Set `LEASE_SECONDS` slightly above the longest expected gap in worker reporting,
+not above total walltime: 4–6 hours (`14400`–`21600`, the default) suits the
+`--time=48:00:00` sample allocation. Requeued jobs are retried up to
+`MAX_ATTEMPTS`.
 
 ### Start
 
@@ -146,6 +177,11 @@ successful no-op. Queue peeking never reserves work; the worker claim is the
 only `queued` to `running` transition, so SCRI and laptop workers can race
 safely for the same queue.
 
+While the claimed job runs, the allocation heartbeats to the backend, which
+keeps the job's lease fresh and keeps the worker visible as online. On exit the
+allocation deregisters itself, so a finished Slurm job disappears from
+`GET /workers` instead of lingering as a stale entry.
+
 ### Install the SCRI scrontab entry
 
 Edit the SCRI scrontab with the site's `scrontab` command and add a periodic
@@ -181,11 +217,13 @@ Before exposing the service to users:
 1. `GET /health` reports the queue, profile store, and Mongo annotation store as
    healthy.
 2. The frontend can submit a job and poll it through the backend proxy.
-3. A dispatcher pass submits no more than `DISPATCHER_MAX_INFLIGHT`.
+3. With no worker running, a job can be submitted and stays `queued`, and the
+   next dispatcher pass submits no more than `DISPATCHER_MAX_INFLIGHT`.
 4. A Slurm allocation registers, claims one job, reports progress, completes,
-   and exits.
+   deregisters, and exits.
 5. An optional laptop worker can claim from the same queue without duplicate
-   execution.
+   execution, including a one-slot worker while a larger idle worker is
+   registered.
 6. Queue and profile volumes, MongoDB, dispatcher token file, and TLS
    certificates have an owner and backup policy.
 

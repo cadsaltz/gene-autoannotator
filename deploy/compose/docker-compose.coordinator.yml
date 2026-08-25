@@ -16,6 +16,9 @@ services:
     ports:
       - "8000:8000"
     env_file:
+      # An HPC-only deploy must set WORKER_CAPACITY_REQUIRED=0 here, otherwise
+      # submission is rejected until a worker is warm and the dispatcher never
+      # sees a queued job. See docs/deploy-cloud-backend-hpc-dispatcher.md.
       - ../../.env
     volumes:
       # Keep the legacy state path so existing coordinator-data volumes remain valid.
