@@ -90,7 +90,6 @@ def _ephemeral_worker_name(config) -> str:
 
 def _bootstrap_local_fleet():
     """Provision the same supervised Ollama fleet/router used by serve and bench."""
-    ensure_worker_env(interactive=False)
     fleet = ensure_fleet_config(interactive=False)
     spec = probe_system()
     required = set(required_model_names())
@@ -149,9 +148,11 @@ def _shutdown_local_fleet(supervisor, router_thread) -> None:
 
 
 def main(args: argparse.Namespace) -> int:
+    ensure_worker_env(interactive=False, skip_fleet_config=True)
     config = load_config()
 
-    if getattr(args, "claim_one", False):
+    claim_one = bool(getattr(args, "claim_one", False))
+    if claim_one:
         config = replace(
             config,
             worker_name=_ephemeral_worker_name(config),
@@ -167,7 +168,14 @@ def main(args: argparse.Namespace) -> int:
         client = CoordinatorClient(config)
         job = _job_from_file(args.job_file)
 
-    fleet, supervisor, router_thread = _bootstrap_local_fleet()
+    try:
+        fleet, supervisor, router_thread = _bootstrap_local_fleet()
+    except Exception as exc:
+        if claim_one:
+            client.fail(job.job_id, str(exc), retryable=True)
+            return 1
+        raise
+
     try:
         reporter = ProgressReporter(client)
         source = _OneShotJobSource(client, job, reporter)

@@ -127,3 +127,32 @@ failures in `test_worker_serve.py` / `test_worker_bench.py`: the serve fixture
 does not materialize `OLLAMA_MAX_LOADED_MODELS`, and two bench tests patch a
 removed `models_loaded` symbol. These failures are unchanged by the Task 3
 follow-up.
+
+## Medium-finding follow-up: env order and bootstrap failure
+
+Addressed the remaining Medium Task 3 findings:
+
+- `worker run` now calls `ensure_worker_env(interactive=False,
+  skip_fleet_config=True)` before `load_config()`. This loads coordinator
+  credentials from `worker.env` without provisioning the fleet before the
+  one-shot backend claim.
+- Fleet bootstrap no longer reloads the worker environment after configuration
+  has already been resolved.
+- If fleet bootstrap raises after `--claim-one` successfully claims a job, run
+  mode reports the job failed with `retryable=True` and exits 1 instead of
+  leaving the backend job in the running state.
+- Job-file bootstrap errors retain their previous exception behavior because
+  that path does not claim a backend job.
+
+### Regression tests
+
+The focused suite now verifies worker-env loading precedes config resolution and
+that a post-claim fleet bootstrap error invokes `client.fail`.
+
+```text
+.venv/bin/python -m pytest tests/test_worker_run_claim_one.py -q
+9 passed
+
+.venv/bin/python -m py_compile worker/run.py tests/test_worker_run_claim_one.py
+exit 0
+```

@@ -22,6 +22,43 @@ def _config(*, worker_name="node-a", hostname="node-a", max_slots=4):
     )
 
 
+def test_run_loads_worker_env_before_config(monkeypatch):
+    calls = []
+
+    def fake_ensure_worker_env(**kwargs):
+        calls.append(("ensure_worker_env", kwargs))
+        monkeypatch.setenv("WORKER_API_TOKEN", "from-worker-env")
+
+    def fake_load_config():
+        calls.append(("load_config", {}))
+        assert run.os.environ["WORKER_API_TOKEN"] == "from-worker-env"
+        return _config()
+
+    class FakeClient:
+        def __init__(self, _config):
+            pass
+
+        def register(self):
+            return "worker-1"
+
+        def claim(self, _free_slots):
+            return None
+
+    monkeypatch.delenv("WORKER_API_TOKEN", raising=False)
+    monkeypatch.setattr(run, "ensure_worker_env", fake_ensure_worker_env)
+    monkeypatch.setattr(run, "load_config", fake_load_config)
+    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+
+    assert run.main(argparse.Namespace(claim_one=True, job_file=None)) == 0
+    assert calls == [
+        (
+            "ensure_worker_env",
+            {"interactive": False, "skip_fleet_config": True},
+        ),
+        ("load_config", {}),
+    ]
+
+
 def test_run_claim_one_exits_clean_when_no_job(monkeypatch):
     calls = {"register": 0, "claim": [], "execute": 0, "bootstrap": 0}
 
@@ -168,6 +205,39 @@ def test_run_claim_one_fails_claimed_job_and_exits_nonzero(monkeypatch):
 
     assert rc == 1
     assert failed == [("job-1", "annotation failed", True)]
+
+
+def test_run_claim_one_fails_claimed_job_when_fleet_bootstrap_fails(monkeypatch):
+    failed = []
+
+    class FakeClient:
+        def __init__(self, _config):
+            pass
+
+        def register(self):
+            return "worker-1"
+
+        def claim(self, _free_slots):
+            return {
+                "job_id": "job-1",
+                "request": {"profile": "mtb-h37rv", "locus": "Rv0001"},
+            }
+
+        def fail(self, job_id, error, retryable):
+            failed.append((job_id, error, retryable))
+
+    monkeypatch.setattr(run, "load_config", _config)
+    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(
+        run,
+        "_bootstrap_local_fleet",
+        lambda: (_ for _ in ()).throw(RuntimeError("fleet startup failed")),
+    )
+
+    rc = run.main(argparse.Namespace(claim_one=True, job_file=None))
+
+    assert rc == 1
+    assert failed == [("job-1", "fleet startup failed", True)]
 
 
 def test_run_job_file_skips_register_and_claim(monkeypatch, tmp_path):
