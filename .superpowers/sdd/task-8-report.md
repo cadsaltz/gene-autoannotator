@@ -42,3 +42,10 @@
 - Added a subprocess regression test proving the package import is lazy.
 - Focused backend and migrated-test suite: 87 passed.
 - Python compilation check for `backend` and `coordinator`: passed.
+
+## Important Finding Follow-up (Docker Compose docs)
+
+- Updated `backend/README.md` Docker Compose section to match
+  `deploy/compose/docker-compose.coordinator.yml`: service name `backend`, volume
+  mount `/state/coordinator`, and frontend env
+  `BACKEND_API_BASE_URL=http://backend:8000`.

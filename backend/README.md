@@ -242,16 +242,16 @@ with both identifiers supplied.
 ## Docker Compose
 
 From the project root, copy `coordinator.env.example` to `.env`, then start the
-coordinator API and Next.js frontend:
+backend API and Next.js frontend:
 
 ```bash
 cp coordinator.env.example .env
 docker compose -f deploy/compose/docker-compose.coordinator.yml up --build
 ```
 
-The coordinator listens on port 8000 and the frontend on port 3000. Job queue
-state is persisted in a Docker volume mounted at `/app/coordinator` (SQLite).
-Set `MONGO_URI` in `.env` for annotation history; organism profiles are stored
-locally under `data/profiles` (mount or set `PROFILES_DIR` if needed). The
-frontend proxy uses `COORDINATOR_API_BASE_URL=http://coordinator:8000` inside
-the compose network.
+The `backend` service listens on port 8000 and the frontend on port 3000. Job
+queue state is persisted in a Docker volume mounted at `/state/coordinator`
+(SQLite). Set `MONGO_URI` in `.env` for annotation history; organism profiles
+are stored locally under `data/profiles` (mount or set `PROFILES_DIR` if
+needed). The frontend proxy uses `BACKEND_API_BASE_URL=http://backend:8000`
+inside the compose network.
