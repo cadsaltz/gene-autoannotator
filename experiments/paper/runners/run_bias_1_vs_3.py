@@ -252,12 +252,30 @@ def _aggregate_rows(
     return rows
 
 
+def _trial_json_path(output_dir: Path, trial_id: str) -> Path:
+    return output_dir / 'trials' / f'{trial_id}.json'
+
+
+def _load_completed_observable(output_dir: Path, trial_id: str) -> dict[str, Any] | None:
+    path = _trial_json_path(output_dir, trial_id)
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text())
+    outputs = data.get('outputs') or {}
+    # Require crowd extractors + consensus to treat the LLM stage as done.
+    required = ('extractor_A', 'extractor_B', 'extractor_C', 'consensus_D')
+    if any(outputs.get(key) is None for key in required):
+        return None
+    return data
+
+
 def run_bias_experiment(
     *,
     config_path: Path,
     n_trials: int | None = None,
     run_id: str | None = None,
     dry_run: bool = False,
+    resume: bool = False,
 ) -> Path:
     config_path = Path(config_path)
     config = load_yaml_config(config_path)
@@ -289,7 +307,8 @@ def run_bias_experiment(
     output_dir = PAPER_DIR / 'results' / experiment_id / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
     records_path = output_dir / 'records.jsonl'
-    records_path.write_text('')
+    if not resume:
+        records_path.write_text('')
 
     cache_policy = {
         'requested': config.get('cache_policy', 'unspecified'),
@@ -303,6 +322,7 @@ def run_bias_experiment(
         'experiment_id': experiment_id,
         'run_id': run_id,
         'dry_run': dry_run,
+        'resume': resume,
         'git_sha': _git_sha(),
         'config_path': str(config_path),
         'config_hash': stable_json_hash(config),
@@ -322,8 +342,10 @@ def run_bias_experiment(
     }
     write_json(output_dir / 'manifest.json', manifest)
 
+    # Always rebuild records.jsonl at the end for a consistent artifact.
+    rebuilt_records: list[dict[str, Any]] = []
     for trial in selected:
-        append_jsonl(records_path, {
+        rebuilt_records.append({
             'record_type': 'trial_meta',
             'trial_id': trial['trial_id'],
             'profile_id': trial['profile_id'],
@@ -339,8 +361,11 @@ def run_bias_experiment(
         for trial in selected:
             observable = _empty_observable(trial)
             observables.append(observable)
-            append_jsonl(records_path, observable)
-            write_json(output_dir / 'trials' / f"{trial['trial_id']}.json", observable)
+            rebuilt_records.append(observable)
+            write_json(_trial_json_path(output_dir, trial['trial_id']), observable)
+        records_path.write_text('')
+        for record in rebuilt_records:
+            append_jsonl(records_path, record)
         write_aggregate_csv(
             output_dir / 'aggregate.csv',
             _aggregate_rows([], []),
@@ -350,19 +375,29 @@ def run_bias_experiment(
     score_records = []
     nli_fn = make_hf_nli_fn(manifest['nli_model_id'])
     for trial in selected:
-        observable = _run_live_trial(
-            trial,
-            extractor_models=extractor_models,
-            consensus_model=consensus_model,
-            cache_root=output_dir / '_llm_cache' / trial['trial_id'],
-        )
+        trial_id = trial['trial_id']
+        observable = None
+        if resume:
+            observable = _load_completed_observable(output_dir, trial_id)
+            if observable is not None:
+                print(f'resume: skipping LLM for completed trial {trial_id}', flush=True)
+        if observable is None:
+            observable = _run_live_trial(
+                trial,
+                extractor_models=extractor_models,
+                consensus_model=consensus_model,
+                cache_root=output_dir / '_llm_cache' / trial_id,
+            )
+            write_json(_trial_json_path(output_dir, trial_id), observable)
         observables.append(observable)
-        append_jsonl(records_path, observable)
-        write_json(output_dir / 'trials' / f"{trial['trial_id']}.json", observable)
+        rebuilt_records.append(observable)
         trial_scores = _field_score_records(observable, nli_fn)
         score_records.extend(trial_scores)
-        for record in trial_scores:
-            append_jsonl(records_path, record)
+        rebuilt_records.extend(trial_scores)
+
+    records_path.write_text('')
+    for record in rebuilt_records:
+        append_jsonl(records_path, record)
 
     write_aggregate_csv(
         output_dir / 'aggregate.csv',
@@ -377,6 +412,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument('--n-trials', type=int)
     parser.add_argument('--run-id')
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument(
+        '--resume',
+        action='store_true',
+        help='Skip trials that already have complete trials/<id>.json outputs; re-score NLI.',
+    )
     return parser.parse_args()
 
 
@@ -387,6 +427,7 @@ def main() -> None:
         n_trials=args.n_trials,
         run_id=args.run_id,
         dry_run=args.dry_run,
+        resume=args.resume,
     )
     print(output_dir)
 
