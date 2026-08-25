@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import re
 import sys
@@ -36,7 +37,13 @@ PROFILE_ALIASES = {
     't-cruzi': 'tcruzi-clbrener',
 }
 
-SECTION_TYPES = ('abstract', 'results', 'discussion')
+# Canonical section names map to on-disk PMC cache directories.
+CACHE_SECTION_DIRS = {
+    'abstract': 'abstracts',
+    'results': 'results',
+    'discussion': 'discussion',
+}
+SECTION_TYPES = tuple(CACHE_SECTION_DIRS)
 MIN_EXCERPT_CHARS = 200
 
 LOCUS_PATTERNS = {
@@ -90,6 +97,26 @@ def _organism_hits(text: str, profile) -> tuple[bool, bool, bool]:
     return target, off_target, excluded
 
 
+def _passes_species_filters(
+    text: str,
+    profile_id: str,
+    profile,
+    *,
+    locus_present: bool,
+) -> bool:
+    target_hit, off_target_hit, excluded_hit = _organism_hits(text, profile)
+    if excluded_hit:
+        return False
+    # Comparative papers may mention T. brucei alongside T. cruzi TcCLB loci.
+    if off_target_hit and not (profile_id == 'tcruzi-clbrener' and locus_present):
+        return False
+    if target_hit:
+        return True
+    if profile_id == 'tcruzi-clbrener' and locus_present:
+        return True
+    return False
+
+
 def _fetch_kegg_genes_cached(
     org_code: str,
     *,
@@ -133,11 +160,11 @@ def _fetch_kegg_genes(org_code: str, *, locus_pattern: re.Pattern[str]) -> list[
     return genes
 
 
-def _discover_tcruzi_genes_from_cache(cache_dir: Path, *, limit: int = 8000) -> list[GeneRecord]:
+def _discover_tcruzi_genes_from_cache(cache_dir: Path) -> list[GeneRecord]:
     pattern = LOCUS_PATTERNS['tcruzi-clbrener']
     counts: Counter[str] = Counter()
-    for subdir in SECTION_TYPES:
-        section_dir = cache_dir / subdir
+    for cache_subdir in CACHE_SECTION_DIRS.values():
+        section_dir = cache_dir / cache_subdir
         if not section_dir.is_dir():
             continue
         for path in section_dir.glob('*.txt'):
@@ -147,7 +174,7 @@ def _discover_tcruzi_genes_from_cache(cache_dir: Path, *, limit: int = 8000) -> 
                 continue
     return [
         GeneRecord('tcruzi-clbrener', locus, locus)
-        for locus, _ in counts.most_common(limit)
+        for locus in sorted(counts)
     ]
 
 
@@ -196,7 +223,7 @@ def _load_gen_json_pmc_map(repo_root: Path) -> dict[tuple[str, str], set[str]]:
 def _iter_cached_sections(cache_dir: Path) -> list[SectionRecord]:
     sections: list[SectionRecord] = []
     for section in SECTION_TYPES:
-        section_dir = cache_dir / section
+        section_dir = cache_dir / CACHE_SECTION_DIRS[section]
         if not section_dir.is_dir():
             continue
         for path in section_dir.glob('*.txt'):
@@ -230,18 +257,6 @@ def _section_has_gene_hit(text: str, gene_id: str, gene_name: str) -> bool:
     return False
 
 
-def _section_passes_organism_filter(text: str, profile_id: str, profile) -> bool:
-    target_hit, off_target_hit, excluded_hit = _organism_hits(text, profile)
-    if excluded_hit or off_target_hit:
-        return False
-    if target_hit:
-        return True
-    # T. cruzi sections often mention TcCLB loci without repeating the species name.
-    if profile_id == 'tcruzi-clbrener':
-        return True
-    return False
-
-
 def _collect_candidates_for_profile(
     profile_id: str,
     genes_by_id: dict[str, GeneRecord],
@@ -256,10 +271,12 @@ def _collect_candidates_for_profile(
         loci = set(locus_pattern.findall(section.text))
         if not loci:
             continue
-        target_hit, off_target_hit, excluded_hit = _organism_hits(section.text, profile)
-        if excluded_hit or off_target_hit:
-            continue
-        if not _section_passes_organism_filter(section.text, profile_id, profile):
+        if not _passes_species_filters(
+            section.text,
+            profile_id,
+            profile,
+            locus_present=bool(loci),
+        ):
             continue
         for locus in loci:
             gene = genes_by_id.get(locus)
@@ -290,6 +307,19 @@ def _balanced_section_targets(total: int) -> dict[str, int]:
     return targets
 
 
+def _effective_max_sections_per_paper(
+    pool: list[dict],
+    *,
+    target_count: int,
+    max_sections_per_paper: int,
+) -> int:
+    unique_papers = len({item['pmc_id'] for item in pool})
+    if unique_papers < 1:
+        return max_sections_per_paper
+    needed = math.ceil(target_count / unique_papers)
+    return max(max_sections_per_paper, min(needed, 6))
+
+
 def _select_items(
     pool: list[dict],
     *,
@@ -299,6 +329,12 @@ def _select_items(
 ) -> list[dict]:
     if not pool:
         return []
+
+    paper_cap = _effective_max_sections_per_paper(
+        pool,
+        target_count=target_count,
+        max_sections_per_paper=max_sections_per_paper,
+    )
 
     by_section: dict[str, list[dict]] = defaultdict(list)
     for item in pool:
@@ -325,7 +361,7 @@ def _select_items(
                 break
             if item in selected:
                 continue
-            if paper_counts[_paper_key(item)] >= max_sections_per_paper:
+            if paper_counts[_paper_key(item)] >= paper_cap:
                 continue
             _take(item)
             taken += 1
@@ -336,7 +372,7 @@ def _select_items(
     for item in remaining:
         if len(selected) >= target_count:
             break
-        if paper_counts[_paper_key(item)] >= max_sections_per_paper:
+        if paper_counts[_paper_key(item)] >= paper_cap:
             continue
         _take(item)
 
@@ -349,10 +385,7 @@ def _select_items(
 
     selected = selected[:target_count]
     selected.sort(key=lambda item: (item['profile_id'], item['gene_id'], item['pmc_id'], item['section']))
-    for index, item in enumerate(selected, start=1):
-        item['trial_id'] = (
-            f"t{index:03d}_{item['gene_id']}_PMC{item['pmc_id']}_{item['section']}"
-        )
+    for item in selected:
         item.pop('_score', None)
     return selected
 
@@ -361,10 +394,12 @@ def _expand_cache_for_genes(
     paper_manager: pmc.PmcPaperManager,
     genes: list[GeneRecord],
     *,
-    max_genes: int,
+    start_index: int,
+    batch_size: int,
     max_papers_per_gene: int,
-) -> None:
-    for gene in genes[:max_genes]:
+) -> int:
+    end_index = min(len(genes), start_index + batch_size)
+    for gene in genes[start_index:end_index]:
         profile = organisms.resolve_profile(gene.profile_id)
         paper_manager.organism_profile = profile
         try:
@@ -385,6 +420,7 @@ def _expand_cache_for_genes(
                 paper_manager.get_discussion(pmc_id)
             except Exception:
                 continue
+    return end_index
 
 
 def build_fixture(
@@ -400,6 +436,7 @@ def build_fixture(
     paper_manager = pmc.PmcPaperManager(str(cache_dir))
     gen_json_pmcs = _load_gen_json_pmc_map(repo_root)
     all_items: list[dict] = []
+    sections = _iter_cached_sections(cache_dir)
 
     for profile_id, target_count in per_organism.items():
         profile_id = _resolve_profile_id(profile_id)
@@ -414,24 +451,36 @@ def build_fixture(
             sections,
             gen_json_pmcs,
         )
-        if expand_cache and len(pool) < target_count:
-            print(
-                f'Expanding PMC cache for {profile_id}: pool={len(pool)} target={target_count}',
-                flush=True,
-            )
-            _expand_cache_for_genes(
-                paper_manager,
-                genes,
-                max_genes=min(250, max(50, target_count - len(pool))),
-                max_papers_per_gene=5,
-            )
-            sections = _iter_cached_sections(cache_dir)
-            pool = _collect_candidates_for_profile(
-                profile_id,
-                genes_by_id,
-                sections,
-                gen_json_pmcs,
-            )
+        if expand_cache:
+            expand_index = 0
+            batch_size = 40
+            while len(pool) < target_count and expand_index < len(genes):
+                print(
+                    f'Expanding PMC cache for {profile_id}: pool={len(pool)} '
+                    f'target={target_count} genes_tried={expand_index}',
+                    flush=True,
+                )
+                expand_index = _expand_cache_for_genes(
+                    paper_manager,
+                    genes,
+                    start_index=expand_index,
+                    batch_size=batch_size,
+                    max_papers_per_gene=5,
+                )
+                if profile_id == 'tcruzi-clbrener':
+                    genes_by_id = _load_genes_for_profile(
+                        profile_id,
+                        repo_root=repo_root,
+                        cache_dir=cache_dir,
+                    )
+                sections = _iter_cached_sections(cache_dir)
+                pool = _collect_candidates_for_profile(
+                    profile_id,
+                    genes_by_id,
+                    sections,
+                    gen_json_pmcs,
+                )
+
         selected = _select_items(
             pool,
             target_count=target_count,
@@ -439,18 +488,20 @@ def build_fixture(
             max_sections_per_paper=max_sections_per_paper,
         )
         if len(selected) < target_count:
-            if expand_cache:
-                raise RuntimeError(
-                    f'only collected {len(selected)}/{target_count} sections for {profile_id} '
-                    f'after cache expansion (pool={len(pool)})'
-                )
+            unique_papers = len({item['pmc_id'] for item in pool})
             raise RuntimeError(
                 f'only collected {len(selected)}/{target_count} sections for {profile_id} '
-                f'(pool={len(pool)}). Re-run with --expand-cache to fetch more PMC papers.'
+                f'(pool={len(pool)}, papers={unique_papers}). '
+                f'Re-run with --expand-cache to fetch more PMC papers.'
             )
         all_items.extend(selected)
 
-    all_items.sort(key=lambda item: item['trial_id'])
+    all_items.sort(key=lambda item: (item['profile_id'], item['gene_id'], item['pmc_id'], item['section']))
+    for index, item in enumerate(all_items, start=1):
+        item['trial_id'] = (
+            f"t{index:03d}_{item['gene_id']}_PMC{item['pmc_id']}_{item['section']}"
+        )
+
     profile_summary = Counter(item['profile_id'] for item in all_items)
     section_summary = Counter(item['section'] for item in all_items)
     paper_summary = Counter(item['pmc_id'] for item in all_items)
@@ -459,7 +510,7 @@ def build_fixture(
     return {
         'fixture_id': 'paper_snapshots/bias_cluster_v2',
         'selection_criteria': (
-            'Multi-organism gene-linked PMC sections scanned from cached abstract/results/discussion '
+            'Multi-organism gene-linked PMC sections scanned from cached abstracts/results/discussion '
             'text with organism target patterns, no excluded off-target species, and explicit gene '
             'locus/name mention. Spread across papers where possible; balanced section mix per organism.'
         ),
