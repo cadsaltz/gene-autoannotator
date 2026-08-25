@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from dispatcher.loop import (
     DispatcherConfig,
+    REPO_ROOT,
     dispatch_once,
     plan_launches,
 )
@@ -71,14 +72,23 @@ def test_dispatch_once_peeks_counts_and_submits_without_claiming():
             {"check": True, "capture_output": True, "text": True},
         ),
         (
-            ["sbatch", "/opt/gene-autoannotator/worker-run.sbatch"],
+            [
+                "sbatch",
+                f"--export=ALL,GAA_REPO_ROOT={REPO_ROOT}",
+                "/opt/gene-autoannotator/worker-run.sbatch",
+            ],
             {"check": True},
         ),
         (
-            ["sbatch", "/opt/gene-autoannotator/worker-run.sbatch"],
+            [
+                "sbatch",
+                f"--export=ALL,GAA_REPO_ROOT={REPO_ROOT}",
+                "/opt/gene-autoannotator/worker-run.sbatch",
+            ],
             {"check": True},
         ),
     ]
+    assert REPO_ROOT.is_absolute()
 
 
 def test_dispatcher_config_accepts_legacy_coordinator_url(monkeypatch):

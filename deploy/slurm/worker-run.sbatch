@@ -12,7 +12,6 @@ set -euo pipefail
 # This script assumes the repository and Python environment are available on
 # the compute node. Set these environment variables before running dispatcher:
 # BACKEND_URL, WORKER_API_TOKEN, and any worker/model configuration.
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$REPO_ROOT"
+cd "${GAA_REPO_ROOT:?GAA_REPO_ROOT must be set}"
 
 python -m worker run --claim-one

@@ -10,6 +10,7 @@ from typing import Any, Callable
 import httpx
 
 SLURM_JOB_NAME = "gene-autoannotator-run"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,13 @@ def dispatch_once(
 
     script = str(Path(config.sbatch_script).expanduser())
     for _ in range(to_launch):
-        command_runner(["sbatch", script], check=True)
+        command_runner(
+            [
+                "sbatch",
+                f"--export=ALL,GAA_REPO_ROOT={REPO_ROOT}",
+                script,
+            ],
+            check=True,
+        )
 
     return to_launch
