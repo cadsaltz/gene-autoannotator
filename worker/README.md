@@ -5,11 +5,12 @@ hardware, sizes and launches a homogeneous Ollama fleet, starts a model router
 sidecar, and executes jobs concurrently in subprocesses. All LLM calls go through
 the router — job subprocesses never talk to Ollama directly.
 
-Two modes share the same fleet setup and runtime:
+Three modes share the same annotation runtime and subprocess execution path:
 
 | Mode | Command | Purpose |
 | --- | --- | --- |
 | **serve** | `python -m worker serve` | Connect to a coordinator, claim jobs continuously, report progress |
+| **run** | `python -m worker run --claim-one` | Claim at most one coordinator job, report its result, and exit |
 | **bench** | `python -m worker bench` | Run a fixed JSONL batch locally, exit with a `jobs_per_hour` report |
 
 `python -m worker` with no subcommand defaults to **serve** (backward compatible).
@@ -23,7 +24,8 @@ flowchart LR
         Router["Model router sidecar<br/>OLLAMA_ROUTER_URL"]
         Runtime["WorkerRuntime<br/>up to WORKER_MAX_SLOTS"]
     end
-    Coord["Coordinator"] -->|"serve mode"| Runtime
+    Coord["Coordinator"] -->|"serve / run mode"| Runtime
+    JobFile["Single job JSON"] -->|"run --job-file"| Runtime
     JSONL["JSONL job file"] -->|"bench mode"| Runtime
     Runtime -->|"subprocess per job"| Job1["job subprocess"]
     Runtime --> Job2["job subprocess"]
@@ -129,6 +131,43 @@ The coordinator persists these fields on the job record and exposes them via
 until an ortholog progress event is confirmed, at which point the bar remaps
 to target `0–50%` then ortholog `50–100%`), falling back to the coarse
 status-based label/percent for jobs without structured fields.
+
+## Run mode
+
+Run mode is the one-shot coordinator mode used by schedulers such as Slurm. It
+uses the same `WorkerRuntime` and annotation subprocess path as serve, but never
+enters a claim loop.
+
+Register an ephemeral worker, attempt exactly one claim, then exit:
+
+```bash
+BACKEND_URL=https://backend.example.org \
+WORKER_API_TOKEN=<token> \
+python -m worker run --claim-one
+```
+
+An empty queue returns exit code 0 without starting annotation. A claimed job is
+completed or failed through the backend before the process exits.
+
+To execute a payload already materialized by a scheduler, skip registration and
+claiming:
+
+```bash
+python -m worker run --job-file /path/to/job.json
+```
+
+The JSON file contains the backend job id and its annotation request:
+
+```json
+{
+  "job_id": "job-123",
+  "request": {
+    "profile": "mtb-h37rv",
+    "locus": "Rv0001",
+    "allow_online_name_lookup": false
+  }
+}
+```
 
 ## Bench mode
 

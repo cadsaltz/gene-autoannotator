@@ -12,7 +12,6 @@ from typing import Any
 
 import ollama
 
-from shared.job_contract import AnnotationJobRequest
 from shared.job_progress import JobProgressEvent
 from worker import capacity, executor
 from worker.bench import configure_bench_logging
@@ -36,6 +35,7 @@ from worker.router import Backend, ModelRouter
 from worker.router.ollama_ps import residency_snapshot_from_ps
 from worker.router.server import start_router_server
 from worker.runtime import WorkerRuntime
+from worker.runtime import execute_annotation_job as _execute_job
 from worker.sources.coordinator import CoordinatorJobSource
 
 DEFAULT_LOG_FILENAME = "worker-serve.log"
@@ -119,16 +119,6 @@ def _should_drain(heartbeat_response: dict[str, Any], config) -> bool:
         return True
     required_version = heartbeat_response.get("required_version")
     return required_version is not None and required_version != config.agent_version
-
-
-def _execute_job(
-    request_dict: dict[str, Any],
-    *,
-    job_id: str | None = None,
-    on_progress=None,
-) -> dict[str, Any]:
-    request = AnnotationJobRequest(**request_dict)
-    return executor.run_annotation_job(request, job_id=job_id, on_progress=on_progress)
 
 
 def _make_execute_fn(reporter: ProgressReporter):

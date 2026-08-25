@@ -17,7 +17,6 @@ from typing import Any
 import ollama
 
 from shared.env_persist import load_env_file, save_env_file
-from shared.job_contract import AnnotationJobRequest
 from worker import executor
 from worker.bench_dashboard import BenchDashboard
 from worker.bootstrap import default_env_path, ensure_worker_env
@@ -37,6 +36,7 @@ from worker.router import Backend, ModelRouter
 from worker.router.ollama_ps import residency_snapshot_from_ps
 from worker.router.server import start_router_server, stop_router_server
 from worker.runtime import WorkerRuntime
+from worker.runtime import execute_annotation_job as _execute_job
 from worker.sources.batch import BatchJobSource
 
 DEFAULT_LOG_FILENAME = "worker-bench.log"
@@ -135,16 +135,6 @@ def _purge_llm_cache() -> None:
     cache_root = Path(os.getenv("WORKER_CACHE_DIR", "./.cache"))
     for rel in ("llm_cache", "llm_responses"):
         shutil.rmtree(cache_root / rel, ignore_errors=True)
-
-
-def _execute_job(
-    request_dict: dict[str, Any],
-    *,
-    job_id: str | None = None,
-    on_progress=None,
-) -> dict[str, Any]:
-    request = AnnotationJobRequest(**request_dict)
-    return executor.run_annotation_job(request, job_id=job_id, on_progress=on_progress)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:

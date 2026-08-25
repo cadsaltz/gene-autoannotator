@@ -9,6 +9,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from shared.job_contract import AnnotationJobRequest
 from shared.job_progress import JobProgressEvent
 from worker import executor
 
@@ -18,6 +19,17 @@ log = logging.getLogger(__name__)
 
 STALL_WARN_AFTER_SEC = 120.0
 STALL_WARN_INTERVAL_SEC = 60.0
+
+
+def execute_annotation_job(
+    request_dict: dict[str, Any],
+    *,
+    job_id: str | None = None,
+    on_progress=None,
+) -> dict[str, Any]:
+    """Validate a coordinator payload and execute it through the worker backend."""
+    request = AnnotationJobRequest(**request_dict)
+    return executor.run_annotation_job(request, job_id=job_id, on_progress=on_progress)
 
 
 def _float_env(name: str, default: float) -> float:
