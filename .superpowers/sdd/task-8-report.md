@@ -31,3 +31,14 @@
 - The repository already tracks `backend/jobs.sqlite3`; this task leaves that
   historical database file unchanged and adds backend SQLite patterns to
   `.gitignore` for future generated files.
+
+## Important Finding Follow-up
+
+- Migrated all remaining test imports to `backend.*`, except the intentional
+  `coordinator.api` compatibility assertions in `test_backend_package.py`.
+- Reduced `coordinator/__init__.py` to a package marker so importing
+  `coordinator` no longer eagerly imports backend modules; `coordinator/api.py`
+  remains the thin legacy API shim.
+- Added a subprocess regression test proving the package import is lazy.
+- Focused backend and migrated-test suite: 87 passed.
+- Python compilation check for `backend` and `coordinator`: passed.
