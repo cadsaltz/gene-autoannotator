@@ -147,10 +147,14 @@ def ensure_worker_env(
     token_default = None if require_coordinator else "unused"
     mem_default = None if require_coordinator else "64"
 
+    backend_url = os.getenv("BACKEND_URL")
+    if not backend_url and not os.getenv("COORDINATOR_URL"):
+        backend_url = load_env_file(path).get("BACKEND_URL")
+    coordinator_override = cli_overrides.get("COORDINATOR_URL") or backend_url
     url, _ = resolve_value(
         "COORDINATOR_URL",
         env_file=path,
-        cli_value=cli_overrides.get("COORDINATOR_URL"),
+        cli_value=coordinator_override,
         prompt_fn=(lambda _k, _d: _prompt_coordinator_url()) if is_interactive and require_coordinator else None,
         default=coord_default,
     )

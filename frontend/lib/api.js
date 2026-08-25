@@ -18,7 +18,7 @@ export function getApiBaseUrl() {
     return browserApiBaseUrl;
   }
 
-  return process.env.COORDINATOR_API_BASE_URL || process.env.BACKEND_API_BASE_URL || DEFAULT_API_BASE_URL;
+  return process.env.BACKEND_API_BASE_URL || process.env.COORDINATOR_API_BASE_URL || DEFAULT_API_BASE_URL;
 }
 
 export function getAnnotationApiBaseUrl() {

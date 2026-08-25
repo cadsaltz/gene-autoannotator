@@ -3,6 +3,7 @@ import socket
 from dataclasses import dataclass
 
 from worker import capacity
+from worker.env_urls import resolve_backend_url
 from worker.fleet.config import FleetConfig
 from worker.fleet import sizing
 from worker.probe import probe_system
@@ -31,7 +32,7 @@ def _total_memory_bytes():
 
 
 def load_config():
-    coordinator_url = os.environ["COORDINATOR_URL"].rstrip("/")
+    coordinator_url = resolve_backend_url()
     token = os.environ.get("WORKER_API_TOKEN", "")
     hostname = socket.gethostname()
     worker_name = os.getenv("WORKER_NAME", hostname)

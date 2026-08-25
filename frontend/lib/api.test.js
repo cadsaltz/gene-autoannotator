@@ -273,13 +273,13 @@ test("getApiBaseUrl uses the private backend API URL on the server", () => {
   });
 });
 
-test("getApiBaseUrl prefers COORDINATOR_API_BASE_URL over BACKEND_API_BASE_URL on the server", () => {
+test("getApiBaseUrl prefers BACKEND_API_BASE_URL over COORDINATOR_API_BASE_URL on the server", () => {
   const originalCoord = process.env.COORDINATOR_API_BASE_URL;
   const originalBackend = process.env.BACKEND_API_BASE_URL;
   try {
     process.env.COORDINATOR_API_BASE_URL = "http://coordinator.test";
     process.env.BACKEND_API_BASE_URL = "http://backend.test";
-    assert.equal(getApiBaseUrl(), "http://coordinator.test");
+    assert.equal(getApiBaseUrl(), "http://backend.test");
   } finally {
     if (originalCoord === undefined) delete process.env.COORDINATOR_API_BASE_URL;
     else process.env.COORDINATOR_API_BASE_URL = originalCoord;

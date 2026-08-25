@@ -10,8 +10,8 @@ export const runtime = "nodejs";
 // URL to client bundles.
 function getBackendApiBaseUrl() {
   return (
-    process.env.COORDINATOR_API_BASE_URL ||
     process.env.BACKEND_API_BASE_URL ||
+    process.env.COORDINATOR_API_BASE_URL ||
     DEFAULT_BACKEND_API_BASE_URL
   );
 }

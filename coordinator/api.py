@@ -237,21 +237,26 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app):
-        public_url = os.getenv("COORDINATOR_PUBLIC_URL")
+        public_url = os.getenv("BACKEND_PUBLIC_URL") or os.getenv(
+            "COORDINATOR_PUBLIC_URL"
+        )
         lan_ip = _detect_lan_ip()
         worker_url = public_url or (f"http://{lan_ip}:8000" if lan_ip else None)
         token_status = "set" if worker_token else "not set"
-        log.info("Coordinator listening on 0.0.0.0:8000")
+        log.info("Backend listening on 0.0.0.0:8000")
         if worker_url:
             log.info(
-                "Workers: set COORDINATOR_URL=%s  WORKER_API_TOKEN=%s",
+                "Workers: set BACKEND_URL=%s  WORKER_API_TOKEN=%s",
                 worker_url,
                 token_status,
             )
         else:
-            log.info("Workers: set COORDINATOR_URL=<your-lan-ip>:8000  WORKER_API_TOKEN=%s", token_status)
+            log.info(
+                "Workers: set BACKEND_URL=<your-lan-ip>:8000  WORKER_API_TOKEN=%s",
+                token_status,
+            )
         log.info(
-            "Public URL (COORDINATOR_PUBLIC_URL): %s",
+            "Public URL (BACKEND_PUBLIC_URL; legacy COORDINATOR_PUBLIC_URL): %s",
             public_url or "not set",
         )
 
@@ -925,7 +930,8 @@ def create_app(
     @app.get("/coordinator-info")
     def coordinator_info():
         return {
-            "worker_url": os.getenv("COORDINATOR_PUBLIC_URL"),
+            "worker_url": os.getenv("BACKEND_PUBLIC_URL")
+            or os.getenv("COORDINATOR_PUBLIC_URL"),
             "version": os.getenv("APP_VERSION", "dev"),
         }
 
