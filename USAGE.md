@@ -4,17 +4,87 @@ Operator-facing how-to for tools in this repo. Package READMEs cover design deta
 
 ## Contents
 
-1. [Shared prerequisites](#shared-prerequisites)
-2. [autoannotation (CLI annotator)](#autoannotation-cli-annotator)
-3. [get_papers](#get_papers)
-4. [validate](#validate)
-5. [ortholog_lookup](#ortholog_lookup)
-6. [compareannotations](#compareannotations)
-7. [goresolve](#goresolve-go-term-resolution)
-8. [Coordinator](#coordinator)
-9. [Worker (`serve` vs `bench`)](#worker-serve-vs-bench)
-10. [Frontend](#frontend)
-11. [Advanced / scripts](#advanced--scripts)
+1. [Web architecture (how the pieces fit)](#web-architecture-how-the-pieces-fit)
+2. [Shared prerequisites](#shared-prerequisites)
+3. [autoannotation (CLI annotator)](#autoannotation-cli-annotator)
+4. [get_papers](#get_papers)
+5. [validate](#validate)
+6. [ortholog_lookup](#ortholog_lookup)
+7. [compareannotations](#compareannotations)
+8. [goresolve](#goresolve-go-term-resolution)
+9. [Backend (public job queue)](#backend-public-job-queue)
+10. [Worker (`serve` / `run` / `bench`)](#worker-serve--run--bench)
+11. [Dispatcher + Slurm (HPC)](#dispatcher--slurm-hpc)
+12. [Frontend](#frontend)
+13. [End-to-end setup recipes](#end-to-end-setup-recipes)
+14. [Advanced / scripts](#advanced--scripts)
+
+---
+
+## Web architecture (how the pieces fit)
+
+One **public backend** owns the durable job queue. Compute never receives inbound
+connections from the cloud: every worker and the HPC dispatcher **pull** over
+HTTPS. Spare laptops and SCRI Slurm allocations compete for the **same** queue
+via atomic claim (only one winner per job).
+
+```text
+Readers → Frontend → Backend (SQLite queue + worker API + profiles)
+                           ↑
+              outbound HTTPS only (claim / heartbeat / progress / complete)
+                           │
+          ┌────────────────┴────────────────┐
+          ▼                                 ▼
+   laptop `worker serve`            HPC Dispatcher (scrontab)
+   (continuous pull)                      │
+                                   sbatch worker-run.sbatch
+                                          ▼
+                                 `worker run --claim-one`
+                                 (annotate → complete → exit)
+```
+
+| Role | What it is | Where it runs |
+|------|------------|---------------|
+| **Frontend** | Next.js UI | Public / cloud host |
+| **Backend** | FastAPI control plane (formerly “coordinator”) | Cloud host with the frontend |
+| **Dispatcher** | Peek queue depth + `sbatch` launcher | SCRI (shared FS + `scrontab`) |
+| **Worker serve** | Long-lived claim loop | Spare laptop / always-on box |
+| **Worker run** | One-shot claim + annotate + exit | Inside a Slurm GPU allocation |
+| **Worker bench** | Local JSONL batch (**no** backend) | Laptop / HPC bench scripts |
+
+**Pull-only:** the backend never dials SCRI or laptops. No port-forward into the
+hospital network is required for compute.
+
+**MongoDB** stores completed annotation documents for search/review. It is **not**
+the live job queue.
+
+Deeper deploy notes: `docs/deploy-cloud-backend-hpc-dispatcher.md`.  
+Design: `docs/superpowers/specs/2026-08-24-cloud-backend-hpc-dispatcher-design.md`.  
+Rollback tag (pre-redesign stack): `pre-cloud-hpc-redesign-2026-08-24`.
+
+### How Slurm fits (plain English)
+
+Slurm is a **batch scheduler**. You do not “SSH into a GPU and leave a daemon
+running.” You submit a short script with `sbatch`; Slurm finds a free node,
+runs the script, then frees the node when the script exits.
+
+In this stack:
+
+1. A user (or the UI) submits a job → it sits **`queued`** on the public backend.
+2. Every few minutes, **`python -m dispatcher once`** runs on SCRI (via `scrontab`).
+3. The dispatcher asks the backend “how many queued?” (`GET /jobs/queue-summary`).
+4. It asks Slurm “how many of *my* `gene-autoannotator-run` jobs are already
+   pending/running?” (`squeue`).
+5. It submits up to `min(queued, max_inflight - already_inflight)` new allocations
+   with `sbatch deploy/slurm/worker-run.sbatch`.
+6. Each allocation starts, runs `python -m worker run --claim-one`, which
+   **atomically claims** one queued job (or exits 0 if the queue emptied),
+   provisions a local Ollama fleet, annotates, reports progress/complete to the
+   backend, deregisters, and exits.
+
+The dispatcher does **not** claim jobs and does **not** run annotations. It only
+launches workers. Claiming stays on the same API laptop `serve` uses, so both
+fleets can run together safely.
 
 ---
 
@@ -25,7 +95,7 @@ cd /path/to/gene-autoannotator
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-# Web stack (coordinator + worker HTTP deps):
+# Web stack (backend + worker + dispatcher HTTP deps):
 pip install -r requirements-web.txt
 ```
 
@@ -337,53 +407,64 @@ More design notes: `goresolve/README.md`.
 
 ---
 
-## Backend
+## Backend (public job queue)
 
-FastAPI control plane: job queue, local profiles, worker claim/progress APIs. It does **not** run annotations in-process; workers do.
+FastAPI control plane: job queue, local profiles, worker claim/progress APIs.
+It does **not** run annotations in-process; workers do.
 
 ```bash
 cp coordinator.env.example .env   # edit token / public URL / Mongo as needed
 uvicorn backend.api:app --host 0.0.0.0 --port 8000
-# or:
-WORKER_API_TOKEN=dev-token uvicorn backend.api:app --host 0.0.0.0 --port 8000
+# Legacy entrypoint still works for one release:
+# uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
 ```
 
 Health check: `curl http://127.0.0.1:8000/health`
+
+Compose (frontend + backend):
+
+```bash
+docker compose -f deploy/compose/docker-compose.coordinator.yml up -d --build
+```
 
 ### Key env vars (`coordinator.env.example` → `.env`)
 
 | Variable | Purpose | Default / notes |
 |----------|---------|-----------------|
-| `WORKER_API_TOKEN` | Bearer token for `/workers/*` and job progress/complete/fail | **If unset, worker endpoints are unauthenticated** |
-| `COORDINATOR_PUBLIC_URL` | Advertised URL for workers (`/coordinator-info`) | — |
-| `WORKER_CAPACITY_REQUIRED` | Reject submissions while no worker has a free slot | on for `backend.api:app`; set `0` for HPC-only deploys |
-| `LEASE_SECONDS` | Claim lease before reaper may requeue; renewed by progress and heartbeats | `21600` (6h) |
+| `WORKER_API_TOKEN` | Bearer token for worker routes + `GET /jobs/queue-summary` | **If unset, those routes are unauthenticated** |
+| `BACKEND_PUBLIC_URL` | Advertised public URL (`/coordinator-info` still exists) | prefer over legacy `COORDINATOR_PUBLIC_URL` |
+| `WORKER_CAPACITY_REQUIRED` | Reject `POST /jobs` while no worker has a free slot | default **on** for `backend.api:app`; set **`0` for HPC-only** (otherwise dispatcher never starts because nothing can queue) |
+| `LEASE_SECONDS` | Claim lease before reaper may requeue; renewed by progress **and** heartbeats | `21600` (6h) |
 | `MAX_ATTEMPTS` | Retries before permanent fail | `3` |
 | `WORKER_OFFLINE_SECONDS` | Heartbeat window for “offline” | `60` |
-| `REQUIRED_WORKER_VERSION` | Optional min worker version hint | — |
 | `MONGO_URI` | Annotation history writes | optional |
 | `PROFILES_DIR` | Local profile JSON | `data/profiles` |
-| `OLLAMA_HOST` / model vars | Only relevant if something in this process talks to Ollama | — |
 
-API catalog: `backend/README.md`. Job submit returns **503** when no workers have
-available slots, unless `WORKER_CAPACITY_REQUIRED=0`.
+API catalog: `backend/README.md`. User-facing auth for paper readers is **not**
+implemented yet — do not expose the backend widely without a reverse-proxy gate.
 
 ---
 
-## Worker (`serve` vs `bench`)
+## Worker (`serve` / `run` / `bench`)
 
 ```bash
-python -m worker serve …   # claim jobs from coordinator (default if subcommand omitted)
-python -m worker bench …   # local JSONL batch benchmark, then exit
+python -m worker serve …          # continuous pull from backend (laptops)
+python -m worker run --claim-one  # one-shot; Slurm allocations use this
+python -m worker bench …          # local JSONL batch; no backend
 ```
 
-`python -m worker` with no subcommand defaults to **serve**. First run may prompt and write `worker.env` (see `worker.env.example`).
+`python -m worker` with no subcommand defaults to **serve**. First run may prompt
+and write `worker.env` (see `worker.env.example`). Prefer `BACKEND_URL`; legacy
+`COORDINATOR_URL` still works.
 
-### Shared / serve options
-
-These flags exist on the top-level parser and on `serve` (so `python -m worker --token … serve` and `python -m worker serve --token …` both work):
+### serve (spare laptop / always-on)
 
 ```bash
+BACKEND_URL=https://api.example.org \
+WORKER_API_TOKEN=dev-token \
+python -m worker serve
+
+# or CLI overrides (also persist into worker.env):
 python -m worker serve \
   --coordinator-url http://127.0.0.1:8000 \
   --token dev-token \
@@ -392,14 +473,38 @@ python -m worker serve \
 
 | Flag | Purpose | Notes |
 |------|---------|-------|
-| `--coordinator-url` | Coordinator base URL | Else `COORDINATOR_URL` / `worker.env` |
+| `--coordinator-url` | Backend base URL | Else `BACKEND_URL` / `COORDINATOR_URL` / `worker.env` |
 | `--token` | `WORKER_API_TOKEN` | Else env / `worker.env` |
-| `--memory-gb` | Model memory budget (GB) for Ollama weights/KV | Sets `WORKER_MODEL_MEMORY_BUDGET_GB`; else env / `worker.env`. `-1` or omit = use machine cap. Does **not** set job slots. |
+| `--memory-gb` | Model memory budget (GB) for Ollama weights/KV | Sets `WORKER_MODEL_MEMORY_BUDGET_GB`; does **not** set job slots |
 | `--no-dashboard` | Disable live TTY dashboard | Dashboard is on when stdout is a TTY |
 
-With the dashboard on, verbose worker logs go to `worker-serve.log` (or `--log-file` / `WORKER_LOG_FILE`). Managed `ollama serve` stdout/stderr is teed to `ollama-server-<port>.log` next to that log file (else cwd), and the dashboard **OLLAMA** strip shows process status plus a parsed summary (phase, last `/api/chat`, alerts such as prompt truncation). Offline: `python -m worker.fleet.diagnose_ollama_log ollama-server-11434.log`.
+With the dashboard on, verbose logs go to `worker-serve.log` (or `WORKER_LOG_FILE`).
+Managed `ollama serve` logs tee to `ollama-server-<port>.log`. Offline:
+`python -m worker.fleet.diagnose_ollama_log ollama-server-11434.log`.
 
-Managed fleet sets each `ollama serve` child's `OLLAMA_CONTEXT_LENGTH` to **`OLLAMA_FLEET_SLOT_CTX × OLLAMA_FLEET_PARALLEL`** (default slot **8192**) so each parallel lane keeps a full prompt window. Ollama splits total context across parallel slots; without slot×parallel sizing, `parallel=2` and `-c 8192` yields ~4096/slot and truncates long extraction prompts. **`OLLAMA_FLEET_SLOT_CTX` is the operator knob**; total context is derived, not overridden via `OLLAMA_CONTEXT_LENGTH` in `worker.env`. When **`AUTOANNOTATION_SECTION_CHUNKING=false`**, oversized abstract/results/discussion sections are sent whole — Ollama still truncates prompts that exceed per-slot context. Larger context may spill weights/KV to system RAM when VRAM is tight (slower, but jobs should complete).
+Managed fleet sets each `ollama serve` child's `OLLAMA_CONTEXT_LENGTH` to
+**`OLLAMA_FLEET_SLOT_CTX × OLLAMA_FLEET_PARALLEL`** (default slot **8192**).
+
+### run (Slurm one-shot)
+
+Used by `deploy/slurm/worker-run.sbatch`. Typical flow inside an allocation:
+
+1. Register with an ephemeral name (`max_slots=1`).
+2. Claim one job (exit 0 if none left — avoids wasting GPU after a race).
+3. Provision local Ollama fleet / router.
+4. Annotate; heartbeat + progress keep the lease fresh.
+5. `complete` or `fail`; deregister; exit.
+
+```bash
+# Manual (same as Slurm body, after env is set):
+python -m worker run --claim-one
+
+# Or execute a pre-materialized job file (no claim):
+python -m worker run --job-file /path/to/job.json
+```
+
+Requires `BACKEND_URL` (or `COORDINATOR_URL`) and usually `WORKER_API_TOKEN`.
+`GAA_REPO_ROOT` must be set when launched via the sample sbatch (dispatcher exports it).
 
 ### Bench options
 
@@ -420,54 +525,136 @@ python -m worker bench \
 | `--report` | Bench report JSON path | `reports/<timestamp>.json` |
 | `--output-dir` | Annotation JSON output dir (local disk) | — |
 | `--keep-alive` | Ollama `keep_alive` for LLM calls | Uses persisted `OLLAMA_FLEET_KEEP_ALIVE` when omitted |
-| `--no-warm-models` | Deprecated no-op (pre-warm always skipped) | — |
 | `--configure-fleet` | Prompt for Ollama fleet settings | off |
 | `--no-dashboard` | Linear logs instead of TTY dashboard | off |
-| `--log-file` | Verbose log path | under `--output-dir` when dashboard active (survives Docker `--rm`) |
+| `--log-file` | Verbose log path | under `--output-dir` when dashboard active |
 
-Model residency uses env-authoritative caps (tier affects warnings/dashboard only):
+Model residency uses env-authoritative caps:
 
-- **`OLLAMA_MAX_LOADED_MODELS`** — write-if-missing on first ensure: model count when tier is `warm_stack`, else `1`; never rewritten unless you edit `worker.env`.
-- **`OLLAMA_FLEET_KEEP_ALIVE`** — write-if-missing default `0`; bench `--keep-alive` persists the override to `worker.env`. No router cache; no pre-warm.
+- **`OLLAMA_MAX_LOADED_MODELS`** — write-if-missing on first ensure.
+- **`OLLAMA_FLEET_KEEP_ALIVE`** — write-if-missing default `0`.
+
+HPC bench (Docker + Slurm, not the dispatcher path): `docs/deploy-worker-bench-hpc.md`.
 
 ### Worker env (`worker.env.example`)
 
-`worker.env` at the **repo root** is the source of truth (resolved via `WORKER_ENV_FILE`, defaulting to that absolute path — not the output directory). Keys you set are not silently overwritten on restart (except one-time migration from legacy names). Model memory budget and job slots are **separate** knobs.
+`worker.env` at the **repo root** is the source of truth (`WORKER_ENV_FILE`).
 
 | Variable | Purpose |
 |----------|---------|
-| `COORDINATOR_URL` | Coordinator base URL |
+| `BACKEND_URL` | Preferred backend base URL |
+| `COORDINATOR_URL` | Legacy alias (still accepted) |
 | `WORKER_API_TOKEN` | Auth token |
-| `WORKER_MODEL_MEMORY_BUDGET_GB` | Cap for model weights / KV / Ollama memory (GB). `-1` or omit = machine-derived max. Influences fleet **recommendations** and feasibility warnings; does **not** derive `WORKER_MAX_SLOTS`. |
-| `WORKER_MAX_SLOTS` | Concurrent annotation subprocess cap (from fleet setup prompt or manual edit) |
+| `WORKER_MODEL_MEMORY_BUDGET_GB` | Cap for model weights / KV (GB). `-1` / omit = machine max |
+| `WORKER_MAX_SLOTS` | Concurrent annotation subprocess cap (`serve` / `bench`) |
 | `OLLAMA_FLEET_SERVERS` / `OLLAMA_FLEET_PARALLEL` | Homogeneous Ollama fleet shape |
-| `OLLAMA_FLEET_KEEP_ALIVE` | Write-if-missing default `0`; never overridden by VRAM tier. Copied to `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` for jobs. Bench `--keep-alive` persists the override to `worker.env`. |
-| `OLLAMA_MAX_LOADED_MODELS` | Write-if-missing: model count when tier is `warm_stack`, else `1`; never tier-overwritten. |
-| `AUTOANNOTATION_SECTION_CHUNKING` | Write-if-missing default `true`. `false` = July-style full sections (no excerpt splitting); Ollama may still truncate when prompt exceeds slot context. |
-| `WORKER_DASHBOARD_OLLAMA_PS` | `1` (default) = dashboard IN MEM sizes from `/api/ps`; `0` = in-flight dots only (no HTTP). |
-| `WORKER_DASHBOARD_OLLAMA_PS_INTERVAL_SEC` | Min seconds between `/api/ps` probes (default `5`). UI refresh stays faster; in-flight overlays every frame. |
-| `ANNOTATION_MEMORY_BUDGET_GB` | **Legacy alias** — read once and migrated to `WORKER_MODEL_MEMORY_BUDGET_GB` on persist |
-| `JOB_MEMORY_ESTIMATE_GB` / `WORKER_MEMORY_HEADROOM_GB` | Legacy fallback slot math when fleet keys are absent |
+| `OLLAMA_FLEET_KEEP_ALIVE` | Default `0`; copied to `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` |
+| `OLLAMA_MAX_LOADED_MODELS` | Write-if-missing residency cap |
 | `WORKER_CACHE_DIR` / `WORKER_OUTPUT_DIR` | Cache / output overrides |
-| `OLLAMA_HOST` / `OLLAMA_CHAT_TIMEOUT_SEC` / `OLLAMA_ROUTER_READ_TIMEOUT_SEC` | Ollama / router timeouts (`unset` = unlimited) |
-| `OLLAMA_FLEET_SLOT_CTX` | Per-parallel-slot context tokens (default `8192`); managed serve total = slot × `OLLAMA_FLEET_PARALLEL` (not an operator file key) |
 
 Design / fleet details: `worker/README.md`.
 
 ---
 
+## Dispatcher + Slurm (HPC)
+
+The dispatcher is a **short-lived** program: peek → maybe `sbatch` → exit. It is
+**not** a second job queue and **not** a long-running coordinator.
+
+```bash
+# One manual pass (login node / SCRI host with sbatch+squeue):
+export BACKEND_URL=https://api.example.org
+export WORKER_API_TOKEN=…          # same token as cloud backend
+export DISPATCHER_MAX_INFLIGHT=4
+export DISPATCHER_SBATCH_SCRIPT=/path/to/gene-autoannotator/deploy/slurm/worker-run.sbatch
+# Also export worker/model env the sbatch job will inherit (--export=ALL):
+# AUTOANNOTATION_MODEL_MODE, OLLAMA_*, etc.
+
+python -m dispatcher once
+# → prints: Submitted N worker job(s).
+```
+
+### What one pass does
+
+1. `GET {BACKEND_URL}/jobs/queue-summary` with bearer token → `queued` count.
+2. `squeue --user $USER --name gene-autoannotator-run` → `inflight` count.
+3. `to_launch = min(queued, DISPATCHER_MAX_INFLIGHT - inflight)`.
+4. For each launch: `sbatch --export=ALL,GAA_REPO_ROOT=<repo> $DISPATCHER_SBATCH_SCRIPT`.
+
+Keep the job name in the sbatch script as **`gene-autoannotator-run`** — that is
+how the dispatcher counts in-flight work.
+
+### Customize `deploy/slurm/worker-run.sbatch`
+
+Edit for your site before production:
+
+- `#SBATCH --partition=…` (required; sample has `REPLACE_ME`)
+- GPU / CPU / mem / time / account / QoS / modules
+- Ensure `python` is the project venv on compute nodes (module load, absolute
+  `.venv/bin/python`, or container wrapper)
+
+Body of the sample script (conceptually):
+
+```bash
+cd "${GAA_REPO_ROOT:?GAA_REPO_ROOT must be set}"
+python -m worker run --claim-one
+```
+
+`GAA_REPO_ROOT` is required because Slurm often runs a **spooled copy** of the
+script, so `BASH_SOURCE` would point at the spool directory, not the repo.
+
+### scrontab (periodic)
+
+```cron
+*/5 * * * * cd /shared/gene-autoannotator && set -a && . ./dispatcher.env && set +a && .venv/bin/python -m dispatcher once >> dispatcher.log 2>&1
+```
+
+Keep the interval longer than a typical dispatcher pass so runs do not overlap.
+Confirm with your site’s `scrontab` list/edit commands.
+
+### If your lead already has a working Slurm test script
+
+**Yes — use it as the site template.** Our dispatcher is generic (`sbatch` + env).
+What usually differs per cluster is the `#SBATCH` header and how Python/Ollama
+are activated on the compute node. Workflow:
+
+1. Keep his working `#SBATCH` lines / modules / container invocation.
+2. Replace the job body with `cd "$GAA_REPO_ROOT" && python -m worker run --claim-one`
+   (or his equivalent that ends in that command).
+3. Keep `#SBATCH --job-name=gene-autoannotator-run` (or change `SLURM_JOB_NAME` in
+   `dispatcher/loop.py` to match his name — they must agree).
+4. Point `DISPATCHER_SBATCH_SCRIPT` at that file and run `python -m dispatcher once`.
+
+If you paste his script into the repo (or a private path), we can adapt the
+sample sbatch and dispatcher env to match SCRI exactly.
+
+### Dispatcher env checklist
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `BACKEND_URL` | yes | Public backend (legacy `COORDINATOR_URL` ok) |
+| `WORKER_API_TOKEN` | yes | Same token as backend |
+| `DISPATCHER_MAX_INFLIGHT` | yes | Cap concurrent Slurm run jobs for this user |
+| `DISPATCHER_SBATCH_SCRIPT` | yes | Absolute path to the sbatch file |
+
+More: `docs/deploy-cloud-backend-hpc-dispatcher.md` §3.
+
+---
+
 ## Frontend
 
-Next.js UI for jobs, profiles, and Mongo-backed annotation search/review.
+Next.js UI for jobs, profiles, fleet health, and Mongo-backed annotation search.
 
 ```bash
 cd frontend
-cp .env.example .env.local   # set BACKEND_API_BASE_URL / MONGO_URI
+cp .env.example .env.local   # BACKEND_API_BASE_URL / MONGO_URI
 npm install
 npm run dev                  # http://localhost:3000 (binds 0.0.0.0)
 ```
 
-Browser calls go through same-origin `/api/backend` → FastAPI. Point `BACKEND_API_BASE_URL` at the coordinator if it is not on `127.0.0.1:8000`. Set `MONGO_URI` in `.env.local` for annotation search/review (server-side only).
+Browser calls go through same-origin `/api/backend` → FastAPI. Prefer
+`BACKEND_API_BASE_URL` (legacy `COORDINATOR_API_BASE_URL` still works). Set
+`MONGO_URI` in `.env.local` for annotation search/review (server-side only).
 
 ### npm scripts
 
@@ -479,7 +666,63 @@ Browser calls go through same-origin `/api/backend` → FastAPI. Point `BACKEND_
 | `npm run lint` | `eslint` | Lint |
 | `npm run test` | `node --test` | Lightweight tests |
 
-Pages: `/` usage, `/jobs` queue, `/profiles` local profiles, `/annotations` Mongo search/review. More: `frontend/README.md`.
+Pages: `/` usage, `/jobs` queue, `/profiles` local profiles, `/annotations` Mongo
+search/review. Fleet tiles: backend health + connected workers. More:
+`frontend/README.md`.
+
+---
+
+## End-to-end setup recipes
+
+### A. Laptop-only (dev / dual-fleet without Slurm)
+
+```bash
+# Terminal 1 — backend
+cp coordinator.env.example .env
+# set WORKER_API_TOKEN=dev-token ; WORKER_CAPACITY_REQUIRED can stay default
+uvicorn backend.api:app --host 0.0.0.0 --port 8000
+
+# Terminal 2 — worker
+BACKEND_URL=http://127.0.0.1:8000 WORKER_API_TOKEN=dev-token \
+  python -m worker serve
+
+# Terminal 3 — frontend
+cd frontend && cp .env.example .env.local && npm run dev
+```
+
+Submit a job from `/jobs` or:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{"profile":"mtb-h37rv","locus":"Rv0001","allow_online_name_lookup":false}'
+```
+
+### B. Cloud UI + SCRI dispatcher (production shape)
+
+1. **Cloud:** compose frontend+backend; set `WORKER_CAPACITY_REQUIRED=0`,
+   `WORKER_API_TOKEN`, `BACKEND_PUBLIC_URL`, `MONGO_URI`, CORS to the public UI.
+2. **SCRI:** clone/checkout repo on shared FS; venv; customize
+   `deploy/slurm/worker-run.sbatch`; write `dispatcher.env`; run one
+   `python -m dispatcher once` by hand; then install `scrontab`.
+3. **Optional laptop:** `BACKEND_URL=https://… WORKER_API_TOKEN=… python -m worker serve`.
+
+Verify: job stays `queued` with no workers → next dispatcher pass submits ≤
+`DISPATCHER_MAX_INFLIGHT` → Slurm job claims/completes → UI shows progress.
+
+### C. Dispatcher dry-run without real Slurm
+
+```bash
+export BACKEND_URL=http://127.0.0.1:8000
+export WORKER_API_TOKEN=dev-token
+export DISPATCHER_MAX_INFLIGHT=2
+export DISPATCHER_SBATCH_SCRIPT=/bin/true   # or a local echo wrapper
+# Note: real dispatch_once also calls squeue; unit tests mock both.
+python -m dispatcher once
+```
+
+For real SCRI validation, prefer a one-line wrapper that logs argv instead of
+`/bin/true`, then graduate to the real sbatch file.
 
 ---
 
@@ -515,7 +758,7 @@ Downloads full GO basic OBO to `data/go-basic.obo`.
 
 ### `scripts/profile_job_memory.py`
 
-Samples host memory while a real coordinator job runs (sizing aid).
+Samples host memory while a real backend job runs (sizing aid).
 
 ```bash
 python scripts/profile_job_memory.py \
@@ -527,7 +770,7 @@ python scripts/profile_job_memory.py \
 
 | Flag | Purpose | Default |
 |------|---------|---------|
-| `--coordinator-url` | Coordinator URL | `http://127.0.0.1:8000` |
+| `--coordinator-url` | Backend URL (legacy flag name) | `http://127.0.0.1:8000` |
 | `--token` | Worker API token | `$WORKER_API_TOKEN` |
 | `--profile` | Profile id | `mtb-h37rv` |
 | `--locus` | Gene locus | `Rv1734c` |
