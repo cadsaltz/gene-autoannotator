@@ -42,13 +42,13 @@ Status: `planned` | `fixtures-ready` | `runnable` | `analyzed` | `paper-locked`
 
 | ID | Owner | Claim (short) | Status | Config | Notes |
 |----|-------|---------------|--------|--------|-------|
-| `bias-1-vs-3-small` | Caden | Multi-model + consensus reduces bias/hallucination vs 1 small LLM | planned | `configs/bias-1-vs-3-small.yaml` | |
+| `bias-1-vs-3-small` | Caden | Multi-model + consensus reduces bias/hallucination vs 1 small LLM | runnable | `configs/bias-1-vs-3-small.yaml` | Primary runner; frozen `bias_cluster_v1` pool (15 sections, 12 genes). Dry-run verified; live pilot/paper10 not yet analyzed — see `analysis/bias_split_cost.md` |
 | `bias-3-small-vs-gemini` | Ethan | Crowd of small models competitive with / complementary to a strong single model | planned | `configs/bias-3-small-vs-gemini.yaml` | |
 | `tiebreak-nonsense` | Caden | Tie-breaker rejects unsupported / nonsense candidates | planned | `configs/tiebreak-nonsense.yaml` | |
 | `tiebreak-non-nonsense` | Caden | Tie-breaker resolves plausible disagreement toward supported answer | planned | `configs/tiebreak-non-nonsense.yaml` | |
-| `cost-benefit-1-vs-3` | Caden | Quality gain vs compute cost of 1 vs 3 extractors (+ consensus) | planned | `configs/cost-benefit-1-vs-3.yaml` | May share runs with bias-1-vs-3 |
+| `cost-benefit-1-vs-3` | Caden | Quality gain vs compute cost of 1 vs 3 extractors (+ consensus) | runnable | `configs/cost-benefit-1-vs-3.yaml` | Derive from bias run (`derive_cost_benefit_1_vs_3`); shares `bias_cluster_v1`. Awaiting live pilot/paper10 |
 | `cost-benefit-3-vs-gemini` | Ethan | Cost/quality of 3-small vs Gemini; with/without supplied summaries | planned | `configs/cost-benefit-3-vs-gemini.yaml` | |
-| `split-vs-not` | Caden | How often field decisions are unanimous vs split before tie-break | planned | `configs/split-vs-not.yaml` | Often derived from bias/cost runs |
+| `split-vs-not` | Caden | How often field decisions are unanimous vs split before tie-break | runnable | `configs/split-vs-not.yaml` | Derive from bias run (`derive_split_vs_not`); shares `bias_cluster_v1`. Awaiting live pilot/paper10 |
 | `go-term-distance` | Ethan | Quantify GO/category disagreement distance | planned | `configs/go-term-distance.yaml` | Coordinate with Braden |
 | `completion-accuracy` | TBD | End-to-end completion and accuracy metrics | planned | `configs/completion-accuracy.yaml` | Later |
 | `source-clarity-false-cognates` | TBD | False-cognate / organism conflation failure modes | planned | `configs/source-clarity-false-cognates.yaml` | |
@@ -77,3 +77,6 @@ Use stable condition ids in JSONL, e.g.:
 | Date | Change |
 |------|--------|
 | 2026-08-21 | Initial layout and registry scaffold |
+| 2026-08-24 | Task 4: frozen `bias_cluster_v1` fixture pool; bias/split/cost configs → `fixtures-ready` |
+| 2026-08-24 | Task 5: primary bias runner and dry-run wiring smoke; `bias-1-vs-3-small` → `runnable` |
+| 2026-08-24 | Task 8: split/cost derives runnable; operator commands in `analysis/bias_split_cost.md`; live pilot/paper10 pending |
