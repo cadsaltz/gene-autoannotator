@@ -147,10 +147,11 @@ def ensure_worker_env(
     token_default = None if require_coordinator else "unused"
     mem_default = None if require_coordinator else "64"
 
+    explicit_coordinator_url = cli_overrides.get("COORDINATOR_URL")
     backend_url = os.getenv("BACKEND_URL")
     if not backend_url and not os.getenv("COORDINATOR_URL"):
         backend_url = load_env_file(path).get("BACKEND_URL")
-    coordinator_override = cli_overrides.get("COORDINATOR_URL") or backend_url
+    coordinator_override = explicit_coordinator_url or backend_url
     url, _ = resolve_value(
         "COORDINATOR_URL",
         env_file=path,
@@ -194,7 +195,11 @@ def ensure_worker_env(
                 default=mem_default,
             )
 
-    os.environ.setdefault("COORDINATOR_URL", url)
+    if explicit_coordinator_url:
+        os.environ["BACKEND_URL"] = url
+        os.environ["COORDINATOR_URL"] = url
+    else:
+        os.environ.setdefault("COORDINATOR_URL", url)
     os.environ.setdefault("WORKER_API_TOKEN", token)
     os.environ[BUDGET_ENV_KEY] = mem_str
 
