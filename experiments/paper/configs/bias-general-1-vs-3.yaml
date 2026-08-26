@@ -1,0 +1,50 @@
+experiment_id: bias-1-vs-3-small
+config_version: 1
+owner: Caden
+n_trials: 75
+max_trials: 75
+selection_seed: 42
+claim: >
+  General-passage factual extraction experiment: 75 frozen trials (25 TruthfulQA-style,
+  25 grounded SQuAD passages, 25 trap cases). Same 1-vs-3 extractor + consensus
+  setup as the biology bias experiment, scored with passage groundedness NLI.
+status: runnable
+
+models:
+  extractors:
+    - qwen3:14b
+    - gemma3:12b
+    - mistral-nemo:12b
+  consensus: qwen3:8b
+
+fixtures:
+  general: fixtures/general_snapshots/general_cluster_v1.json
+
+distribution:
+  truthful: 25
+  grounded: 25
+  trap: 25
+
+nli:
+  model_id: roberta-large-mnli
+
+cache_policy: cold_llm_preferred
+
+conditions:
+  - extractor_A
+  - extractor_B
+  - extractor_C
+  - consensus_D
+  - single_A
+  - single_B
+  - single_C
+
+metrics:
+  - field_supported_rate
+  - field_unsupported_rate
+  - field_null_rate
+  - cross_extractor_disagreement_rate
+
+notes: |
+  general_cluster_v1 fixture built via experiments/paper/scripts/build_general_cluster_v1.py.
+  Use --distribution on the runner to subsample by category without editing the fixture.

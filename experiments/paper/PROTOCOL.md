@@ -42,7 +42,8 @@ Status: `planned` | `fixtures-ready` | `runnable` | `analyzed` | `paper-locked`
 
 | ID | Owner | Claim (short) | Status | Config | Notes |
 |----|-------|---------------|--------|--------|-------|
-| `bias-1-vs-3-small` | Caden | Multi-model + consensus reduces bias/hallucination vs 1 small LLM | runnable | `configs/bias-1-vs-3-small.yaml` | Primary runner; frozen `bias_cluster_v1` pool (15 sections, 12 genes). Dry-run verified; live pilot/paper10 not yet analyzed — see `analysis/bias_split_cost.md` |
+| `bias-1-vs-3-small` | Caden | Multi-model + consensus reduces bias/hallucination vs 1 small LLM | runnable | `configs/bias-1-vs-3-small.yaml` | Primary runner; frozen `bias_cluster_v1` pool (15 sections). Multi-organism extension: `configs/bias-multi-organism-v2.yaml` + `bias_cluster_v2` (300 sections). Use `--distribution profile:count` to subsample by organism. |
+| `bias-general-1-vs-3` | Caden | Same 1-vs-3 setup on general passages (truthful / grounded / trap) | runnable | `configs/bias-general-1-vs-3.yaml` | Frozen `general_cluster_v1` (75 trials). Build via `scripts/build_general_cluster_v1.py`. `--distribution truthful:5` etc. |
 | `bias-3-small-vs-gemini` | Ethan | Crowd of small models competitive with / complementary to a strong single model | planned | `configs/bias-3-small-vs-gemini.yaml` | |
 | `tiebreak-nonsense` | Caden | Tie-breaker rejects unsupported / nonsense candidates | planned | `configs/tiebreak-nonsense.yaml` | |
 | `tiebreak-non-nonsense` | Caden | Tie-breaker resolves plausible disagreement toward supported answer | planned | `configs/tiebreak-non-nonsense.yaml` | |
@@ -79,4 +80,4 @@ Use stable condition ids in JSONL, e.g.:
 | 2026-08-21 | Initial layout and registry scaffold |
 | 2026-08-24 | Task 4: frozen `bias_cluster_v1` fixture pool; bias/split/cost configs → `fixtures-ready` |
 | 2026-08-24 | Task 5: primary bias runner and dry-run wiring smoke; `bias-1-vs-3-small` → `runnable` |
-| 2026-08-24 | Task 8: split/cost derives runnable; operator commands in `analysis/bias_split_cost.md`; live pilot/paper10 pending |
+| 2026-08-25 | Multi-organism `bias_cluster_v2` fixture (100 MTB + 100 E. coli + 100 T. cruzi); runner `--distribution` for organism mix at run time |

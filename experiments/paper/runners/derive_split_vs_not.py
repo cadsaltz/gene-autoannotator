@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from experiments.paper.runners.common import (
-    BIOLOGY_FIELDS,
     append_jsonl,
+    condition_layout_from_manifest,
+    extraction_fields_from_manifest,
+    field_kinds_from_manifest,
     load_yaml_config,
     new_run_id,
     stable_json_hash,
@@ -20,7 +22,6 @@ from experiments.paper.runners.split_classify import classify_extractor_split
 
 PAPER_DIR = Path(__file__).resolve().parents[1]
 EXPERIMENT_ID = 'split-vs-not'
-EXTRACTOR_CONDITIONS = ('extractor_A', 'extractor_B', 'extractor_C')
 
 FIELD_KINDS = {
     'function': 'string',
@@ -82,17 +83,23 @@ def _extract_value(output: Any, field: str) -> Any:
     return output.get(field)
 
 
-def _field_split_records(observable: dict[str, Any]) -> list[dict[str, Any]]:
+def _field_split_records(
+    observable: dict[str, Any],
+    *,
+    fields: tuple[str, ...],
+    field_kinds: dict[str, str],
+    extractor_conditions: tuple[str, ...],
+) -> list[dict[str, Any]]:
     outputs = observable.get('outputs') or {}
     records = []
-    for field in BIOLOGY_FIELDS:
+    for field in fields:
         extractor_values = {
             condition: _extract_value(outputs.get(condition), field)
-            for condition in EXTRACTOR_CONDITIONS
+            for condition in extractor_conditions
         }
         split_class = classify_extractor_split(
             extractor_values,
-            kind=FIELD_KINDS[field],
+            kind=field_kinds[field],
         )
         records.append({
             'record_type': 'field_split',
@@ -103,7 +110,7 @@ def _field_split_records(observable: dict[str, Any]) -> list[dict[str, Any]]:
             'pmc_id': observable.get('pmc_id'),
             'section': observable.get('section'),
             'field': field,
-            'field_kind': FIELD_KINDS[field],
+            'field_kind': field_kinds[field],
             'split_class': split_class,
             'extractor_values': extractor_values,
         })
@@ -117,7 +124,11 @@ def _rate(counts: dict[str, int], label: str) -> float:
     return counts.get(label, 0) / total
 
 
-def _aggregate_rows(split_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _aggregate_rows(
+    split_records: list[dict[str, Any]],
+    *,
+    fields: tuple[str, ...],
+) -> list[dict[str, Any]]:
     rows = []
 
     def counts_for(records: list[dict[str, Any]]) -> dict[str, int]:
@@ -136,7 +147,7 @@ def _aggregate_rows(split_records: list[dict[str, Any]]) -> list[dict[str, Any]]
         'partial_rate': _rate(overall_counts, 'partial'),
     })
 
-    for field in BIOLOGY_FIELDS:
+    for field in fields:
         field_records = [record for record in split_records if record['field'] == field]
         field_counts = counts_for(field_records)
         rows.append({
@@ -164,6 +175,13 @@ def derive_split_vs_not(
     if not parent_manifest_path.is_file():
         raise FileNotFoundError(f'bias manifest.json missing: {parent_manifest_path}')
     parent_manifest = json.loads(parent_manifest_path.read_text())
+    layout = condition_layout_from_manifest(parent_manifest)
+    extraction_fields = extraction_fields_from_manifest(parent_manifest)
+    field_kinds = field_kinds_from_manifest(parent_manifest, default=FIELD_KINDS)
+    extractor_conditions = layout['extractor_conditions']
+    for field in extraction_fields:
+        if field not in field_kinds:
+            field_kinds[field] = 'string'
 
     config_path = config_path or (PAPER_DIR / 'configs' / 'split-vs-not.yaml')
     config = load_yaml_config(config_path)
@@ -179,7 +197,12 @@ def derive_split_vs_not(
     observables = _load_trial_observables(bias_run_dir)
     split_records = []
     for observable in observables:
-        trial_records = _field_split_records(observable)
+        trial_records = _field_split_records(
+            observable,
+            fields=extraction_fields,
+            field_kinds=field_kinds,
+            extractor_conditions=extractor_conditions,
+        )
         split_records.extend(trial_records)
         for record in trial_records:
             append_jsonl(records_path, record)
@@ -195,12 +218,16 @@ def derive_split_vs_not(
         'parent_bias_run_id': parent_manifest.get('run_id'),
         'parent_bias_run_path': str(bias_run_dir.resolve()),
         'parent_manifest_hash': stable_json_hash(parent_manifest),
+        'extraction_fields': list(extraction_fields),
         'n_trials': len(observables),
         'n_field_values': len(split_records),
         'timestamp': datetime.now(timezone.utc).isoformat(),
     }
     write_json(output_dir / 'manifest.json', manifest)
-    write_aggregate_csv(output_dir / 'aggregate.csv', _aggregate_rows(split_records))
+    write_aggregate_csv(
+        output_dir / 'aggregate.csv',
+        _aggregate_rows(split_records, fields=extraction_fields),
+    )
     return output_dir
 
 
