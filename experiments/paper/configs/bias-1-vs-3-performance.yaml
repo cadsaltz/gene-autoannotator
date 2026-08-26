@@ -1,0 +1,38 @@
+experiment_id: bias-1-vs-3-small
+config_version: 1
+owner: Caden
+n_trials: 10
+max_trials: 15
+claim: 'Using three unrelated small extractor LLMs plus consensus reduces bias and
+  hallucination relative to a single small extractor on the same evidence.
+
+  '
+status: fixtures-ready
+models:
+  extractors:
+  - qwen3:14b
+  - gemma3:12b
+  - mistral-nemo:12b
+  consensus: qwen3:8b
+fixtures:
+  papers: fixtures/paper_snapshots/bias_cluster_v1.json
+  genes: fixtures/gene_sets/bias_cluster_v1.json
+nli:
+  model_id: roberta-large-mnli
+cache_policy: cold_llm_preferred
+conditions:
+- extractor_A
+- extractor_B
+- extractor_C
+- consensus_D
+- single_A
+- single_B
+- single_C
+metrics:
+- field_supported_rate
+- field_unsupported_rate
+- field_null_rate
+- cross_extractor_disagreement_rate
+notes: "Shared frozen papers/genes with cost-benefit-1-vs-3 and split-vs-not.\ncache_policy:\
+  \ cold_llm_preferred \u2014 prefer cold LLM cache hits; document actual behavior\
+  \ in manifest.\n"

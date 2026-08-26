@@ -1,0 +1,1710 @@
+{
+  "fixture_id": "gene_sets/bias_cluster_v2",
+  "selection_criteria": "Distinct genes referenced by bias_cluster_v2 paper snapshot items.",
+  "items": [
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0002",
+      "gene_name": "CDS\t337..2799\tthrA; fused aspartate kinase/homoserine dehydrogenase 1",
+      "locus": "b0002"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0008",
+      "gene_name": "CDS\t8238..9191\ttalB; transaldolase B",
+      "locus": "b0008"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0032",
+      "gene_name": "CDS\t29651..30799\tcarA; carbamoyl-phosphate synthetase small subunit",
+      "locus": "b0032"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0048",
+      "gene_name": "CDS\t49823..50302\tfolA; dihydrofolate reductase",
+      "locus": "b0048"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0059",
+      "gene_name": "CDS\tcomplement(60358..63264)\trapA; RNA polymerase-binding ATPase and RNAP recycling factor",
+      "locus": "b0059"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0086",
+      "gene_name": "CDS\t94650..96008\tmurF; D-alanyl-D-alanine-adding enzyme",
+      "locus": "b0086"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0087",
+      "gene_name": "CDS\t96002..97084\tmraY; phospho-N-acetylmuramoyl-pentapeptide-transferase",
+      "locus": "b0087"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0089",
+      "gene_name": "CDS\t98403..99647\tftsW; peptidoglycan glycosyltransferase FtsW",
+      "locus": "b0089"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0090",
+      "gene_name": "CDS\t99644..100711\tmurG; N-acetylglucosaminyl transferase",
+      "locus": "b0090"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0091",
+      "gene_name": "CDS\t100765..102240\tmurC; UDP-N-acetylmuramate--L-alanine ligase",
+      "locus": "b0091"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0092",
+      "gene_name": "CDS\t102233..103153\tddlB; D-alanine--D-alanine ligase B",
+      "locus": "b0092"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0126",
+      "gene_name": "CDS\tcomplement(142008..142670)\tcan; carbonic anhydrase 2",
+      "locus": "b0126"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0243",
+      "gene_name": "CDS\t261503..262756\tproA; glutamate-5-semialdehyde dehydrogenase",
+      "locus": "b0243"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0284",
+      "gene_name": "CDS\tcomplement(298736..300934)\tpaoC; aldehyde dehydrogenase: molybdenum cofactor-binding subunit",
+      "locus": "b0284"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0397",
+      "gene_name": "CDS\tcomplement(412607..415753)\tsbcC; ATP-dependent structure-specific DNA nuclease - SbcC subunit",
+      "locus": "b0397"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0436",
+      "gene_name": "CDS\t455133..456431\ttig; trigger factor",
+      "locus": "b0436"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0437",
+      "gene_name": "CDS\t456677..457300\tclpP; ATP-dependent Clp protease proteolytic subunit",
+      "locus": "b0437"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0464",
+      "gene_name": "CDS\t485761..486408\tacrR; DNA-binding transcriptional repressor AcrR",
+      "locus": "b0464"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0484",
+      "gene_name": "CDS\tcomplement(508875..511379)\tcopA; Cu(+) exporting P-type ATPase",
+      "locus": "b0484"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0487",
+      "gene_name": "CDS\t513993..514400\tcueR; DNA-binding transcriptional dual regulator CueR",
+      "locus": "b0487"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0522",
+      "gene_name": "CDS\tcomplement(551527..552594)\tpurK; 5-(carboxyamino)imidazole ribonucleotide synthase",
+      "locus": "b0522"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0588",
+      "gene_name": "CDS\tcomplement(619384..620199)\tfepC; ferric enterobactin ABC transporter ATP binding subunit",
+      "locus": "b0588"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0600",
+      "gene_name": "CDS\t633586..634746\tybdL; methionine transaminase",
+      "locus": "b0600"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0623",
+      "gene_name": "CDS\t657292..657501\tcspE; transcription antiterminator and regulator of RNA stability CspE",
+      "locus": "b0623"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0674",
+      "gene_name": "CDS\tcomplement(697513..699177)\tasnB; asparagine synthetase B",
+      "locus": "b0674"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0683",
+      "gene_name": "CDS\tcomplement(710200..710646)\tfur; DNA-binding transcriptional dual regulator Fur",
+      "locus": "b0683"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0767",
+      "gene_name": "CDS\t798586..799581\tpgl; 6-phosphogluconolactonase",
+      "locus": "b0767"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0797",
+      "gene_name": "CDS\t830872..832236\trhlE; ATP-dependent RNA helicase RhlE",
+      "locus": "b0797"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0886",
+      "gene_name": "CDS\tcomplement(927474..929195)\tcydC; glutathione/L-cysteine ABC exporter subunit CydC",
+      "locus": "b0886"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b0957",
+      "gene_name": "CDS\tcomplement(1019013..1020053)\tompA; outer membrane protein A",
+      "locus": "b0957"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1011",
+      "gene_name": "CDS\tcomplement(1072171..1072863)\trutB; ureidoacrylate amidohydrolase",
+      "locus": "b1011"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1136",
+      "gene_name": "CDS\t1195123..1196373\ticd; isocitrate dehydrogenase",
+      "locus": "b1136"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1189",
+      "gene_name": "CDS\t1237571..1238869\tdadA; D-amino acid dehydrogenase",
+      "locus": "b1189"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1202",
+      "gene_name": "CDS\tcomplement(1253085..1255952)\tycgV; putative autotransporter adhesin YcgV",
+      "locus": "b1202"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1334",
+      "gene_name": "CDS\tcomplement(1398774..1399526)\tfnr; DNA-binding transcriptional dual regulator FNR",
+      "locus": "b1334"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1528",
+      "gene_name": "CDS\t1617028..1618218\tydeA; L-arabinose exporter",
+      "locus": "b1528"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1535",
+      "gene_name": "CDS\tcomplement(1622960..1623850)\tdgcZ; diguanylate cyclase DgcZ",
+      "locus": "b1535"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1617",
+      "gene_name": "CDS\tcomplement(1694260..1696071)\tuidA; beta-glucuronidase",
+      "locus": "b1617"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1710",
+      "gene_name": "CDS\tcomplement(1793558..1794109)\tbtuE; thioredoxin/glutathione peroxidase BtuE",
+      "locus": "b1710"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1748",
+      "gene_name": "CDS\tcomplement(1830762..1831982)\tastC; succinylornithine transaminase",
+      "locus": "b1748"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1779",
+      "gene_name": "CDS\t1862771..1863766\tgapA; glyceraldehyde-3-phosphate dehydrogenase A",
+      "locus": "b1779"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1808",
+      "gene_name": "CDS\tcomplement(1891325..1893235)\tyoaA; putative ATP-dependent 5' to 3' DNA helicase",
+      "locus": "b1808"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b1876",
+      "gene_name": "CDS\t1960062..1961795\targS; arginine--tRNA ligase",
+      "locus": "b1876"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2025",
+      "gene_name": "CDS\t2095844..2096620\thisF; imidazole glycerol phosphate synthase subunit HisF",
+      "locus": "b2025"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2125",
+      "gene_name": "CDS\tcomplement(2212243..2212962)\tbtsR; DNA-binding transcriptional dual regulator BtsR",
+      "locus": "b2125"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2221",
+      "gene_name": "CDS\t2323447..2324109\tatoD; acetyl-CoA:acetoacetyl-CoA transferase subunit alpha",
+      "locus": "b2221"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2240",
+      "gene_name": "CDS\tcomplement(2351016..2352374)\tglpT; sn-glycerol 3-phosphate:phosphate antiporter",
+      "locus": "b2240"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2335",
+      "gene_name": "CDS\tcomplement(2451072..2451584)\tyfcR; putative fimbrial protein YfcR",
+      "locus": "b2335"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2459",
+      "gene_name": "CDS\tcomplement(2573502..2574305)\teutT; putative ethanolamine utilization cobalamin adenosyltransferase",
+      "locus": "b2459"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2465",
+      "gene_name": "CDS\t2579636..2581639\ttktB; transketolase 2",
+      "locus": "b2465"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2469",
+      "gene_name": "CDS\t2585731..2587431\tnarQ; sensor histidine kinase NarQ",
+      "locus": "b2469"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2511",
+      "gene_name": "CDS\tcomplement(2635884..2637356)\tder; 50S ribosomal subunit stability factor",
+      "locus": "b2511"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2518",
+      "gene_name": "CDS\tcomplement(2644433..2644864)\tndk; nucleoside diphosphate kinase",
+      "locus": "b2518"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2537",
+      "gene_name": "CDS\tcomplement(2668006..2668896)\thcaR; DNA-binding transcriptional dual regulator HcaR",
+      "locus": "b2537"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2676",
+      "gene_name": "CDS\t2803502..2804461\tnrdF; ribonucleoside-diphosphate reductase 2 subunit beta",
+      "locus": "b2676"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2710",
+      "gene_name": "CDS\t2832476..2833915\tnorV; anaerobic nitric oxide reductase flavorubredoxin",
+      "locus": "b2710"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2817",
+      "gene_name": "CDS\tcomplement(2947757..2949010)\tamiC; N-acetylmuramoyl-L-alanine amidase C",
+      "locus": "b2817"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2876",
+      "gene_name": "CDS\tcomplement(3014287..3015057)\tyqeC; uncharacterized protein YqeC",
+      "locus": "b2876"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2916",
+      "gene_name": "CDS\t3059753..3060646\targP; DNA-binding transcriptional dual regulator ArgP",
+      "locus": "b2916"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2925",
+      "gene_name": "CDS\tcomplement(3070165..3071244)\tfbaA; fructose-bisphosphate aldolase class II",
+      "locus": "b2925"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2926",
+      "gene_name": "CDS\tcomplement(3071459..3072622)\tpgk; phosphoglycerate kinase",
+      "locus": "b2926"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b2980",
+      "gene_name": "CDS\t3128272..3129036\tglcC; DNA-binding transcriptional dual regulator GlcC",
+      "locus": "b2980"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3001",
+      "gene_name": "CDS\t3147897..3148937\tgpr; L-glyceraldehyde 3-phosphate reductase",
+      "locus": "b3001"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3019",
+      "gene_name": "CDS\tcomplement(3163715..3165973)\tparC; DNA topoisomerase IV subunit A",
+      "locus": "b3019"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3091",
+      "gene_name": "CDS\tcomplement(3241827..3243314)\tuxaA; D-altronate dehydratase",
+      "locus": "b3091"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3117",
+      "gene_name": "CDS\tcomplement(3265039..3266028)\ttdcB; catabolic threonine dehydratase",
+      "locus": "b3117"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3177",
+      "gene_name": "CDS\tcomplement(3324063..3324911)\tfolP; dihydropteroate synthase",
+      "locus": "b3177"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3183",
+      "gene_name": "CDS\tcomplement(3330582..3331754)\tobgE; GTPase ObgE",
+      "locus": "b3183"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3251",
+      "gene_name": "CDS\tcomplement(3400044..3401087)\tmreB; dynamic cytoskeletal protein MreB",
+      "locus": "b3251"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3281",
+      "gene_name": "CDS\tcomplement(3430020..3430838)\taroE; shikimate dehydrogenase",
+      "locus": "b3281"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3324",
+      "gene_name": "CDS\t3455578..3456393\tgspC; Type II secretion system protein GspC",
+      "locus": "b3324"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3359",
+      "gene_name": "CDS\tcomplement(3488960..3490180)\targD; N-acetylornithine aminotransferase/N-succinyldiaminopimelate aminotransferase",
+      "locus": "b3359"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3361",
+      "gene_name": "CDS\tcomplement(3490861..3491463)\tfic; putative adenosine monophosphate--protein transferase Fic",
+      "locus": "b3361"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3387",
+      "gene_name": "CDS\tcomplement(3515077..3515913)\tdam; DNA adenine methyltransferase",
+      "locus": "b3387"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3390",
+      "gene_name": "CDS\tcomplement(3518543..3519064)\taroK; shikimate kinase 1",
+      "locus": "b3390"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3414",
+      "gene_name": "CDS\t3545624..3546199\tnfuA; iron-sulfur cluster carrier protein NfuA",
+      "locus": "b3414"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3459",
+      "gene_name": "CDS\t3597984..3598367\tpanZ; PanD maturation factor",
+      "locus": "b3459"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3529",
+      "gene_name": "CDS\tcomplement(3683630..3685618)\tpdeK; c-di-GMP phosphodiesterase PdeK",
+      "locus": "b3529"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3549",
+      "gene_name": "CDS\t3713092..3713655\ttag; 3-methyl-adenine DNA glycosylase I",
+      "locus": "b3549"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3559",
+      "gene_name": "CDS\tcomplement(3722328..3724397)\tglyS; glycine--tRNA ligase subunit beta",
+      "locus": "b3559"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3650",
+      "gene_name": "CDS\t3822400..3824508\tspoT; bifunctional (p)ppGpp synthase/hydrolase SpoT",
+      "locus": "b3650"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3699",
+      "gene_name": "CDS\tcomplement(3877705..3880119)\tgyrB; DNA gyrase subunit B",
+      "locus": "b3699"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3701",
+      "gene_name": "CDS\tcomplement(3881221..3882321)\tdnaN; beta sliding clamp",
+      "locus": "b3701"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3806",
+      "gene_name": "CDS\t3991153..3993699\tcyaA; adenylate cyclase",
+      "locus": "b3806"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3835",
+      "gene_name": "CDS\t4020226..4021866\tubiB; ubiquinone biosynthesis protein UbiB",
+      "locus": "b3835"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3891",
+      "gene_name": "CDS\tcomplement(4080299..4081228)\tfdhE; formate dehydrogenase formation protein",
+      "locus": "b3891"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b3911",
+      "gene_name": "CDS\tcomplement(4103602..4104975)\tcpxA; sensor histidine kinase CpxA",
+      "locus": "b3911"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b4002",
+      "gene_name": "CDS\tcomplement(4201263..4201688)\tzraP; signaling pathway modulator ZraP",
+      "locus": "b4002"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b4015",
+      "gene_name": "CDS\t4217109..4218413\taceA; isocitrate lyase",
+      "locus": "b4015"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b4148",
+      "gene_name": "CDS\t4376875..4377192\tgdx; guanidinium exporter",
+      "locus": "b4148"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b4153",
+      "gene_name": "CDS\tcomplement(4379783..4380517)\tfrdB; fumarate reductase iron-sulfur protein",
+      "locus": "b4153"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b4177",
+      "gene_name": "CDS\t4404687..4405985\tpurA; adenylosuccinate synthetase",
+      "locus": "b4177"
+    },
+    {
+      "profile_id": "ecoli-k12-mg1655",
+      "gene_id": "b4371",
+      "gene_name": "CDS\tcomplement(4606669..4607700)\trsmC; 16S rRNA m(2)G1207 methyltransferase",
+      "locus": "b4371"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0002",
+      "gene_name": "dnaN",
+      "locus": "Rv0002"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0010c",
+      "gene_name": "Rv0010c",
+      "locus": "Rv0010c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0060",
+      "gene_name": "Rv0060",
+      "locus": "Rv0060"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0078",
+      "gene_name": "Rv0078",
+      "locus": "Rv0078"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0081",
+      "gene_name": "Rv0081",
+      "locus": "Rv0081"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0090",
+      "gene_name": "Rv0090",
+      "locus": "Rv0090"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0144",
+      "gene_name": "Rv0144",
+      "locus": "Rv0144"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0158",
+      "gene_name": "Rv0158",
+      "locus": "Rv0158"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0176",
+      "gene_name": "Rv0176",
+      "locus": "Rv0176"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0203",
+      "gene_name": "Rv0203",
+      "locus": "Rv0203"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0270",
+      "gene_name": "fadD2",
+      "locus": "Rv0270"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0328",
+      "gene_name": "Rv0328",
+      "locus": "Rv0328"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0334",
+      "gene_name": "rmlA",
+      "locus": "Rv0334"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0402c",
+      "gene_name": "mmpL1",
+      "locus": "Rv0402c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0440",
+      "gene_name": "groEL2",
+      "locus": "Rv0440"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0445c",
+      "gene_name": "sigK",
+      "locus": "Rv0445c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0526",
+      "gene_name": "Rv0526",
+      "locus": "Rv0526"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0544c",
+      "gene_name": "Rv0544c",
+      "locus": "Rv0544c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0571c",
+      "gene_name": "Rv0571c",
+      "locus": "Rv0571c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0635",
+      "gene_name": "hadA",
+      "locus": "Rv0635"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0647c",
+      "gene_name": "Rv0647c",
+      "locus": "Rv0647c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0735",
+      "gene_name": "sigL",
+      "locus": "Rv0735"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0931c",
+      "gene_name": "pknD",
+      "locus": "Rv0931c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv0932c",
+      "gene_name": "pstS2",
+      "locus": "Rv0932c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1024",
+      "gene_name": "Rv1024",
+      "locus": "Rv1024"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1138c",
+      "gene_name": "Rv1138c",
+      "locus": "Rv1138c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1182",
+      "gene_name": "papA3",
+      "locus": "Rv1182"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1217c",
+      "gene_name": "Rv1217c",
+      "locus": "Rv1217c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1240",
+      "gene_name": "mdh",
+      "locus": "Rv1240"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1284",
+      "gene_name": "canA",
+      "locus": "Rv1284"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1312",
+      "gene_name": "Rv1312",
+      "locus": "Rv1312"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1364c",
+      "gene_name": "Rv1364c",
+      "locus": "Rv1364c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1459c",
+      "gene_name": "Rv1459c",
+      "locus": "Rv1459c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1493",
+      "gene_name": "mutB",
+      "locus": "Rv1493"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1508c",
+      "gene_name": "Rv1508c",
+      "locus": "Rv1508c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1526c",
+      "gene_name": "Rv1526c",
+      "locus": "Rv1526c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1675c",
+      "gene_name": "cmr",
+      "locus": "Rv1675c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1697",
+      "gene_name": "Rv1697",
+      "locus": "Rv1697"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1733c",
+      "gene_name": "Rv1733c",
+      "locus": "Rv1733c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1786",
+      "gene_name": "Rv1786",
+      "locus": "Rv1786"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1828",
+      "gene_name": "Rv1828",
+      "locus": "Rv1828"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1830",
+      "gene_name": "Rv1830",
+      "locus": "Rv1830"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1860",
+      "gene_name": "apa",
+      "locus": "Rv1860"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1877",
+      "gene_name": "Rv1877",
+      "locus": "Rv1877"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1878",
+      "gene_name": "glnA3",
+      "locus": "Rv1878"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1884c",
+      "gene_name": "rpfC",
+      "locus": "Rv1884c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1886c",
+      "gene_name": "fbpB",
+      "locus": "Rv1886c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1954c",
+      "gene_name": "Rv1954c",
+      "locus": "Rv1954c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1957",
+      "gene_name": "Rv1957",
+      "locus": "Rv1957"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1985c",
+      "gene_name": "Rv1985c",
+      "locus": "Rv1985c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv1994c",
+      "gene_name": "cmtR",
+      "locus": "Rv1994c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2006",
+      "gene_name": "otsB1",
+      "locus": "Rv2006"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2028c",
+      "gene_name": "Rv2028c",
+      "locus": "Rv2028c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2032",
+      "gene_name": "acg",
+      "locus": "Rv2032"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2034",
+      "gene_name": "Rv2034",
+      "locus": "Rv2034"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2035",
+      "gene_name": "Rv2035",
+      "locus": "Rv2035"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2158c",
+      "gene_name": "murE",
+      "locus": "Rv2158c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2190c",
+      "gene_name": "Rv2190c",
+      "locus": "Rv2190c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2272",
+      "gene_name": "Rv2272",
+      "locus": "Rv2272"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2417c",
+      "gene_name": "Rv2417c",
+      "locus": "Rv2417c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2613c",
+      "gene_name": "Rv2613c",
+      "locus": "Rv2613c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2626c",
+      "gene_name": "hrp1",
+      "locus": "Rv2626c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2628",
+      "gene_name": "Rv2628",
+      "locus": "Rv2628"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2638",
+      "gene_name": "Rv2638",
+      "locus": "Rv2638"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2650c",
+      "gene_name": "Rv2650c",
+      "locus": "Rv2650c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2658c",
+      "gene_name": "Rv2658c",
+      "locus": "Rv2658c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2680",
+      "gene_name": "Rv2680",
+      "locus": "Rv2680"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2710",
+      "gene_name": "sigB",
+      "locus": "Rv2710"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2744c",
+      "gene_name": "35kd_ag",
+      "locus": "Rv2744c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2830c",
+      "gene_name": "vapB22",
+      "locus": "Rv2830c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2896c",
+      "gene_name": "Rv2896c",
+      "locus": "Rv2896c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2938",
+      "gene_name": "drrC",
+      "locus": "Rv2938"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2950c",
+      "gene_name": "fadD29",
+      "locus": "Rv2950c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv2969c",
+      "gene_name": "Rv2969c",
+      "locus": "Rv2969c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3019c",
+      "gene_name": "esxR",
+      "locus": "Rv3019c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3093c",
+      "gene_name": "Rv3093c",
+      "locus": "Rv3093c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3105c",
+      "gene_name": "prfB",
+      "locus": "Rv3105c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3124",
+      "gene_name": "moaR1",
+      "locus": "Rv3124"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3133c",
+      "gene_name": "devR",
+      "locus": "Rv3133c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3134c",
+      "gene_name": "Rv3134c",
+      "locus": "Rv3134c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3151",
+      "gene_name": "nuoG",
+      "locus": "Rv3151"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3157",
+      "gene_name": "nuoM",
+      "locus": "Rv3157"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3208A",
+      "gene_name": "TB9.4",
+      "locus": "Rv3208A"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3456c",
+      "gene_name": "rplQ",
+      "locus": "Rv3456c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3459c",
+      "gene_name": "rpsK",
+      "locus": "Rv3459c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3583c",
+      "gene_name": "Rv3583c",
+      "locus": "Rv3583c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3612c",
+      "gene_name": "Rv3612c",
+      "locus": "Rv3612c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3623",
+      "gene_name": "lpqG",
+      "locus": "Rv3623"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3684",
+      "gene_name": "Rv3684",
+      "locus": "Rv3684"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3718c",
+      "gene_name": "Rv3718c",
+      "locus": "Rv3718c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3775",
+      "gene_name": "lipE",
+      "locus": "Rv3775"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3825c",
+      "gene_name": "pks2",
+      "locus": "Rv3825c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3846",
+      "gene_name": "sodA",
+      "locus": "Rv3846"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3870",
+      "gene_name": "eccCa1",
+      "locus": "Rv3870"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3873",
+      "gene_name": "PPE68",
+      "locus": "Rv3873"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3879c",
+      "gene_name": "espK",
+      "locus": "Rv3879c"
+    },
+    {
+      "profile_id": "mtb-h37rv",
+      "gene_id": "Rv3921c",
+      "gene_name": "Rv3921c",
+      "locus": "Rv3921c"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.436521.9",
+      "gene_name": "TcCLB.436521.9",
+      "locus": "TcCLB.436521.9"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.485683.10",
+      "gene_name": "TcCLB.485683.10",
+      "locus": "TcCLB.485683.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.503579.70",
+      "gene_name": "TcCLB.503579.70",
+      "locus": "TcCLB.503579.70"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.503599.60",
+      "gene_name": "TcCLB.503599.60",
+      "locus": "TcCLB.503599.60"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.503613.40",
+      "gene_name": "TcCLB.503613.40",
+      "locus": "TcCLB.503613.40"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.503761.40",
+      "gene_name": "TcCLB.503761.40",
+      "locus": "TcCLB.503761.40"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.503841.10",
+      "gene_name": "TcCLB.503841.10",
+      "locus": "TcCLB.503841.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.504089.70",
+      "gene_name": "TcCLB.504089.70",
+      "locus": "TcCLB.504089.70"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.504105.150",
+      "gene_name": "TcCLB.504105.150",
+      "locus": "TcCLB.504105.150"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.504107.10",
+      "gene_name": "TcCLB.504107.10",
+      "locus": "TcCLB.504107.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.504131.140",
+      "gene_name": "TcCLB.504131.140",
+      "locus": "TcCLB.504131.140"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.504159.10",
+      "gene_name": "TcCLB.504159.10",
+      "locus": "TcCLB.504159.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.504427.50",
+      "gene_name": "TcCLB.504427.50",
+      "locus": "TcCLB.504427.50"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.505931.30",
+      "gene_name": "TcCLB.505931.30",
+      "locus": "TcCLB.505931.30"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506201.70",
+      "gene_name": "TcCLB.506201.70",
+      "locus": "TcCLB.506201.70"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506211.150",
+      "gene_name": "TcCLB.506211.150",
+      "locus": "TcCLB.506211.150"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506211.50",
+      "gene_name": "TcCLB.506211.50",
+      "locus": "TcCLB.506211.50"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506211.60",
+      "gene_name": "TcCLB.506211.60",
+      "locus": "TcCLB.506211.60"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506211.70",
+      "gene_name": "TcCLB.506211.70",
+      "locus": "TcCLB.506211.70"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506221.110",
+      "gene_name": "TcCLB.506221.110",
+      "locus": "TcCLB.506221.110"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506239.30",
+      "gene_name": "TcCLB.506239.30",
+      "locus": "TcCLB.506239.30"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506401.130",
+      "gene_name": "TcCLB.506401.130",
+      "locus": "TcCLB.506401.130"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506401.320",
+      "gene_name": "TcCLB.506401.320",
+      "locus": "TcCLB.506401.320"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506401.90",
+      "gene_name": "TcCLB.506401.90",
+      "locus": "TcCLB.506401.90"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506533.142786786764",
+      "gene_name": "TcCLB.506533.142786786764",
+      "locus": "TcCLB.506533.142786786764"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506649.20",
+      "gene_name": "TcCLB.506649.20",
+      "locus": "TcCLB.506649.20"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506677.20",
+      "gene_name": "TcCLB.506677.20",
+      "locus": "TcCLB.506677.20"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506679.80",
+      "gene_name": "TcCLB.506679.80",
+      "locus": "TcCLB.506679.80"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506693.30",
+      "gene_name": "TcCLB.506693.30",
+      "locus": "TcCLB.506693.30"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506705.40",
+      "gene_name": "TcCLB.506705.40",
+      "locus": "TcCLB.506705.40"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506739.130",
+      "gene_name": "TcCLB.506739.130",
+      "locus": "TcCLB.506739.130"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506739.99",
+      "gene_name": "TcCLB.506739.99",
+      "locus": "TcCLB.506739.99"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506743.110",
+      "gene_name": "TcCLB.506743.110",
+      "locus": "TcCLB.506743.110"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506927.20",
+      "gene_name": "TcCLB.506927.20",
+      "locus": "TcCLB.506927.20"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.506943.50",
+      "gene_name": "TcCLB.506943.50",
+      "locus": "TcCLB.506943.50"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507093.220",
+      "gene_name": "TcCLB.507093.220",
+      "locus": "TcCLB.507093.220"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507465.10",
+      "gene_name": "TcCLB.507465.10",
+      "locus": "TcCLB.507465.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507511.81",
+      "gene_name": "TcCLB.507511.81",
+      "locus": "TcCLB.507511.81"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507537.20",
+      "gene_name": "TcCLB.507537.20",
+      "locus": "TcCLB.507537.20"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507603.260",
+      "gene_name": "TcCLB.507603.260",
+      "locus": "TcCLB.507603.260"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507611.270",
+      "gene_name": "TcCLB.507611.270",
+      "locus": "TcCLB.507611.270"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507711.100",
+      "gene_name": "TcCLB.507711.100",
+      "locus": "TcCLB.507711.100"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507711.150",
+      "gene_name": "TcCLB.507711.150",
+      "locus": "TcCLB.507711.150"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507883.60",
+      "gene_name": "TcCLB.507883.60",
+      "locus": "TcCLB.507883.60"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507957.150",
+      "gene_name": "TcCLB.507957.150",
+      "locus": "TcCLB.507957.150"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.507959.280",
+      "gene_name": "TcCLB.507959.280",
+      "locus": "TcCLB.507959.280"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508207.250",
+      "gene_name": "TcCLB.508207.250",
+      "locus": "TcCLB.508207.250"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508209.100",
+      "gene_name": "TcCLB.508209.100",
+      "locus": "TcCLB.508209.100"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508257.260",
+      "gene_name": "TcCLB.508257.260",
+      "locus": "TcCLB.508257.260"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508387.20",
+      "gene_name": "TcCLB.508387.20",
+      "locus": "TcCLB.508387.20"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508413.40",
+      "gene_name": "TcCLB.508413.40",
+      "locus": "TcCLB.508413.40"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508427.10",
+      "gene_name": "TcCLB.508427.10",
+      "locus": "TcCLB.508427.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508461.290",
+      "gene_name": "TcCLB.508461.290",
+      "locus": "TcCLB.508461.290"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508479.150",
+      "gene_name": "TcCLB.508479.150",
+      "locus": "TcCLB.508479.150"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508647.170",
+      "gene_name": "TcCLB.508647.170",
+      "locus": "TcCLB.508647.170"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508777.100",
+      "gene_name": "TcCLB.508777.100",
+      "locus": "TcCLB.508777.100"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508841.10",
+      "gene_name": "TcCLB.508841.10",
+      "locus": "TcCLB.508841.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.508901.20",
+      "gene_name": "TcCLB.508901.20",
+      "locus": "TcCLB.508901.20"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509013.19",
+      "gene_name": "TcCLB.509013.19",
+      "locus": "TcCLB.509013.19"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509123.10",
+      "gene_name": "TcCLB.509123.10",
+      "locus": "TcCLB.509123.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509149.40",
+      "gene_name": "TcCLB.509149.40",
+      "locus": "TcCLB.509149.40"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509233.10",
+      "gene_name": "TcCLB.509233.10",
+      "locus": "TcCLB.509233.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509589.20",
+      "gene_name": "TcCLB.509589.20",
+      "locus": "TcCLB.509589.20"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509633.50",
+      "gene_name": "TcCLB.509633.50",
+      "locus": "TcCLB.509633.50"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509713.10",
+      "gene_name": "TcCLB.509713.10",
+      "locus": "TcCLB.509713.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509733.170",
+      "gene_name": "TcCLB.509733.170",
+      "locus": "TcCLB.509733.170"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509767.70",
+      "gene_name": "TcCLB.509767.70",
+      "locus": "TcCLB.509767.70"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509769.70",
+      "gene_name": "TcCLB.509769.70",
+      "locus": "TcCLB.509769.70"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509805.60",
+      "gene_name": "TcCLB.509805.60",
+      "locus": "TcCLB.509805.60"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.509965.110",
+      "gene_name": "TcCLB.509965.110",
+      "locus": "TcCLB.509965.110"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510129.20",
+      "gene_name": "TcCLB.510129.20",
+      "locus": "TcCLB.510129.20"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510129.30",
+      "gene_name": "TcCLB.510129.30",
+      "locus": "TcCLB.510129.30"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510181.60",
+      "gene_name": "TcCLB.510181.60",
+      "locus": "TcCLB.510181.60"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510241.10",
+      "gene_name": "TcCLB.510241.10",
+      "locus": "TcCLB.510241.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510275.272",
+      "gene_name": "TcCLB.510275.272",
+      "locus": "TcCLB.510275.272"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510275.330",
+      "gene_name": "TcCLB.510275.330",
+      "locus": "TcCLB.510275.330"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510329.210",
+      "gene_name": "TcCLB.510329.210",
+      "locus": "TcCLB.510329.210"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510661.230",
+      "gene_name": "TcCLB.510661.230",
+      "locus": "TcCLB.510661.230"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510741.70",
+      "gene_name": "TcCLB.510741.70",
+      "locus": "TcCLB.510741.70"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510755.120",
+      "gene_name": "TcCLB.510755.120",
+      "locus": "TcCLB.510755.120"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510755.138",
+      "gene_name": "TcCLB.510755.138",
+      "locus": "TcCLB.510755.138"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510819.119",
+      "gene_name": "TcCLB.510819.119",
+      "locus": "TcCLB.510819.119"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.510835.40",
+      "gene_name": "TcCLB.510835.40",
+      "locus": "TcCLB.510835.40"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511173.64",
+      "gene_name": "TcCLB.511173.64",
+      "locus": "TcCLB.511173.64"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511277.250",
+      "gene_name": "TcCLB.511277.250",
+      "locus": "TcCLB.511277.250"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511481.70",
+      "gene_name": "TcCLB.511481.70",
+      "locus": "TcCLB.511481.70"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511517.70",
+      "gene_name": "TcCLB.511517.70",
+      "locus": "TcCLB.511517.70"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511589.200",
+      "gene_name": "TcCLB.511589.200",
+      "locus": "TcCLB.511589.200"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511715.10",
+      "gene_name": "TcCLB.511715.10",
+      "locus": "TcCLB.511715.10"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511715.100",
+      "gene_name": "TcCLB.511715.100",
+      "locus": "TcCLB.511715.100"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511727.260",
+      "gene_name": "TcCLB.511727.260",
+      "locus": "TcCLB.511727.260"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511727.300",
+      "gene_name": "TcCLB.511727.300",
+      "locus": "TcCLB.511727.300"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511729.60",
+      "gene_name": "TcCLB.511729.60",
+      "locus": "TcCLB.511729.60"
+    },
+    {
+      "profile_id": "tcruzi-clbrener",
+      "gene_id": "TcCLB.511741.40",
+      "gene_name": "TcCLB.511741.40",
+      "locus": "TcCLB.511741.40"
+    }
+  ]
+}
