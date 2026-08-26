@@ -62,8 +62,45 @@ def _is_retryable_request_error(exc: BaseException) -> bool:
     return False
 
 
+# Cache for optional worker.env fallback (CLI / processes that never bootstrap).
+_ncbi_api_key_file_cache: dict[str, str | None] = {}
+
+
+def _worker_env_path():
+    from pathlib import Path
+
+    override = (os.getenv("WORKER_ENV_FILE") or "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path(__file__).resolve().parent.parent / "worker.env"
+
+
+def _ncbi_api_key_from_worker_env() -> str | None:
+    path = _worker_env_path()
+    cache_key = str(path)
+    if cache_key in _ncbi_api_key_file_cache:
+        return _ncbi_api_key_file_cache[cache_key]
+    key = None
+    try:
+        from shared.env_persist import load_env_file
+        values = load_env_file(path)
+        raw = (values.get("NCBI_API_KEY") or values.get("ENTREZ_API_KEY") or "").strip()
+        key = raw or None
+    except Exception:
+        key = None
+    _ncbi_api_key_file_cache[cache_key] = key
+    return key
+
+
+def resolve_ncbi_api_key() -> str | None:
+    key = (os.getenv("NCBI_API_KEY") or os.getenv("ENTREZ_API_KEY") or "").strip()
+    if key:
+        return key
+    return _ncbi_api_key_from_worker_env()
+
+
 def ncbi_api_key_param():
-    key = os.getenv("NCBI_API_KEY") or os.getenv("ENTREZ_API_KEY")
+    key = resolve_ncbi_api_key()
     return f"&api_key={key}" if key else ""
 
 logging.basicConfig(format='%(asctime)s %(levelname).1s | %(message)s')

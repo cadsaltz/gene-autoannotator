@@ -207,6 +207,13 @@ def ensure_worker_env(
     os.environ.setdefault("WORKER_API_TOKEN", token)
     os.environ[BUDGET_ENV_KEY] = mem_str
 
+    # Optional NCBI key: keep in worker.env; apply into process env for jobs/CLI.
+    saved_keys = load_env_file(path)
+    for key in ("NCBI_API_KEY", "ENTREZ_API_KEY"):
+        value = (saved_keys.get(key) or "").strip()
+        if value:
+            os.environ.setdefault(key, value)
+
     ensure_model_mode(env_path=path, interactive=is_interactive)
     if not skip_fleet_config:
         fleet_setup.ensure_fleet_config(interactive=is_interactive, env_path=path)

@@ -243,7 +243,7 @@ class PmcPaperManager(papers.PaperManager):
         if not pubmed_ids:
             return []
         query = urlencode([('id', pubmed_id) for pubmed_id in pubmed_ids])
-        url = pubmed_to_pmc_url_tmpl.format(ids=query)
+        url = pubmed_to_pmc_url_tmpl.format(ids=query) + http_.ncbi_api_key_param()
         response = self.throttler.get(url, base_url)
         result = json.loads(response.text)
         pmc_ids = []
@@ -597,7 +597,7 @@ class PmcPaperManager(papers.PaperManager):
 
     def _download(self, pmc_id):
         log.debug(f'Downloading paper PMC{pmc_id} from PubMed Central')
-        fetch_url = fetch_url_tmpl.format(id=pmc_id)
+        fetch_url = fetch_url_tmpl.format(id=pmc_id) + http_.ncbi_api_key_param()
 
         response = self.throttler.get(fetch_url, base_url)
 
