@@ -25,6 +25,7 @@ from experiments.paper.runners.common import (
     parse_distribution,
     select_trials,
     stable_json_hash,
+    validate_distribution,
     write_aggregate_csv,
     write_json,
 )
@@ -472,6 +473,12 @@ def run_bias_experiment(
         )
     max_trials = config.get('max_trials', len(items))
     selection_seed = seed if seed is not None else config.get('selection_seed', 42)
+    if distribution is not None:
+        validate_distribution(
+            items,
+            distribution,
+            fixture_config=fixture_config,
+        )
     selected = select_trials(
         items,
         requested_trials,

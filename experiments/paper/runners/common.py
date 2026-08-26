@@ -239,6 +239,40 @@ def _group_by_profile(items: list[dict[str, Any]]) -> dict[str, list[dict[str, A
     return dict(grouped)
 
 
+def validate_distribution(
+    items: list[dict[str, Any]],
+    distribution: dict[str, int],
+    *,
+    fixture_config: dict[str, Any] | None = None,
+) -> None:
+    from collections import Counter
+
+    available = Counter(item['profile_id'] for item in items)
+    missing = {
+        profile_id: count
+        for profile_id, count in distribution.items()
+        if available.get(profile_id, 0) == 0
+    }
+    if not missing:
+        return
+
+    hints = []
+    if fixture_config is not None and not fixture_config.get('general'):
+        if any(key in GENERAL_CATEGORIES for key in missing):
+            hints.append(
+                'config is missing fixtures.general '
+                '(expected fixtures/general_snapshots/general_cluster_v1.json)',
+            )
+    if any(key in GENERAL_CATEGORIES for key in missing):
+        hints.append(
+            'general categories require branch experiments/paper-bias-split-cost or newer',
+        )
+    hint_text = f" {' '.join(hints)}" if hints else ''
+    raise ValueError(
+        f'distribution keys not present in loaded fixtures: {sorted(missing)}.{hint_text}',
+    )
+
+
 def select_trials(
     items: list[dict[str, Any]],
     n_trials: int,
