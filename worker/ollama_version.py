@@ -16,8 +16,9 @@ import urllib.request
 log = logging.getLogger(__name__)
 
 # Project-wide Ollama server pin. Bump only when deliberately upgrading.
-# July 2026 bench baseline (Dockerfile FROM ollama/ollama:0.15.6).
-PINNED_OLLAMA_SERVER_VERSION = "0.15.6"
+# Stable pin (Dockerfile FROM ollama/ollama:0.33.1). Explicit OLLAMA_CONTEXT_LENGTH
+# from the fleet supervisor avoids auto/tiered context VRAM blowups on small GPUs.
+PINNED_OLLAMA_SERVER_VERSION = "0.33.1"
 
 
 def required_ollama_server_version() -> str | None:
@@ -50,12 +51,12 @@ def fetch_ollama_server_version(host: str, *, timeout_sec: float = 5.0) -> str:
 
 
 def _version_matches(actual: str, required: str) -> bool:
-    """True if actual equals required, or actual is required with a suffix (0.15.6-rc1)."""
+    """True if actual equals required, or actual is required with a suffix (0.33.1-rc1)."""
     actual_n = actual.strip().lstrip("v")
     required_n = required.strip().lstrip("v")
     if actual_n == required_n:
         return True
-    # Allow patch-equivalent tags like 0.15.6+… only when the required string is a prefix
+    # Allow patch-equivalent tags like 0.33.1+… only when the required string is a prefix
     # of the numeric version before build metadata.
     actual_core = actual_n.split("+", 1)[0]
     return actual_core == required_n or actual_core.startswith(required_n + ".")
