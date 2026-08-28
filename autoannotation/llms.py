@@ -157,6 +157,31 @@ def _ollama_keep_alive():
     return parsed
 
 
+def _ollama_num_ctx() -> int:
+    """Per-request context window in tokens for direct Ollama chat calls.
+
+    Paper experiments often talk to a standalone ``ollama serve`` that ignores
+    ``worker.env`` fleet knobs. Prefer an explicit annotation override, then the
+    fleet slot size, then Ollama's own context env, else 8192 (fleet default).
+    """
+    for key in (
+        'AUTOANNOTATION_OLLAMA_NUM_CTX',
+        'OLLAMA_FLEET_SLOT_CTX',
+        'OLLAMA_CONTEXT_LENGTH',
+    ):
+        raw = os.getenv(key, '').strip()
+        if not raw:
+            continue
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ValueError(f'Invalid {key}={raw!r}') from exc
+        if value < 1:
+            raise ValueError(f'Invalid {key}={raw!r}')
+        return value
+    return 8192
+
+
 def chat_response_content(response, *, role: str, model: str) -> str:
     try:
         content = response['message']['content']
@@ -251,7 +276,10 @@ def ollama_chat(
     kwargs = {
         'model': model,
         'messages': messages,
-        'options': {'temperature': 0},
+        'options': {
+            'temperature': 0,
+            'num_ctx': _ollama_num_ctx(),
+        },
         'keep_alive': _ollama_keep_alive(),
     }
     if json_schema is not None:
@@ -280,7 +308,8 @@ def _biology_properties(organism_label='the organism'):
     return {
         'function': _nullable_string(
             'Gene product function: what this gene product does for the cell '
-            '(one or two concise sentences). Not a summary of the paper or section.'
+            '(one or two concise sentences). Not a summary of the paper or section; '
+            'gene-specific only.'
         ),
         'functional_category': {
             'type': ['array', 'null'],
@@ -659,6 +688,35 @@ class LlmHandler:
             field_defs_profile=field_defs_profile,
         )
         return json.dumps(normalized)
+
+    @staticmethod
+    def _null_section_annotation_json(
+        *,
+        gene_id,
+        gene_name,
+        organism_profile=None,
+        field_defs_profile=None,
+    ):
+        """Identity-only annotation used when the model returns unusable JSON."""
+        payload = {
+            'gene_id': gene_id,
+            'name': gene_name if gene_name is not None else gene_id,
+        }
+        schema_profile = field_defs_profile or organism_profile
+        if schema_profile is not None:
+            biology_fields = field_defs.resolve_effective_fields(schema_profile)
+        else:
+            biology_fields = field_defs.DEFAULT_ANNOTATION_FIELD_DEFS
+        for field_def in biology_fields:
+            payload[field_def.key] = None
+        return json.dumps(
+            normalize_annotation_fields(
+                payload,
+                require_biology_keys=True,
+                organism_profile=organism_profile,
+                field_defs_profile=field_defs_profile,
+            ),
+        )
 
     def __init__(self, cache_dir='./.cache'):
         self.cache_dir = cache_dir
@@ -1099,6 +1157,7 @@ class LlmHandler:
         log.debug((
             f'Submitting section-summary job (length {len(prompt)} chars) to LLM (model {model})'
         ))
+        duration_sec = 0.0
         try:
             response = ollama_chat(
                 model=model,
@@ -1137,7 +1196,19 @@ class LlmHandler:
                     evidence_mode=evidence_mode, ortholog_context=ortholog_context,
                     field_defs_profile=field_defs_profile,
                 )
-            raise RuntimeError(f'Failed to get response back from {model}') from exc
+            # Truncated / invalid JSON (often from a full context window) should not
+            # abort a multi-trial experiment. Keep identity and null the biology fields.
+            log.warning(
+                'Soft-failing section_summary for %s/%s on %s after retry: %s',
+                gene_id, gene_name, model, exc,
+            )
+            response_text = self._null_section_annotation_json(
+                gene_id=gene_id,
+                gene_name=gene_name,
+                organism_profile=organism_profile,
+                field_defs_profile=field_defs_profile,
+            )
+            self._record_usage('section_summary', model, duration_sec, usage={})
         return response_text, duration_sec
 
     def _invalidate_cache(self, model, prompt, json_schema):
