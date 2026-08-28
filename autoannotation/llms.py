@@ -279,14 +279,16 @@ def _nullable_bool(description):
 def _biology_properties(organism_label='the organism'):
     return {
         'function': _nullable_string(
-            'What the gene product does for the cell (one or two concise sentences).'
+            'Gene product function: what this gene product does for the cell '
+            '(one or two concise sentences). Not a summary of the paper or section.'
         ),
         'functional_category': {
             'type': ['array', 'null'],
             'items': {'type': 'string'},
             'description': (
-                'One or more general cellular functions (e.g., cell wall, respiration, '
-                'virulence, DNA replication/repair). Use null if not supported.'
+                'Functional category (GO-oriented tags): one or more short labels '
+                '(e.g., cell wall, respiration, virulence, DNA replication/repair). '
+                'Not a summary of the excerpt. Use null if not supported.'
             ),
         },
         'drug_susc_impact': _nullable_string(
@@ -401,6 +403,10 @@ Rules:
 - Include every biology field key listed below. Use JSON null for any field this excerpt does
   NOT explicitly support. Do not guess, infer from gene class, or use general organism knowledge.
 - Do not use empty strings for unknown fields; use null.
+- Do not summarize the paper, section, methods, results overview, or pathway panel.
+- function must be a gene-specific claim about gene {0} (named {1}) only. If the excerpt
+  discusses many genes and does not explicitly support a claim about this gene product, use null.
+- functional_category must be short GO-oriented tags about this gene product, not a paper summary.
 - For essential_in_vitro and essential_in_vivo, use true or false only when this excerpt reports
   direct experimental evidence (e.g., deletion, transposon, CRISPRi). Otherwise use null.
 - Prefer null over weak or speculative statements.
@@ -430,6 +436,11 @@ Rules:
 - Include every biology field key listed below. Use JSON null for any field this excerpt does
   NOT explicitly support. Do not guess, infer from gene class, or use general organism knowledge.
 - Do not use empty strings for unknown fields; use null.
+- Do not summarize the paper, section, methods, results overview, or pathway panel.
+- function must be a gene-specific claim about ortholog gene {0} (named {1}) only. If the
+  excerpt discusses many genes and does not explicitly support a claim about this gene product,
+  use null.
+- functional_category must be short GO-oriented tags about this gene product, not a paper summary.
 - For essential_in_vitro and essential_in_vivo, use true or false only when this excerpt reports
   direct experimental evidence (e.g., deletion, transposon, CRISPRi). Otherwise use null.
 - Prefer null over weak or speculative statements.
@@ -445,10 +456,7 @@ Excerpt:
 
 def _section_fields_block(organism_profile, field_defs_profile=None):
     if organism_profile is None:
-        return (
-            'function, functional_category, drug_susc_impact, infection_impact, '
-            'essential_in_vitro, essential_in_vivo'
-        )
+        return field_defs.format_fields_for_prompt(field_defs.DEFAULT_ANNOTATION_FIELD_DEFS)
     schema_profile = field_defs_profile or organism_profile
     llm_fields = field_defs.llm_schema_fields(schema_profile)
     return field_defs.format_fields_for_prompt(
