@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import time
+from typing import Any
 
 import ollama
 
@@ -721,6 +722,22 @@ class LlmHandler:
     def __init__(self, cache_dir='./.cache'):
         self.cache_dir = cache_dir
         self.usage_records = []
+        self.prompt_records: list[dict[str, Any]] = []
+
+    def _record_prompt(
+        self,
+        role: str,
+        model: str,
+        prompt: str,
+        *,
+        sent_to_ollama: bool,
+    ) -> None:
+        self.prompt_records.append({
+            'role': role,
+            'model': model,
+            'prompt': prompt,
+            'sent_to_ollama': sent_to_ollama,
+        })
 
     def _usage_from_response(self, response, duration_sec):
         input_tokens = _response_value(response, 'prompt_eval_count')
@@ -934,6 +951,9 @@ class LlmHandler:
             field_defs_profile=field_defs_profile,
             organism_profile=organism_profile,
         )
+        self._record_prompt(
+            'section_consensus', model, prompt, sent_to_ollama=True,
+        )
         response = ollama_chat(
             model=model,
             messages=[{'role': 'user', 'content': prompt}],
@@ -1049,6 +1069,9 @@ class LlmHandler:
                 model, cache_prompt, batch_schema, role='section_consensus',
             )
             if cached_payload is not None:
+                self._record_prompt(
+                    'section_consensus', model, cache_prompt, sent_to_ollama=False,
+                )
                 self._record_usage(
                     'section_consensus', model, cached_dur, cache_hit=True,
                     usage=self._read_cache_usage(model, cache_prompt, batch_schema),
@@ -1139,6 +1162,9 @@ class LlmHandler:
 
         cached_response, cached_dur = self._read_cache(model, prompt, json_schema)
         if cached_response is not None:
+            self._record_prompt(
+                'section_summary', model, prompt, sent_to_ollama=False,
+            )
             log.debug((
                 f'Returning cached section-summary response ({len(cached_response)} chars)'
             ))
@@ -1159,6 +1185,9 @@ class LlmHandler:
         ))
         duration_sec = 0.0
         try:
+            self._record_prompt(
+                'section_summary', model, prompt, sent_to_ollama=True,
+            )
             response = ollama_chat(
                 model=model,
                 messages=[

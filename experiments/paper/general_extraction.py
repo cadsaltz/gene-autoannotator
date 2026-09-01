@@ -130,6 +130,9 @@ def get_llm_general_extraction_json(
 
     cached_response, cached_dur = handler._read_cache(model, prompt, json_schema)
     if cached_response is not None:
+        handler._record_prompt(
+            'general_extraction', model, prompt, sent_to_ollama=False,
+        )
         handler._record_usage(
             'general_extraction', model, cached_dur, cache_hit=True,
             usage=handler._read_cache_usage(model, prompt, json_schema),
@@ -137,6 +140,9 @@ def get_llm_general_extraction_json(
         return finalize_general_output(cached_response, model=model), cached_dur
 
     try:
+        handler._record_prompt(
+            'general_extraction', model, prompt, sent_to_ollama=True,
+        )
         response = llms.ollama_chat(
             model=model,
             messages=[{'role': 'user', 'content': prompt}],
@@ -192,12 +198,18 @@ def get_llm_general_consensus_json(
             model, cache_prompt, batch_schema, role='general_consensus',
         )
         if cached_payload is not None:
+            handler._record_prompt(
+                'general_consensus', model, cache_prompt, sent_to_ollama=False,
+            )
             handler._record_usage(
                 'general_consensus', model, cached_dur, cache_hit=True,
                 usage=handler._read_cache_usage(model, cache_prompt, batch_schema),
             )
             return cached_payload
 
+        handler._record_prompt(
+            'general_consensus', model, cache_prompt, sent_to_ollama=True,
+        )
         response = llms.ollama_chat(
             model=model,
             messages=[{'role': 'user', 'content': cache_prompt}],

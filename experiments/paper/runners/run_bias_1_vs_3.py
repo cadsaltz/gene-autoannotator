@@ -29,14 +29,9 @@ from experiments.paper.runners.common import (
     write_aggregate_csv,
     write_json,
 )
-from experiments.paper.runners.groundedness import make_hf_nli_fn, score_field_groundedness
 
 PAPER_DIR = Path(__file__).resolve().parents[1]
 ALLOWED_EXPERIMENT_IDS = frozenset({'bias-1-vs-3-small', 'bias-general-1-vs-3'})
-POOL_FIELDS = {
-    'biology': BIOLOGY_FIELDS,
-    'general': GENERAL_EXTRACTION_FIELDS,
-}
 DEFAULT_CONDITION_LAYOUT = build_condition_layout([
     'model-a',
     'model-b',
@@ -112,20 +107,25 @@ def _empty_observable(
     trial: dict[str, Any],
     *,
     conditions: tuple[str, ...],
-    excerpt_text: str | None = None,
 ) -> dict[str, Any]:
     observable: dict[str, Any] = {
         'record_type': 'trial_observable',
         'trial_id': trial['trial_id'],
+        'fixture_trial_id': trial.get('fixture_trial_id', trial['trial_id']),
         'trial_pool': trial['trial_pool'],
         'profile_id': trial['profile_id'],
         'section': trial['section'],
-        'excerpt_text': trial['excerpt_text'] if excerpt_text is None else excerpt_text,
+        'excerpt_text': trial['excerpt_text'],
         'outputs': {condition: None for condition in conditions},
         'condition_metrics': {
             condition: _empty_metrics() for condition in conditions
         },
+        'prompts': {},
     }
+    if trial.get('excerpt_preparation') is not None:
+        observable['excerpt_preparation'] = trial['excerpt_preparation']
+    if trial.get('source_excerpt_chars') is not None:
+        observable['source_excerpt_chars'] = trial['source_excerpt_chars']
     if trial['trial_pool'] == 'biology':
         observable.update({
             'gene_id': trial['gene_id'],
@@ -162,74 +162,123 @@ def _biology_excerpts_for_trial(trial: dict[str, Any]):
     )
 
 
-def _excerpt_preparation_metadata(parts) -> dict[str, Any]:
-    return {
-        'tier': parts[0].tier if parts else 'pass',
-        'parts': [
-            {'label': part.label, 'tier': part.tier, 'chars': len(part.text)}
-            for part in parts
-        ],
-    }
+def _run_trial_id(fixture_id: str, part, *, index: int, part_count: int) -> str:
+    if part_count == 1:
+        return fixture_id
+    if '#' in part.label:
+        suffix = part.label.split('#', 1)[1]
+    else:
+        suffix = str(index + 1)
+    return f'{fixture_id}#{suffix}'
 
 
-def _prepared_audit_excerpt_text(parts, *, original: str) -> str:
-    if len(parts) == 1 and parts[0].tier in {'pass', 'disabled'}:
-        return original
-    if len(parts) == 1:
-        return parts[0].text
-    return '\n\n---\n\n'.join(part.text for part in parts)
+def expand_trials_for_excerpts(fixture_trials: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Expand fixture selections into one run trial per excerpt part (chunk/grep/pass)."""
+    expanded: list[dict[str, Any]] = []
+    for trial in fixture_trials:
+        if trial['trial_pool'] != 'biology':
+            run_trial = dict(trial)
+            run_trial['fixture_trial_id'] = trial['trial_id']
+            expanded.append(run_trial)
+            continue
+
+        parts = _biology_excerpts_for_trial(trial)
+        fixture_id = trial['trial_id']
+        source_chars = len(trial['excerpt_text'])
+        for index, part in enumerate(parts):
+            run_trial = dict(trial)
+            run_trial['fixture_trial_id'] = fixture_id
+            run_trial['trial_id'] = _run_trial_id(
+                fixture_id, part, index=index, part_count=len(parts),
+            )
+            run_trial['section'] = part.label
+            run_trial['excerpt_text'] = part.text
+            run_trial['excerpt_preparation'] = {
+                'tier': part.tier,
+                'part_index': index + 1,
+                'part_count': len(parts),
+                'chars': len(part.text),
+            }
+            if len(parts) > 1:
+                run_trial['source_excerpt_chars'] = source_chars
+            expanded.append(run_trial)
+    return expanded
 
 
-def _aggregate_condition_metrics(
-    metrics_list: list[dict[str, Any]],
-) -> dict[str, Any]:
-    usages = [metrics.get('usage') or {} for metrics in metrics_list]
-    known_tokens = [
-        usage.get('known_total_tokens')
-        for usage in usages
-        if usage.get('known_total_tokens') is not None
-    ]
-    call_count = sum(usage.get('calls') or 0 for usage in usages)
-    return {
-        'duration_sec': sum(metrics.get('duration_sec') or 0.0 for metrics in metrics_list),
-        'llm_duration_sec': sum(
-            metrics.get('llm_duration_sec') or 0.0 for metrics in metrics_list
-        ),
-        'model': next(
-            (metrics.get('model') for metrics in metrics_list if metrics.get('model')),
-            None,
-        ),
-        'usage': {
-            'calls': call_count,
-            'cache_hits': sum(usage.get('cache_hits') or 0 for usage in usages),
-            'known_total_tokens': sum(known_tokens),
-            'token_usage_complete': (
-                call_count == 0 or len(known_tokens) == call_count
-            ),
-            'records': [
-                record
-                for usage in usages
-                for record in (usage.get('records') or [])
-            ],
-        },
-    }
+def _collect_prompts_from_handlers(
+    crowd_handler: Any,
+    single_handlers: dict[str, Any],
+    *,
+    layout: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    prompts: dict[str, dict[str, Any]] = {}
+    crowd_records = list(crowd_handler.prompt_records)
+    crowd_index = 0
+
+    for label in layout['labels']:
+        condition = f'extractor_{label}'
+        if crowd_index < len(crowd_records):
+            prompts[condition] = crowd_records[crowd_index]
+            crowd_index += 1
+
+    for record in crowd_records[crowd_index:]:
+        if record.get('role') == 'section_consensus':
+            prompts[CONSENSUS_CONDITION] = record
+            break
+
+    for label in layout['labels']:
+        condition = f'single_{label}'
+        handler = single_handlers[condition]
+        if handler.prompt_records:
+            prompts[condition] = handler.prompt_records[-1]
+
+    return prompts
 
 
-def _run_biology_crowd_and_singles(
+def _collect_general_prompts_from_handlers(
+    crowd_handler: Any,
+    single_handlers: dict[str, Any],
+    *,
+    layout: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    prompts: dict[str, dict[str, Any]] = {}
+    crowd_records = list(crowd_handler.prompt_records)
+    crowd_index = 0
+
+    for label in layout['labels']:
+        condition = f'extractor_{label}'
+        if crowd_index < len(crowd_records):
+            prompts[condition] = crowd_records[crowd_index]
+            crowd_index += 1
+
+    for record in crowd_records[crowd_index:]:
+        if record.get('role') == 'general_consensus':
+            prompts[CONSENSUS_CONDITION] = record
+            break
+
+    for label in layout['labels']:
+        condition = f'single_{label}'
+        handler = single_handlers[condition]
+        if handler.prompt_records:
+            prompts[condition] = handler.prompt_records[-1]
+
+    return prompts
+
+
+def _run_biology_trial(
     trial: dict[str, Any],
     *,
-    excerpt_text: str,
-    section_type: str,
     layout: dict[str, Any],
     consensus_model: str,
     cache_root: Path,
-    profile,
-    observable: dict[str, Any],
-    include_consensus: bool,
-) -> None:
-    from autoannotation import llms
+) -> dict[str, Any]:
+    from autoannotation import llms, organisms
 
+    profile = organisms.resolve_profile(trial['profile_id'])
+    observable = _empty_observable(trial, conditions=layout['conditions'])
     crowd_handler = llms.LlmHandler(cache_root / 'crowd')
+    crowd_handler.prompt_records = []
+    single_handlers: dict[str, Any] = {}
     candidates = []
 
     for label in layout['labels']:
@@ -240,9 +289,9 @@ def _run_biology_crowd_and_singles(
             lambda model=model: crowd_handler.get_llm_gene_info_json(
                 trial['gene_id'],
                 trial['gene_name'],
-                excerpt_text,
+                trial['excerpt_text'],
                 model,
-                section_type=section_type,
+                section_type=trial['section'],
                 organism_profile=profile,
             ),
         )
@@ -250,168 +299,49 @@ def _run_biology_crowd_and_singles(
         observable['outputs'][condition] = output
         observable['condition_metrics'][condition] = _attach_metrics(metrics, model=model)
 
-    if include_consensus:
-        consensus, metrics = _timed_handler_call(
-            crowd_handler,
-            lambda: crowd_handler.get_llm_consensus_json(
-                candidates,
-                excerpt=excerpt_text,
-                expected_gene_id=trial['gene_id'],
-                expected_name=trial['gene_name'],
-                model=consensus_model,
-                section_type=section_type,
-                organism_profile=profile,
-            ),
-        )
-        observable['outputs'][CONSENSUS_CONDITION] = consensus
-        observable['condition_metrics'][CONSENSUS_CONDITION] = _attach_metrics(
-            metrics,
+    consensus, metrics = _timed_handler_call(
+        crowd_handler,
+        lambda: crowd_handler.get_llm_consensus_json(
+            candidates,
+            excerpt=trial['excerpt_text'],
+            expected_gene_id=trial['gene_id'],
+            expected_name=trial['gene_name'],
             model=consensus_model,
-        )
+            section_type=trial['section'],
+            organism_profile=profile,
+        ),
+    )
+    observable['outputs'][CONSENSUS_CONDITION] = consensus
+    observable['condition_metrics'][CONSENSUS_CONDITION] = _attach_metrics(
+        metrics,
+        model=consensus_model,
+    )
 
     for label in layout['labels']:
         model = layout['condition_models'][f'single_{label}']
         condition = f'single_{label}'
         handler = llms.LlmHandler(cache_root / condition)
+        handler.prompt_records = []
+        single_handlers[condition] = handler
         output, metrics = _timed_handler_call(
             handler,
             lambda handler=handler, model=model: handler.get_llm_gene_info_json(
                 trial['gene_id'],
                 trial['gene_name'],
-                excerpt_text,
+                trial['excerpt_text'],
                 model,
-                section_type=section_type,
+                section_type=trial['section'],
                 organism_profile=profile,
             ),
         )
         observable['outputs'][condition] = output
         observable['condition_metrics'][condition] = _attach_metrics(metrics, model=model)
 
-
-def _run_biology_part_trial(
-    trial: dict[str, Any],
-    part,
-    *,
-    layout: dict[str, Any],
-    consensus_model: str,
-    cache_root: Path,
-    profile,
-) -> dict[str, Any]:
-    observable = _empty_observable(trial, conditions=layout['conditions'])
-    _run_biology_crowd_and_singles(
-        trial,
-        excerpt_text=part.text,
-        section_type=part.label,
+    observable['prompts'] = _collect_prompts_from_handlers(
+        crowd_handler,
+        single_handlers,
         layout=layout,
-        consensus_model=consensus_model,
-        cache_root=cache_root,
-        profile=profile,
-        observable=observable,
-        include_consensus=True,
     )
-    return observable
-
-
-def _merge_biology_chunk_observables(
-    trial: dict[str, Any],
-    chunk_observables: list[dict[str, Any]],
-    parts,
-    *,
-    layout: dict[str, Any],
-    consensus_model: str,
-    cache_root: Path,
-    profile,
-) -> dict[str, Any]:
-    from autoannotation import llms
-
-    audit_text = _prepared_audit_excerpt_text(parts, original=trial['excerpt_text'])
-    observable = _empty_observable(
-        trial,
-        conditions=layout['conditions'],
-        excerpt_text=audit_text,
-    )
-    merge_handler = llms.LlmHandler(cache_root / 'merge')
-
-    for condition in layout['conditions']:
-        part_metrics = [
-            chunk['condition_metrics'][condition]
-            for chunk in chunk_observables
-        ]
-        candidates = [
-            chunk['outputs'][condition]
-            for chunk in chunk_observables
-        ]
-        merged, merge_metrics = _timed_handler_call(
-            merge_handler,
-            lambda candidates=candidates: merge_handler.get_llm_consensus_json(
-                candidates,
-                excerpt=audit_text,
-                expected_gene_id=trial['gene_id'],
-                expected_name=trial['gene_name'],
-                model=consensus_model,
-                section_type=trial['section'],
-                organism_profile=profile,
-            ),
-        )
-        observable['outputs'][condition] = merged
-        observable['condition_metrics'][condition] = _aggregate_condition_metrics(
-            [*part_metrics, _attach_metrics(merge_metrics, model=consensus_model)],
-        )
-
-    return observable
-
-
-def _run_biology_trial(
-    trial: dict[str, Any],
-    *,
-    layout: dict[str, Any],
-    consensus_model: str,
-    cache_root: Path,
-) -> dict[str, Any]:
-    from autoannotation import organisms
-
-    profile = organisms.resolve_profile(trial['profile_id'])
-    parts = _biology_excerpts_for_trial(trial)
-    prep_meta = _excerpt_preparation_metadata(parts)
-
-    if len(parts) == 1:
-        part = parts[0]
-        observable = _run_biology_part_trial(
-            trial,
-            part,
-            layout=layout,
-            consensus_model=consensus_model,
-            cache_root=cache_root,
-            profile=profile,
-        )
-        observable['excerpt_text'] = _prepared_audit_excerpt_text(
-            parts,
-            original=trial['excerpt_text'],
-        )
-        observable['excerpt_preparation'] = prep_meta
-        return observable
-
-    chunk_observables = [
-        _run_biology_part_trial(
-            trial,
-            part,
-            layout=layout,
-            consensus_model=consensus_model,
-            cache_root=cache_root / f'part{index}',
-            profile=profile,
-        )
-        for index, part in enumerate(parts)
-    ]
-    observable = _merge_biology_chunk_observables(
-        trial,
-        chunk_observables,
-        parts,
-        layout=layout,
-        consensus_model=consensus_model,
-        cache_root=cache_root,
-        profile=profile,
-    )
-    observable['excerpt_preparation'] = prep_meta
     return observable
 
 
@@ -426,6 +356,8 @@ def _run_general_trial(
 
     observable = _empty_observable(trial, conditions=layout['conditions'])
     crowd_handler = llms.LlmHandler(cache_root / 'crowd')
+    crowd_handler.prompt_records = []
+    single_handlers: dict[str, Any] = {}
     candidates = []
 
     for label in layout['labels']:
@@ -463,6 +395,8 @@ def _run_general_trial(
         model = layout['condition_models'][f'single_{label}']
         condition = f'single_{label}'
         handler = llms.LlmHandler(cache_root / condition)
+        handler.prompt_records = []
+        single_handlers[condition] = handler
         output, metrics = _timed_handler_call(
             handler,
             lambda handler=handler, model=model: get_llm_general_extraction_json(
@@ -475,6 +409,11 @@ def _run_general_trial(
         observable['outputs'][condition] = output
         observable['condition_metrics'][condition] = _attach_metrics(metrics, model=model)
 
+    observable['prompts'] = _collect_general_prompts_from_handlers(
+        crowd_handler,
+        single_handlers,
+        layout=layout,
+    )
     return observable
 
 
@@ -500,66 +439,17 @@ def _run_live_trial(
     )
 
 
-def _field_score_records(
-    observable: dict[str, Any],
-    nli_fn: Callable[[str, str], dict[str, Any]],
-    *,
-    conditions: tuple[str, ...],
-) -> list[dict[str, Any]]:
-    fields = POOL_FIELDS[observable['trial_pool']]
-    records = []
-    for condition in conditions:
-        output = observable['outputs'][condition]
-        metrics = observable['condition_metrics'][condition]
-        usage = metrics.get('usage') or {}
-        for field in fields:
-            value = output.get(field) if isinstance(output, dict) else None
-            score = score_field_groundedness(
-                observable['excerpt_text'], field, value, nli_fn,
-            )
-            records.append({
-                'record_type': 'field_score',
-                'trial_id': observable['trial_id'],
-                'trial_pool': observable['trial_pool'],
-                'condition': condition,
-                'field': field,
-                'value': value,
-                **score,
-                'duration_sec': metrics.get('duration_sec'),
-                'model': metrics.get('model'),
-                'calls': usage.get('calls'),
-                'cache_hits': usage.get('cache_hits'),
-                'known_total_tokens': usage.get('known_total_tokens'),
-                'token_usage_complete': usage.get('token_usage_complete'),
-            })
-    return records
-
-
 def _aggregate_rows(
-    score_records: list[dict[str, Any]],
     observables: list[dict[str, Any]],
     *,
     conditions: tuple[str, ...],
 ) -> list[dict[str, Any]]:
     rows = []
-    trial_pools = sorted({
-        record['trial_pool'] for record in score_records if record.get('trial_pool')
-    })
-    if not trial_pools:
-        trial_pools = sorted({observable['trial_pool'] for observable in observables})
+    trial_pools = sorted({observable['trial_pool'] for observable in observables})
     scopes = [('overall', None), *[(pool, pool) for pool in trial_pools]]
 
     for scope, pool in scopes:
         for condition in conditions:
-            condition_scores = [
-                record for record in score_records
-                if record['condition'] == condition
-                and (pool is None or record['trial_pool'] == pool)
-            ]
-            count = len(condition_scores)
-            non_null_count = sum(
-                record['groundedness_label'] != 'null' for record in condition_scores
-            )
             pool_observables = [
                 observable for observable in observables
                 if pool is None or observable['trial_pool'] == pool
@@ -569,15 +459,6 @@ def _aggregate_rows(
                 for observable in pool_observables
             ]
             usage_values = [metric.get('usage') or {} for metric in metrics]
-
-            def rate(label: str) -> float:
-                denominator = count if label == 'null' else non_null_count
-                if not denominator:
-                    return 0.0
-                return sum(
-                    record['groundedness_label'] == label for record in condition_scores
-                ) / denominator
-
             model = next(
                 (metric.get('model') for metric in metrics if metric.get('model')),
                 None,
@@ -587,10 +468,7 @@ def _aggregate_rows(
                 'trial_pool': pool or '',
                 'condition': condition,
                 'model': model,
-                'field_scores': count,
-                'supported_rate': rate('supported'),
-                'unsupported_rate': rate('unsupported'),
-                'null_rate': rate('null'),
+                'n_trials': len(pool_observables),
                 'mean_wall_time_sec': (
                     sum(metric.get('duration_sec') or 0.0 for metric in metrics) / len(metrics)
                     if metrics else 0.0
@@ -616,11 +494,16 @@ def _trial_meta(trial: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
     meta: dict[str, Any] = {
         'record_type': 'trial_meta',
         'trial_id': trial['trial_id'],
+        'fixture_trial_id': trial.get('fixture_trial_id', trial['trial_id']),
         'trial_pool': trial['trial_pool'],
         'profile_id': trial['profile_id'],
         'section': trial['section'],
         'dry_run': dry_run,
     }
+    if trial.get('excerpt_preparation') is not None:
+        meta['excerpt_preparation'] = trial['excerpt_preparation']
+    if trial.get('source_excerpt_chars') is not None:
+        meta['source_excerpt_chars'] = trial['source_excerpt_chars']
     if trial['trial_pool'] == 'biology':
         meta.update({
             'gene_id': trial['gene_id'],
@@ -688,6 +571,7 @@ def run_bias_experiment(
         seed=selection_seed,
         max_trials=max_trials,
     )
+    run_trials = expand_trials_for_excerpts(selected)
 
     model_config = config.get('models') or {}
     extractor_models = list(model_config.get('extractors') or ())
@@ -701,7 +585,7 @@ def run_bias_experiment(
     layout['condition_models'] = condition_models
     conditions = layout['conditions']
 
-    trial_pools = sorted({trial['trial_pool'] for trial in selected})
+    trial_pools = sorted({trial['trial_pool'] for trial in run_trials})
     run_id = run_id or new_run_id()
     output_dir = PAPER_DIR / 'results' / experiment_id / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -729,9 +613,10 @@ def run_bias_experiment(
             name: stable_json_hash(document)
             for name, document in fixture_documents.items()
         },
-        'n_trials': len(selected),
+        'n_fixture_trials': len(selected),
+        'n_run_trials': len(run_trials),
         'trial_pools': {
-            pool: sum(trial['trial_pool'] == pool for trial in selected)
+            pool: sum(trial['trial_pool'] == pool for trial in run_trials)
             for pool in trial_pools
         },
         'distribution': distribution,
@@ -742,7 +627,7 @@ def run_bias_experiment(
         },
         'conditions': list(conditions),
         'condition_models': condition_models,
-        'nli_model_id': (config.get('nli') or {}).get('model_id', 'roberta-large-mnli'),
+        'groundedness': {'enabled': False},
         'cache_policy': cache_policy,
         'section_excerpt_config': {
             'chunking_enabled': excerpt_cfg.chunking_enabled,
@@ -776,25 +661,23 @@ def run_bias_experiment(
         }
     write_json(output_dir / 'manifest.json', manifest)
 
-    for trial in selected:
+    for trial in run_trials:
         append_jsonl(records_path, _trial_meta(trial, dry_run=dry_run))
 
     observables = []
     if dry_run:
-        for trial in selected:
+        for trial in run_trials:
             observable = _empty_observable(trial, conditions=conditions)
             observables.append(observable)
             append_jsonl(records_path, observable)
             write_json(output_dir / 'trials' / f"{trial['trial_id']}.json", observable)
         write_aggregate_csv(
             output_dir / 'aggregate.csv',
-            _aggregate_rows([], observables, conditions=conditions),
+            _aggregate_rows(observables, conditions=conditions),
         )
         return output_dir
 
-    score_records = []
-    nli_fn = make_hf_nli_fn(manifest['nli_model_id'])
-    for trial in selected:
+    for trial in run_trials:
         observable = _run_live_trial(
             trial,
             layout=layout,
@@ -804,14 +687,10 @@ def run_bias_experiment(
         observables.append(observable)
         append_jsonl(records_path, observable)
         write_json(output_dir / 'trials' / f"{trial['trial_id']}.json", observable)
-        trial_scores = _field_score_records(observable, nli_fn, conditions=conditions)
-        score_records.extend(trial_scores)
-        for record in trial_scores:
-            append_jsonl(records_path, record)
 
     write_aggregate_csv(
         output_dir / 'aggregate.csv',
-        _aggregate_rows(score_records, observables, conditions=conditions),
+        _aggregate_rows(observables, conditions=conditions),
     )
     return output_dir
 

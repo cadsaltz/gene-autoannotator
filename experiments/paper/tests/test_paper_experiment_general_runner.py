@@ -51,4 +51,4 @@ def test_dry_run_writes_general_manifest_and_aggregate(tmp_path, monkeypatch):
     with (output_dir / 'aggregate.csv').open(newline='') as handle:
         rows = list(csv.DictReader(handle))
     assert [row['condition'] for row in rows if row['scope'] == 'overall'] == list(run_bias_1_vs_3.CONDITIONS)
-    assert all(int(row['field_scores']) == 0 for row in rows)
+    assert all(int(row['n_trials']) == 1 for row in rows)
