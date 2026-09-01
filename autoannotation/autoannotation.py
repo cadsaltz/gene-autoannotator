@@ -22,7 +22,8 @@ from . import targets
 from . import utils
 
 from .models import MODEL_SUMMARY, MODEL_AGGREGATION, MODEL_CONSENSUS
-from .section_chunking import expand_sections, excerpt_max_chars_from_env
+from .section_excerpt_config import section_excerpt_config_from_env
+from .section_excerpt_router import prepare_section_excerpts
 from shared.job_progress import JobProgressEvent
 
 logging.basicConfig(format='%(asctime)s %(levelname).1s | %(message)s')
@@ -74,12 +75,15 @@ def collect_paper_sections(paper_manager, pmc_id):
     return sections
 
 
-def _sections_for_extraction(paper_manager, pmc_id, *, max_chars):
+def _sections_for_extraction(paper_manager, pmc_id, *, gene, name, config=None):
     raw_sections = collect_paper_sections(paper_manager, pmc_id)
-    from .section_chunking import section_chunking_enabled
-    if not section_chunking_enabled():
-        return raw_sections
-    return expand_sections(raw_sections, max_chars=max_chars)
+    cfg = config or section_excerpt_config_from_env()
+    prepared = []
+    for label, text in raw_sections:
+        prepared.extend(
+            prepare_section_excerpts(label, text, gene_id=gene, gene_name=name, config=cfg)
+        )
+    return [(p.label, p.text) for p in prepared]
 
 
 _PASS_PHASES = {
@@ -197,9 +201,8 @@ def run_paper_annotation_pass(
 
     # Pre-scan section availability for every selected paper before any LLM
     # call so progress totals are known up front.
-    max_chars = excerpt_max_chars_from_env()
     papers_sections = [
-        (pmc_id, _sections_for_extraction(paper_manager, pmc_id, max_chars=max_chars))
+        (pmc_id, _sections_for_extraction(paper_manager, pmc_id, gene=gene, name=name))
         for pmc_id in papers_to_analyze
     ]
     sections_total = sum(len(sections) for _, sections in papers_sections)
