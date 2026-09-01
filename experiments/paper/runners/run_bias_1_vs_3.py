@@ -108,14 +108,19 @@ def _empty_metrics() -> dict[str, Any]:
     }
 
 
-def _empty_observable(trial: dict[str, Any], *, conditions: tuple[str, ...]) -> dict[str, Any]:
+def _empty_observable(
+    trial: dict[str, Any],
+    *,
+    conditions: tuple[str, ...],
+    excerpt_text: str | None = None,
+) -> dict[str, Any]:
     observable: dict[str, Any] = {
         'record_type': 'trial_observable',
         'trial_id': trial['trial_id'],
         'trial_pool': trial['trial_pool'],
         'profile_id': trial['profile_id'],
         'section': trial['section'],
-        'excerpt_text': trial['excerpt_text'],
+        'excerpt_text': trial['excerpt_text'] if excerpt_text is None else excerpt_text,
         'outputs': {condition: None for condition in conditions},
         'condition_metrics': {
             condition: _empty_metrics() for condition in conditions
@@ -146,17 +151,47 @@ def _attach_metrics(
     return enriched
 
 
-def _run_biology_trial(
+def _biology_excerpts_for_trial(trial: dict[str, Any]):
+    from autoannotation.section_excerpt_router import prepare_section_excerpts
+
+    return prepare_section_excerpts(
+        trial['section'],
+        trial['excerpt_text'],
+        gene_id=trial['gene_id'],
+        gene_name=trial['gene_name'],
+    )
+
+
+def _excerpt_preparation_metadata(parts) -> dict[str, Any]:
+    return {
+        'tier': parts[0].tier if parts else 'pass',
+        'parts': [
+            {'label': part.label, 'tier': part.tier, 'chars': len(part.text)}
+            for part in parts
+        ],
+    }
+
+
+def _prepared_audit_excerpt_text(parts, *, original: str) -> str:
+    if len(parts) == 1 and parts[0].tier in {'pass', 'disabled'}:
+        return original
+    return ''.join(part.text for part in parts)
+
+
+def _run_biology_crowd_and_singles(
     trial: dict[str, Any],
     *,
+    excerpt_text: str,
+    section_type: str,
     layout: dict[str, Any],
     consensus_model: str,
     cache_root: Path,
-) -> dict[str, Any]:
-    from autoannotation import llms, organisms
+    profile,
+    observable: dict[str, Any],
+    include_consensus: bool,
+) -> None:
+    from autoannotation import llms
 
-    profile = organisms.resolve_profile(trial['profile_id'])
-    observable = _empty_observable(trial, conditions=layout['conditions'])
     crowd_handler = llms.LlmHandler(cache_root / 'crowd')
     candidates = []
 
@@ -168,9 +203,9 @@ def _run_biology_trial(
             lambda model=model: crowd_handler.get_llm_gene_info_json(
                 trial['gene_id'],
                 trial['gene_name'],
-                trial['excerpt_text'],
+                excerpt_text,
                 model,
-                section_type=trial['section'],
+                section_type=section_type,
                 organism_profile=profile,
             ),
         )
@@ -178,11 +213,96 @@ def _run_biology_trial(
         observable['outputs'][condition] = output
         observable['condition_metrics'][condition] = _attach_metrics(metrics, model=model)
 
+    if include_consensus:
+        consensus, metrics = _timed_handler_call(
+            crowd_handler,
+            lambda: crowd_handler.get_llm_consensus_json(
+                candidates,
+                excerpt=excerpt_text,
+                expected_gene_id=trial['gene_id'],
+                expected_name=trial['gene_name'],
+                model=consensus_model,
+                section_type=section_type,
+                organism_profile=profile,
+            ),
+        )
+        observable['outputs'][CONSENSUS_CONDITION] = consensus
+        observable['condition_metrics'][CONSENSUS_CONDITION] = _attach_metrics(
+            metrics,
+            model=consensus_model,
+        )
+
+    for label in layout['labels']:
+        model = layout['condition_models'][f'single_{label}']
+        condition = f'single_{label}'
+        handler = llms.LlmHandler(cache_root / condition)
+        output, metrics = _timed_handler_call(
+            handler,
+            lambda handler=handler, model=model: handler.get_llm_gene_info_json(
+                trial['gene_id'],
+                trial['gene_name'],
+                excerpt_text,
+                model,
+                section_type=section_type,
+                organism_profile=profile,
+            ),
+        )
+        observable['outputs'][condition] = output
+        observable['condition_metrics'][condition] = _attach_metrics(metrics, model=model)
+
+
+def _run_biology_part_trial(
+    trial: dict[str, Any],
+    part,
+    *,
+    layout: dict[str, Any],
+    consensus_model: str,
+    cache_root: Path,
+    profile,
+) -> dict[str, Any]:
+    observable = _empty_observable(trial, conditions=layout['conditions'])
+    _run_biology_crowd_and_singles(
+        trial,
+        excerpt_text=part.text,
+        section_type=part.label,
+        layout=layout,
+        consensus_model=consensus_model,
+        cache_root=cache_root,
+        profile=profile,
+        observable=observable,
+        include_consensus=True,
+    )
+    return observable
+
+
+def _merge_biology_chunk_observables(
+    trial: dict[str, Any],
+    chunk_observables: list[dict[str, Any]],
+    parts,
+    *,
+    layout: dict[str, Any],
+    consensus_model: str,
+    cache_root: Path,
+    profile,
+) -> dict[str, Any]:
+    from autoannotation import llms
+
+    audit_text = _prepared_audit_excerpt_text(parts, original=trial['excerpt_text'])
+    observable = _empty_observable(
+        trial,
+        conditions=layout['conditions'],
+        excerpt_text=audit_text,
+    )
+    crowd_handler = llms.LlmHandler(cache_root / 'merge')
+    candidates = [
+        chunk['outputs'][CONSENSUS_CONDITION]
+        for chunk in chunk_observables
+    ]
     consensus, metrics = _timed_handler_call(
         crowd_handler,
         lambda: crowd_handler.get_llm_consensus_json(
             candidates,
-            excerpt=trial['excerpt_text'],
+            excerpt=audit_text,
             expected_gene_id=trial['gene_id'],
             expected_name=trial['gene_name'],
             model=consensus_model,
@@ -195,25 +315,71 @@ def _run_biology_trial(
         metrics,
         model=consensus_model,
     )
+    _run_biology_crowd_and_singles(
+        trial,
+        excerpt_text=audit_text,
+        section_type=trial['section'],
+        layout=layout,
+        consensus_model=consensus_model,
+        cache_root=cache_root,
+        profile=profile,
+        observable=observable,
+        include_consensus=False,
+    )
+    return observable
 
-    for label in layout['labels']:
-        model = layout['condition_models'][f'single_{label}']
-        condition = f'single_{label}'
-        handler = llms.LlmHandler(cache_root / condition)
-        output, metrics = _timed_handler_call(
-            handler,
-            lambda handler=handler, model=model: handler.get_llm_gene_info_json(
-                trial['gene_id'],
-                trial['gene_name'],
-                trial['excerpt_text'],
-                model,
-                section_type=trial['section'],
-                organism_profile=profile,
-            ),
+
+def _run_biology_trial(
+    trial: dict[str, Any],
+    *,
+    layout: dict[str, Any],
+    consensus_model: str,
+    cache_root: Path,
+) -> dict[str, Any]:
+    from autoannotation import organisms
+
+    profile = organisms.resolve_profile(trial['profile_id'])
+    parts = _biology_excerpts_for_trial(trial)
+    prep_meta = _excerpt_preparation_metadata(parts)
+
+    if len(parts) == 1:
+        part = parts[0]
+        observable = _run_biology_part_trial(
+            trial,
+            part,
+            layout=layout,
+            consensus_model=consensus_model,
+            cache_root=cache_root,
+            profile=profile,
         )
-        observable['outputs'][condition] = output
-        observable['condition_metrics'][condition] = _attach_metrics(metrics, model=model)
+        observable['excerpt_text'] = _prepared_audit_excerpt_text(
+            parts,
+            original=trial['excerpt_text'],
+        )
+        observable['excerpt_preparation'] = prep_meta
+        return observable
 
+    chunk_observables = [
+        _run_biology_part_trial(
+            trial,
+            part,
+            layout=layout,
+            consensus_model=consensus_model,
+            cache_root=cache_root / f'part{index}',
+            profile=profile,
+        )
+        for index, part in enumerate(parts)
+    ]
+    observable = _merge_biology_chunk_observables(
+        trial,
+        chunk_observables,
+        parts,
+        layout=layout,
+        consensus_model=consensus_model,
+        cache_root=cache_root,
+        profile=profile,
+    )
+    observable['excerpt_preparation'] = prep_meta
     return observable
 
 
@@ -632,6 +798,9 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    from autoannotation.worker_env import load_worker_env_into_process
+
+    load_worker_env_into_process()
     args = _parse_args()
     distribution = parse_distribution(args.distribution) if args.distribution else None
     output_dir = run_bias_experiment(
