@@ -175,7 +175,44 @@ def _excerpt_preparation_metadata(parts) -> dict[str, Any]:
 def _prepared_audit_excerpt_text(parts, *, original: str) -> str:
     if len(parts) == 1 and parts[0].tier in {'pass', 'disabled'}:
         return original
-    return ''.join(part.text for part in parts)
+    if len(parts) == 1:
+        return parts[0].text
+    return '\n\n---\n\n'.join(part.text for part in parts)
+
+
+def _aggregate_condition_metrics(
+    metrics_list: list[dict[str, Any]],
+) -> dict[str, Any]:
+    usages = [metrics.get('usage') or {} for metrics in metrics_list]
+    known_tokens = [
+        usage.get('known_total_tokens')
+        for usage in usages
+        if usage.get('known_total_tokens') is not None
+    ]
+    call_count = sum(usage.get('calls') or 0 for usage in usages)
+    return {
+        'duration_sec': sum(metrics.get('duration_sec') or 0.0 for metrics in metrics_list),
+        'llm_duration_sec': sum(
+            metrics.get('llm_duration_sec') or 0.0 for metrics in metrics_list
+        ),
+        'model': next(
+            (metrics.get('model') for metrics in metrics_list if metrics.get('model')),
+            None,
+        ),
+        'usage': {
+            'calls': call_count,
+            'cache_hits': sum(usage.get('cache_hits') or 0 for usage in usages),
+            'known_total_tokens': sum(known_tokens),
+            'token_usage_complete': (
+                call_count == 0 or len(known_tokens) == call_count
+            ),
+            'records': [
+                record
+                for usage in usages
+                for record in (usage.get('records') or [])
+            ],
+        },
+    }
 
 
 def _run_biology_crowd_and_singles(
@@ -293,39 +330,34 @@ def _merge_biology_chunk_observables(
         conditions=layout['conditions'],
         excerpt_text=audit_text,
     )
-    crowd_handler = llms.LlmHandler(cache_root / 'merge')
-    candidates = [
-        chunk['outputs'][CONSENSUS_CONDITION]
-        for chunk in chunk_observables
-    ]
-    consensus, metrics = _timed_handler_call(
-        crowd_handler,
-        lambda: crowd_handler.get_llm_consensus_json(
-            candidates,
-            excerpt=audit_text,
-            expected_gene_id=trial['gene_id'],
-            expected_name=trial['gene_name'],
-            model=consensus_model,
-            section_type=trial['section'],
-            organism_profile=profile,
-        ),
-    )
-    observable['outputs'][CONSENSUS_CONDITION] = consensus
-    observable['condition_metrics'][CONSENSUS_CONDITION] = _attach_metrics(
-        metrics,
-        model=consensus_model,
-    )
-    _run_biology_crowd_and_singles(
-        trial,
-        excerpt_text=audit_text,
-        section_type=trial['section'],
-        layout=layout,
-        consensus_model=consensus_model,
-        cache_root=cache_root,
-        profile=profile,
-        observable=observable,
-        include_consensus=False,
-    )
+    merge_handler = llms.LlmHandler(cache_root / 'merge')
+
+    for condition in layout['conditions']:
+        part_metrics = [
+            chunk['condition_metrics'][condition]
+            for chunk in chunk_observables
+        ]
+        candidates = [
+            chunk['outputs'][condition]
+            for chunk in chunk_observables
+        ]
+        merged, merge_metrics = _timed_handler_call(
+            merge_handler,
+            lambda candidates=candidates: merge_handler.get_llm_consensus_json(
+                candidates,
+                excerpt=audit_text,
+                expected_gene_id=trial['gene_id'],
+                expected_name=trial['gene_name'],
+                model=consensus_model,
+                section_type=trial['section'],
+                organism_profile=profile,
+            ),
+        )
+        observable['outputs'][condition] = merged
+        observable['condition_metrics'][condition] = _aggregate_condition_metrics(
+            [*part_metrics, _attach_metrics(merge_metrics, model=consensus_model)],
+        )
+
     return observable
 
 
@@ -613,6 +645,10 @@ def run_bias_experiment(
     distribution=None,
     seed: int | None = None,
 ) -> Path:
+    from autoannotation.section_excerpt_config import section_excerpt_config_from_env
+    from autoannotation.worker_env import load_worker_env_into_process
+
+    load_worker_env_into_process()
     config_path = Path(config_path)
     config = load_yaml_config(config_path)
     experiment_id = config.get('experiment_id')
@@ -680,6 +716,7 @@ def run_bias_experiment(
             else 'run_local_isolated_caches_for_crowd_and_each_single_arm'
         ),
     }
+    excerpt_cfg = section_excerpt_config_from_env()
     manifest: dict[str, Any] = {
         'experiment_id': experiment_id,
         'run_id': run_id,
@@ -707,6 +744,11 @@ def run_bias_experiment(
         'condition_models': condition_models,
         'nli_model_id': (config.get('nli') or {}).get('model_id', 'roberta-large-mnli'),
         'cache_policy': cache_policy,
+        'section_excerpt_config': {
+            'chunking_enabled': excerpt_cfg.chunking_enabled,
+            'max_chars': excerpt_cfg.max_chars,
+            'retrieval_threshold_chars': excerpt_cfg.retrieval_threshold_chars,
+        },
         'timestamp': datetime.now(timezone.utc).isoformat(),
     }
     if 'biology' in trial_pools:
@@ -798,9 +840,6 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    from autoannotation.worker_env import load_worker_env_into_process
-
-    load_worker_env_into_process()
     args = _parse_args()
     distribution = parse_distribution(args.distribution) if args.distribution else None
     output_dir = run_bias_experiment(
