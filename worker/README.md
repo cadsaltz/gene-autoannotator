@@ -349,9 +349,13 @@ fleet configuration flow and `WORKER_MODEL_MEMORY_BUDGET_GB`.
 | `OLLAMA_ROUTER_URL` | set by worker | Router sidecar URL; propagated to job subprocesses. |
 | `AUTOANNOTATION_MODEL_MODE` | `performance` | Model stack: `performance`, `lite`, or `nano`. |
 | `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` | synced from fleet | Copied from `OLLAMA_FLEET_KEEP_ALIVE` after materialize. Bench `--keep-alive` overrides for that run. |
-| `AUTOANNOTATION_SECTION_CHUNKING` | `true` | Write-if-missing. `false` = July-style full sections (no excerpt splitting). |
+| `AUTOANNOTATION_SECTION_CHUNKING` | `true` | Write-if-missing. `false` = legacy bypass (full sections). See also `AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS` and `AUTOANNOTATION_SECTION_RETRIEVAL_THRESHOLD_CHARS`. |
+| `AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS` | `6000` | **`max`** — pass-through ceiling; max chars per chunk/grep part. |
+| `AUTOANNOTATION_SECTION_RETRIEVAL_THRESHOLD_CHARS` | `20000` | Grep tier when `len ≥` this; structural chunk when `max < len <` this (must be **>** `max`). |
 | `AUTOANNOTATION_OLLAMA_WARM_ALL` | unset | Set to `1` in serve mode to pre-load all required models at startup. |
 | `WORKER_JOB_EXECUTION` | `subprocess` | Parent execution mode: `subprocess` or `inprocess`. |
+
+**Section excerpt tiers:** pass-through → structural chunk → gene-centric grep are controlled by the three `AUTOANNOTATION_SECTION_*` keys above. Decision tree, example `worker.env` block, and paper-experiment sharing: [USAGE.md — Tiered section excerpts](../USAGE.md#tiered-section-excerpts).
 
 ### Paths and legacy budget
 

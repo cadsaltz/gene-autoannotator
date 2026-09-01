@@ -47,7 +47,7 @@ Useful shared env vars (annotation models / hosts):
 | `AUTOANNOTATION_SUMMARY_MODELS` | Comma-separated extractor models |
 | `AUTOANNOTATION_CONSENSUS_MODEL` | Consensus model |
 | `AUTOANNOTATION_AGGREGATION_MODEL` | Aggregation model |
-| `AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS` | Max characters of paper excerpt per extractor call (default 10000); oversized abstract/results/discussion text is split on paragraphs, then sentences; each chunk gets its own extractors + consensus |
+| `AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS` | Pass-through ceiling and max size per excerpt part (default 6000); see [Tiered section excerpts](#tiered-section-excerpts) |
 | `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` | e.g. `-1` / `forever`, `0`, `5m` |
 | `OLLAMA_HOST` | Ollama base URL |
 | `NCBI_API_KEY` | Optional NCBI rate-limit key |
@@ -397,7 +397,7 @@ python -m worker serve \
 
 With the dashboard on, verbose worker logs go to `worker-serve.log` (or `--log-file` / `WORKER_LOG_FILE`). Managed `ollama serve` stdout/stderr is teed to `ollama-server-<port>.log` next to that log file (else cwd), and the dashboard **OLLAMA** strip shows process status plus a parsed summary (phase, last `/api/chat`, alerts such as prompt truncation). Offline: `python -m worker.fleet.diagnose_ollama_log ollama-server-11434.log`.
 
-Managed fleet sets each `ollama serve` child's `OLLAMA_CONTEXT_LENGTH` to **`OLLAMA_FLEET_SLOT_CTX × OLLAMA_FLEET_PARALLEL`** (default slot **8192**) so each parallel lane keeps a full prompt window. Ollama splits total context across parallel slots; without slot×parallel sizing, `parallel=2` and `-c 8192` yields ~4096/slot and truncates long extraction prompts. **`OLLAMA_FLEET_SLOT_CTX` is the operator knob**; total context is derived, not overridden via `OLLAMA_CONTEXT_LENGTH` in `worker.env`. When **`AUTOANNOTATION_SECTION_CHUNKING=false`**, oversized abstract/results/discussion sections are sent whole — Ollama still truncates prompts that exceed per-slot context. Larger context may spill weights/KV to system RAM when VRAM is tight (slower, but jobs should complete).
+Managed fleet sets each `ollama serve` child's `OLLAMA_CONTEXT_LENGTH` to **`OLLAMA_FLEET_SLOT_CTX × OLLAMA_FLEET_PARALLEL`** (default slot **8192**) so each parallel lane keeps a full prompt window. Ollama splits total context across parallel slots; without slot×parallel sizing, `parallel=2` and `-c 8192` yields ~4096/slot and truncates long extraction prompts. **`OLLAMA_FLEET_SLOT_CTX` is the operator knob**; total context is derived, not overridden via `OLLAMA_CONTEXT_LENGTH` in `worker.env`. When **`AUTOANNOTATION_SECTION_CHUNKING=false`**, sections bypass the tiered router and are sent whole — Ollama still truncates prompts that exceed per-slot context (see [Tiered section excerpts](#tiered-section-excerpts)). Larger context may spill weights/KV to system RAM when VRAM is tight (slower, but jobs should complete).
 
 ### Bench options
 
@@ -441,7 +441,9 @@ Model residency uses env-authoritative caps (tier affects warnings/dashboard onl
 | `OLLAMA_FLEET_SERVERS` / `OLLAMA_FLEET_PARALLEL` | Homogeneous Ollama fleet shape |
 | `OLLAMA_FLEET_KEEP_ALIVE` | Write-if-missing default `0`; never overridden by VRAM tier. Copied to `AUTOANNOTATION_OLLAMA_KEEP_ALIVE` for jobs. Bench `--keep-alive` persists the override to `worker.env`. |
 | `OLLAMA_MAX_LOADED_MODELS` | Write-if-missing: model count when tier is `warm_stack`, else `1`; never tier-overwritten. |
-| `AUTOANNOTATION_SECTION_CHUNKING` | Write-if-missing default `true`. `false` = July-style full sections (no excerpt splitting); Ollama may still truncate when prompt exceeds slot context. |
+| `AUTOANNOTATION_SECTION_CHUNKING` | Write-if-missing default `true`. `false` = legacy bypass (full sections, no tiered excerpts); Ollama may still truncate when prompt exceeds slot context. |
+| `AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS` | **`max`** — pass-through ceiling and max chars per chunk/grep part (default `6000`). |
+| `AUTOANNOTATION_SECTION_RETRIEVAL_THRESHOLD_CHARS` | At or above this length → gene-centric grep tier; between `max` and this → structural chunk (default `20000`; must be **>** `max`). |
 | `WORKER_DASHBOARD_OLLAMA_PS` | `1` (default) = dashboard IN MEM sizes from `/api/ps`; `0` = in-flight dots only (no HTTP). |
 | `WORKER_DASHBOARD_OLLAMA_PS_INTERVAL_SEC` | Min seconds between `/api/ps` probes (default `5`). UI refresh stays faster; in-flight overlays every frame. |
 | `ANNOTATION_MEMORY_BUDGET_GB` | **Legacy alias** — read once and migrated to `WORKER_MODEL_MEMORY_BUDGET_GB` on persist |
@@ -451,6 +453,55 @@ Model residency uses env-authoritative caps (tier affects warnings/dashboard onl
 | `OLLAMA_FLEET_SLOT_CTX` | Per-parallel-slot context tokens (default `8192`); managed serve total = slot × `OLLAMA_FLEET_PARALLEL` (not an operator file key) |
 
 Design / fleet details: `worker/README.md`.
+
+### Tiered section excerpts
+
+Large abstract/results/discussion sections are routed through three tiers before each extractor call. Three env knobs in `worker.env` control the router (same keys for production annotation and paper experiments):
+
+| Variable | Default | Role |
+|----------|---------|------|
+| `AUTOANNOTATION_SECTION_CHUNKING` | `true` | Master switch; `false` = send full section always (legacy bypass) |
+| `AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS` | `6000` | **`max`** — pass-through ceiling; max size of every excerpt part |
+| `AUTOANNOTATION_SECTION_RETRIEVAL_THRESHOLD_CHARS` | `20000` | At or above this length → grep tier; between `max` and this → structural chunk |
+
+**Decision tree** (for each section):
+
+```
+if AUTOANNOTATION_SECTION_CHUNKING is false:
+    send full section (legacy)
+
+if len(section) <= max:
+    tier 1 — pass-through (single excerpt, full text)
+
+if len(section) < retrieval_threshold:
+    tier 2 — structural chunk (paragraph → sentence → hard truncate; each part ≤ max)
+
+else:
+    tier 3 — gene-centric grep windows around keyword hits (each part ≤ max)
+    (no hits → fall back to tier 2)
+```
+
+**Examples** with `max=6000`, `retrieval_threshold=20000`:
+
+| Section length | Tier | Result |
+|----------------|------|--------|
+| 4 000 | pass | `results` (full text) |
+| 15 000 | chunk | `results#1`, `results#2`, … (each ≤ 6000) |
+| 35 000 | grep | `results#grep…` (gene-centric windows, each ≤ 6000) |
+
+To disable grep without a separate flag, set `AUTOANNOTATION_SECTION_RETRIEVAL_THRESHOLD_CHARS` very high (e.g. `999999999`). Config loader rejects `retrieval_threshold ≤ max`.
+
+**Example `worker.env` block:**
+
+```bash
+AUTOANNOTATION_SECTION_CHUNKING=true
+AUTOANNOTATION_SECTION_EXCERPT_MAX_CHARS=6000
+AUTOANNOTATION_SECTION_RETRIEVAL_THRESHOLD_CHARS=20000
+```
+
+Grep window size, merge gap, and preamble behavior are **internal constants** (not env knobs); tweak in `autoannotation/section_grep_retrieval.py` if grep quality needs tuning.
+
+Paper experiment runners (`experiments/paper/runners/run_bias_1_vs_3.py`, etc.) load the same `worker.env` at startup via `load_worker_env_into_process()` (override path with `WORKER_ENV_FILE`), so biology trials use the same tier thresholds as production workers.
 
 ---
 
