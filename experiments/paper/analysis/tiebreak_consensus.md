@@ -64,6 +64,17 @@ nonsense artifact at 4 of 24; neither has an aggregate table and neither is
 valid for paper reporting. Preserve them only as blocker diagnostics, then
 rerun both ids after restarting or repairing Ollama.
 
+## 2026-09-03 full-run retry
+
+After Ollama again completed a minimal generation with the pinned
+`qwen3:0.6b` model, the invalid `paper-*-v1` partial directories were deleted.
+A fresh non-nonsense run, `full-non-nonsense-v1`, then stalled on its first
+LLM-backed case: it remained at 4 of 40 condition rows for more than eight
+minutes before `ollama ps` reported the model as `Stopping...`. The client was
+terminated and the sequential `full-nonsense-v1` run was not started. No fresh
+aggregate exists; the pilot values above remain the only valid aggregate
+headlines, including the apples minority-selection failure.
+
 ## Paper table inputs
 
 Use the `scope=overall,value=all` aggregate row for the headline table:
