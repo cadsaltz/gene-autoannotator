@@ -33,6 +33,37 @@ python -m experiments.paper.runners.run_tiebreak_consensus \
 Each command writes `manifest.json`, `records.jsonl`, and `aggregate.csv` under
 `experiments/paper/results/<experiment-id>/<run-id>/`.
 
+## 2026-09-03 live pilot and blocked full runs
+
+The pinned `qwen3:0.6b` model was pulled successfully. The live non-nonsense
+pilot used run id `pilot-limit3-20260903` and covered the first two exact cases
+plus `general-apples-paraphrase-001`.
+
+Pilot headline values (`scope=overall,value=all`, n=3):
+
+- consensus soft match: `0.6667`; extractor-0 baseline soft match: `0.3333`
+- necessity delta: `0.5000` across two necessity cases
+- LLM invoked rate: `0.3333`; expected-LLM calibration: `1.0000`
+- invention rate: `0.0000`
+
+Routing was calibrated in this pilot: exact cases used deterministic `2/3_exact`
+consensus and the apples paraphrase case used `llm_batch_merge`. Model quality
+was not calibrated to the desired answer, however: for candidates
+`apples are green and sour`, `red and delicious apples`, and
+`apples are delicious and red`, the LLM returned the extractor-0 minority
+`apples are green and sour`. Thus apples had `llm_invoked=true` but
+`match_soft=false`; this is a substantive pinned-model failure, not a routing
+failure.
+
+Full live runs were started with run ids `paper-non-nonsense-v1` (20 cases) and
+`paper-nonsense-v1` (12 cases), but neither completed. Ollama 0.33.1 became
+wedged with `qwen3:0.6b` shown as `Stopping...`: `/api/version` remained
+responsive while a minimal `/api/generate` probe timed out after 20 seconds.
+The non-nonsense artifact stopped at 14 of 40 expected condition rows and the
+nonsense artifact at 4 of 24; neither has an aggregate table and neither is
+valid for paper reporting. Preserve them only as blocker diagnostics, then
+rerun both ids after restarting or repairing Ollama.
+
 ## Paper table inputs
 
 Use the `scope=overall,value=all` aggregate row for the headline table:
