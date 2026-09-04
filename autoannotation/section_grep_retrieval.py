@@ -10,7 +10,13 @@ _PREAMBLE_HALF_CHARS = 250
 
 
 def _window_half_chars(max_chars: int) -> int:
-    return min(1000, max_chars // 2)
+    """Chars on each side of a keyword hit before merge/trim.
+
+    Uses one-third of ``max_chars`` so a single isolated hit yields a window
+    of roughly ``2 * max_chars / 3`` (plus the keyword), leaving headroom under
+    the ``max_chars`` ceiling for preamble / merged neighbors.
+    """
+    return max(1, max_chars // 3)
 
 
 def build_gene_keywords(
@@ -164,7 +170,8 @@ def _apply_preamble(
         parts[0] = combined
         return parts
 
-    parts[0] = combined[:max_chars]
+    # Truncating the preamble-prefixed string can drop the gene hit from
+    # ``first``. Prefer the hit-centered window over a truncated intro.
     return parts
 
 
