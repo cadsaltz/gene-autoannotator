@@ -1,67 +1,1143 @@
 {
   "fixture_id": "tiebreak_consensus_v1",
-  "selection_criteria": "Constructed merge cases with a single clear expected/majority label per trial. Target ~25% expect_llm=false (deterministic exact majority) and ~75% expect_llm=true (paraphrase / LLM path). Domains: biology + general. No excerpts. Expand to 20–40 cases before paper runs; starter rows below illustrate schema.",
+  "selection_criteria": "Constructed 32-case tie-break suite spanning deterministic exact majorities and LLM-resolved paraphrase or hard-split cases across general and biology domains.",
   "schema_version": 1,
   "items": [
-    {
-      "case_id": "general-apples-paraphrase-001",
-      "domain": "general",
-      "case_family": "paraphrase_majority",
-      "experiment_tags": ["tiebreak-non-nonsense"],
-      "field_key": "answer",
-      "expect_llm": true,
-      "expected": "apples are red and delicious",
-      "candidates": [
-        {"answer": "apples are green and sour"},
-        {"answer": "apples are red and sweet"},
-        {"answer": "most apples are delicious, especialy the red ones"}
-      ],
-      "notes": "Paper walkthrough example. Extractor 0 is minority error; 1 and 2 share red/delicious meaning."
-    },
     {
       "case_id": "general-exact-majority-001",
       "domain": "general",
       "case_family": "exact_majority",
-      "experiment_tags": ["tiebreak-non-nonsense"],
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
       "field_key": "answer",
       "expect_llm": false,
       "expected": "the sky is blue",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "exact",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "notes": "Deterministic exact majority with a conflicting color claim.",
       "candidates": [
-        {"answer": "the sky is blue"},
-        {"answer": "grass is green"},
-        {"answer": "the sky is blue"}
+        {
+          "answer": "the sky is blue"
+        },
+        {
+          "answer": "the sky is green"
+        },
+        {
+          "answer": "the sky is blue"
+        }
+      ]
+    },
+    {
+      "case_id": "general-exact-majority-002",
+      "domain": "general",
+      "case_family": "exact_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
       ],
-      "notes": "Deterministic exact majority; extractor 1 is the minority."
+      "field_key": "answer",
+      "expect_llm": false,
+      "expected": "water freezes at zero degrees Celsius",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "exact",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": null,
+      "notes": "Deterministic exact majority; extractor 0 supplies the minority error.",
+      "candidates": [
+        {
+          "answer": "liquid water becomes ice only below minus twenty Celsius"
+        },
+        {
+          "answer": "water freezes at zero degrees Celsius"
+        },
+        {
+          "answer": "water freezes at zero degrees Celsius"
+        }
+      ]
     },
     {
       "case_id": "general-nonsense-exact-001",
       "domain": "general",
       "case_family": "exact_majority_nonsense",
-      "experiment_tags": ["tiebreak-nonsense"],
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
       "field_key": "answer",
       "expect_llm": false,
       "expected": "zorblin",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "exact",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": null,
+      "notes": "Made-up exact majority; extractor 0 must conflict.",
       "candidates": [
-        {"answer": "zorblin"},
-        {"answer": "quantex"},
-        {"answer": "zorblin"}
+        {
+          "answer": "quantex"
+        },
+        {
+          "answer": "zorblin"
+        },
+        {
+          "answer": "zorblin"
+        }
+      ]
+    },
+    {
+      "case_id": "general-nonsense-exact-002",
+      "domain": "general",
+      "case_family": "exact_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
       ],
-      "notes": "Majority made-up word must be adopted; deterministic path."
+      "field_key": "answer",
+      "expect_llm": false,
+      "expected": "the flarnok is vesk-blue",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "exact",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "notes": "Phrase-level nonsense exact majority.",
+      "candidates": [
+        {
+          "answer": "the flarnok is vesk-blue"
+        },
+        {
+          "answer": "the flarnok is vesk-blue"
+        },
+        {
+          "answer": "the flarnok is drim-red"
+        }
+      ]
+    },
+    {
+      "case_id": "general-apples-paraphrase-001",
+      "domain": "general",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "apples are red and delicious",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": null,
+      "notes": "Paper walkthrough example.",
+      "candidates": [
+        {
+          "answer": "apples are green and sour"
+        },
+        {
+          "answer": "red and delicious apples"
+        },
+        {
+          "answer": "apples are delicious and red"
+        }
+      ]
+    },
+    {
+      "case_id": "general-paraphrase-majority-002",
+      "domain": "general",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "winter days are colder and shorter",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "notes": "Seasonal fact expressed by two differently worded majority candidates.",
+      "candidates": [
+        {
+          "answer": "winter days are shorter and colder"
+        },
+        {
+          "answer": "summer days are warmer and longer"
+        },
+        {
+          "answer": "colder winter days are also shorter"
+        }
+      ]
+    },
+    {
+      "case_id": "general-paraphrase-majority-003",
+      "domain": "general",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "libraries lend books to community members",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": null,
+      "notes": "Necessity-friendly public-library case with extractor 0 wrong.",
+      "candidates": [
+        {
+          "answer": "libraries sell furniture to private companies"
+        },
+        {
+          "answer": "community members borrow books from libraries"
+        },
+        {
+          "answer": "libraries loan books to members of the community"
+        }
+      ]
+    },
+    {
+      "case_id": "general-paraphrase-majority-004",
+      "domain": "general",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "iron is a strong magnetic metal",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "notes": "Material-property paraphrase majority.",
+      "candidates": [
+        {
+          "answer": "iron is a magnetic and strong metal"
+        },
+        {
+          "answer": "iron is a weak nonmagnetic gas"
+        },
+        {
+          "answer": "strong iron is a metal with magnetic properties"
+        }
+      ]
+    },
+    {
+      "case_id": "general-paraphrase-majority-005",
+      "domain": "general",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "dark clouds often bring heavy rain",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": null,
+      "candidates": [
+        {
+          "answer": "clear skies usually mean dry weather"
+        },
+        {
+          "answer": "heavy rain often follows dark clouds"
+        },
+        {
+          "answer": "dark clouds frequently bring rain that is heavy"
+        }
+      ],
+      "notes": "Weather paraphrases oppose an extractor 0 conflict."
+    },
+    {
+      "case_id": "general-paraphrase-majority-006",
+      "domain": "general",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "a compass needle points toward magnetic north",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "candidates": [
+        {
+          "answer": "magnetic north is where a compass needle points"
+        },
+        {
+          "answer": "a compass's needle aims toward magnetic north"
+        },
+        {
+          "answer": "a compass needle always points toward true south"
+        }
+      ],
+      "notes": "Navigation fact requiring semantic agreement."
+    },
+    {
+      "case_id": "general-paraphrase-majority-007",
+      "domain": "general",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "honey is sweet and made by bees",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": null,
+      "candidates": [
+        {
+          "answer": "salt is bitter and harvested from trees"
+        },
+        {
+          "answer": "bees make honey, which tastes sweet"
+        },
+        {
+          "answer": "sweet honey is produced by bees"
+        }
+      ],
+      "notes": "Food-origin case with extractor 0 as the minority."
     },
     {
       "case_id": "general-nonsense-paraphrase-001",
       "domain": "general",
       "case_family": "paraphrase_majority_nonsense",
-      "experiment_tags": ["tiebreak-nonsense"],
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
       "field_key": "answer",
       "expect_llm": true,
-      "expected": "the zorblin is quantex-bright",
+      "expected": "the zorblin is quantex bright",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": null,
       "candidates": [
-        {"answer": "widgets are purple"},
-        {"answer": "zorblin looks quantex-bright"},
-        {"answer": "the zorblin is quantex bright"}
+        {
+          "answer": "the zorblin is murvex dim"
+        },
+        {
+          "answer": "quantex brightness marks the zorblin"
+        },
+        {
+          "answer": "the bright zorblin has a quantex quality"
+        }
       ],
-      "notes": "Paraphrase majority of gibberish; LLM path; minority is real-looking but wrong relative to majority."
+      "notes": "Nonsense paraphrase majority with extractor 0 conflicting."
+    },
+    {
+      "case_id": "general-nonsense-paraphrase-002",
+      "domain": "general",
+      "case_family": "paraphrase_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "mivvles drift through the plaxen grove",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "candidates": [
+        {
+          "answer": "through the plaxen grove, mivvles drift"
+        },
+        {
+          "answer": "mivvles drift across the plaxen grove"
+        },
+        {
+          "answer": "mivvles burrow beneath the torven desert"
+        }
+      ],
+      "notes": "Invented entities and setting test semantic grouping."
+    },
+    {
+      "case_id": "general-nonsense-paraphrase-003",
+      "domain": "general",
+      "case_family": "paraphrase_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "a brenwick softly tolls at glim-hour",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": null,
+      "candidates": [
+        {
+          "answer": "a brenwick loudly whistles before dawn"
+        },
+        {
+          "answer": "at glim-hour, a brenwick tolls softly"
+        },
+        {
+          "answer": "a brenwick softly tolls during glim-hour"
+        }
+      ],
+      "notes": "Nonsense event paraphrases must defeat extractor 0."
+    },
+    {
+      "case_id": "general-nonsense-paraphrase-004",
+      "domain": "general",
+      "case_family": "paraphrase_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "veldrin cups hold warm snorple tea",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "candidates": [
+        {
+          "answer": "warm snorple tea is held in veldrin cups"
+        },
+        {
+          "answer": "veldrin cups contain snorple tea while warm"
+        },
+        {
+          "answer": "veldrin plates serve chilled quantex soup"
+        }
+      ],
+      "notes": "Made-up object and beverage phrase."
+    },
+    {
+      "case_id": "general-hard-split-null-001",
+      "domain": "general",
+      "case_family": "hard_split_null",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": null,
+      "agreement": {
+        "majority_count": 0,
+        "minority_count": 3,
+        "majority_mode": "none",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "candidates": [
+        {
+          "answer": "the package arrived on Monday"
+        },
+        {
+          "answer": "the package was cancelled before shipment"
+        },
+        {
+          "answer": "the package will be collected next Friday"
+        }
+      ],
+      "notes": "Three mutually incompatible general answers; no majority exists."
+    },
+    {
+      "case_id": "biology-exact-majority-001",
+      "domain": "biology",
+      "case_family": "exact_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": false,
+      "expected": "chromosomal replication initiator protein",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "exact",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "Rv0001",
+        "name": "dnaA"
+      },
+      "notes": "Biology exact-majority control for dnaA.",
+      "candidates": [
+        {
+          "gene_id": "Rv0001",
+          "name": "dnaA",
+          "function": "chromosomal replication initiator protein"
+        },
+        {
+          "gene_id": "Rv0001",
+          "name": "dnaA",
+          "function": "ribosomal RNA methyltransferase"
+        },
+        {
+          "gene_id": "Rv0001",
+          "name": "dnaA",
+          "function": "chromosomal replication initiator protein"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-exact-majority-002",
+      "domain": "biology",
+      "case_family": "exact_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": false,
+      "expected": "DNA gyrase subunit B",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "exact",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": {
+        "gene_id": "Rv0005",
+        "name": "gyrB"
+      },
+      "notes": "Extractor 0 is the minority in an exact function call.",
+      "candidates": [
+        {
+          "gene_id": "Rv0005",
+          "name": "gyrB",
+          "function": "cell division septum protein"
+        },
+        {
+          "gene_id": "Rv0005",
+          "name": "gyrB",
+          "function": "DNA gyrase subunit B"
+        },
+        {
+          "gene_id": "Rv0005",
+          "name": "gyrB",
+          "function": "DNA gyrase subunit B"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-nonsense-exact-001",
+      "domain": "biology",
+      "case_family": "exact_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": false,
+      "expected": "zorblin transferase",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "exact",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": {
+        "gene_id": "RvN001",
+        "name": "zrbA"
+      },
+      "notes": "Made-up exact biology function with extractor 0 conflicting.",
+      "candidates": [
+        {
+          "gene_id": "RvN001",
+          "name": "zrbA",
+          "function": "veltrax synthase"
+        },
+        {
+          "gene_id": "RvN001",
+          "name": "zrbA",
+          "function": "zorblin transferase"
+        },
+        {
+          "gene_id": "RvN001",
+          "name": "zrbA",
+          "function": "zorblin transferase"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-nonsense-exact-002",
+      "domain": "biology",
+      "case_family": "exact_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": false,
+      "expected": "quantex membrane flippase",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "exact",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "RvN002",
+        "name": "qtxF"
+      },
+      "notes": "Nonsense membrane-function exact majority.",
+      "candidates": [
+        {
+          "gene_id": "RvN002",
+          "name": "qtxF",
+          "function": "quantex membrane flippase"
+        },
+        {
+          "gene_id": "RvN002",
+          "name": "qtxF",
+          "function": "drimble RNA ligase"
+        },
+        {
+          "gene_id": "RvN002",
+          "name": "qtxF",
+          "function": "quantex membrane flippase"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-paraphrase-majority-001",
+      "domain": "biology",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "ATP-dependent DNA helicase involved in repair",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": {
+        "gene_id": "Rv1633",
+        "name": "uvrD1"
+      },
+      "notes": "Repair-helicase paraphrases oppose extractor 0.",
+      "candidates": [
+        {
+          "gene_id": "Rv1633",
+          "name": "uvrD1",
+          "function": "ATP-independent lipid phosphatase"
+        },
+        {
+          "gene_id": "Rv1633",
+          "name": "uvrD1",
+          "function": "DNA repair helicase powered by ATP"
+        },
+        {
+          "gene_id": "Rv1633",
+          "name": "uvrD1",
+          "function": "ATP-driven helicase participating in DNA repair"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-paraphrase-majority-002",
+      "domain": "biology",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "catalase-peroxidase that protects against oxidative stress",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "Rv1908c",
+        "name": "katG"
+      },
+      "notes": "Oxidative-stress function expressed with distinct wording.",
+      "candidates": [
+        {
+          "gene_id": "Rv1908c",
+          "name": "katG",
+          "function": "oxidative-stress protection provided by a catalase-peroxidase"
+        },
+        {
+          "gene_id": "Rv1908c",
+          "name": "katG",
+          "function": "ribosomal protein required for translation initiation"
+        },
+        {
+          "gene_id": "Rv1908c",
+          "name": "katG",
+          "function": "protective catalase-peroxidase acting against oxidative stress"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-paraphrase-majority-003",
+      "domain": "biology",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "RNA polymerase beta subunit for transcription",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": {
+        "gene_id": "Rv0667",
+        "name": "rpoB"
+      },
+      "notes": "Core transcription function with extractor 0 minority.",
+      "candidates": [
+        {
+          "gene_id": "Rv0667",
+          "name": "rpoB",
+          "function": "DNA polymerase proofreading subunit for replication"
+        },
+        {
+          "gene_id": "Rv0667",
+          "name": "rpoB",
+          "function": "beta subunit of RNA polymerase used in transcription"
+        },
+        {
+          "gene_id": "Rv0667",
+          "name": "rpoB",
+          "function": "transcriptional RNA polymerase beta component"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-paraphrase-majority-004",
+      "domain": "biology",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "secreted antigen involved in cell wall remodeling",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "Rv3875",
+        "name": "esxA"
+      },
+      "notes": "Secreted-protein function used as a semantic agreement trial.",
+      "candidates": [
+        {
+          "gene_id": "Rv3875",
+          "name": "esxA",
+          "function": "secreted antigen participating in remodeling of the cell wall"
+        },
+        {
+          "gene_id": "Rv3875",
+          "name": "esxA",
+          "function": "cytosolic enzyme for branched-chain amino acid synthesis"
+        },
+        {
+          "gene_id": "Rv3875",
+          "name": "esxA",
+          "function": "cell wall remodeling factor that is secreted as an antigen"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-paraphrase-majority-005",
+      "domain": "biology",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "fatty acid synthase required for mycolic acid production",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": {
+        "gene_id": "Rv2524c",
+        "name": "fas"
+      },
+      "notes": "Lipid-biosynthesis paraphrases must defeat extractor 0.",
+      "candidates": [
+        {
+          "gene_id": "Rv2524c",
+          "name": "fas",
+          "function": "DNA repair helicase involved in resolving replication forks"
+        },
+        {
+          "gene_id": "Rv2524c",
+          "name": "fas",
+          "function": "fatty acid synthase needed to produce mycolic acid"
+        },
+        {
+          "gene_id": "Rv2524c",
+          "name": "fas",
+          "function": "mycolic acid production requires this fatty acid synthase"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-paraphrase-majority-006",
+      "domain": "biology",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "iron storage protein that binds ferric ions",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "Rv1876",
+        "name": "bfrA"
+      },
+      "notes": "Iron-storage function with non-identical majority wording.",
+      "candidates": [
+        {
+          "gene_id": "Rv1876",
+          "name": "bfrA",
+          "function": "protein that stores iron by binding ferric ions"
+        },
+        {
+          "gene_id": "Rv1876",
+          "name": "bfrA",
+          "function": "ferric ion-binding protein responsible for iron storage"
+        },
+        {
+          "gene_id": "Rv1876",
+          "name": "bfrA",
+          "function": "membrane protease that degrades misfolded proteins"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-paraphrase-majority-007",
+      "domain": "biology",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "ribosomal protein supporting translation",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": {
+        "gene_id": "Rv0700",
+        "name": "rplA"
+      },
+      "notes": "Translation-function case with extractor 0 as minority.",
+      "candidates": [
+        {
+          "gene_id": "Rv0700",
+          "name": "rplA",
+          "function": "transcriptional repressor controlling oxidative stress genes"
+        },
+        {
+          "gene_id": "Rv0700",
+          "name": "rplA",
+          "function": "ribosomal protein that supports translation"
+        },
+        {
+          "gene_id": "Rv0700",
+          "name": "rplA",
+          "function": "ribosomal protein supporting cellular translation"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-nonsense-paraphrase-001",
+      "domain": "biology",
+      "case_family": "paraphrase_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "zorblinase that cleaves quantex rings",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": {
+        "gene_id": "RvN101",
+        "name": "zblQ"
+      },
+      "notes": "Nonsense enzyme function with extractor 0 conflict.",
+      "candidates": [
+        {
+          "gene_id": "RvN101",
+          "name": "zblQ",
+          "function": "plimvex chaperone that folds drozzle fibers"
+        },
+        {
+          "gene_id": "RvN101",
+          "name": "zblQ",
+          "function": "zorblinase enzyme that cleaves quantex rings"
+        },
+        {
+          "gene_id": "RvN101",
+          "name": "zblQ",
+          "function": "zorblinase enzyme cleaving quantex rings"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-nonsense-paraphrase-002",
+      "domain": "biology",
+      "case_family": "paraphrase_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "flarnok transporter for vesk particles",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "RvN102",
+        "name": "flnT"
+      },
+      "notes": "Invented transporter function requiring semantic matching.",
+      "candidates": [
+        {
+          "gene_id": "RvN102",
+          "name": "flnT",
+          "function": "flarnok transporter that carries vesk particles"
+        },
+        {
+          "gene_id": "RvN102",
+          "name": "flnT",
+          "function": "flarnok transporter moving vesk particles"
+        },
+        {
+          "gene_id": "RvN102",
+          "name": "flnT",
+          "function": "quibblet oxidase that consumes narvik droplets"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-nonsense-paraphrase-003",
+      "domain": "biology",
+      "case_family": "paraphrase_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "brenwick synthase producing glim polymers",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": true
+      },
+      "identity": {
+        "gene_id": "RvN103",
+        "name": "brwS"
+      },
+      "notes": "Made-up biosynthesis case with extractor 0 wrong.",
+      "candidates": [
+        {
+          "gene_id": "RvN103",
+          "name": "brwS",
+          "function": "trazzle hydrolase that dissolves fenwick capsules"
+        },
+        {
+          "gene_id": "RvN103",
+          "name": "brwS",
+          "function": "brenwick synthase that produces glim polymers"
+        },
+        {
+          "gene_id": "RvN103",
+          "name": "brwS",
+          "function": "brenwick synthase producing glim polymers"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-nonsense-paraphrase-004",
+      "domain": "biology",
+      "case_family": "paraphrase_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "snorple kinase activating veldrin signals",
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "RvN104",
+        "name": "snkV"
+      },
+      "notes": "Invented signaling function with paraphrase majority.",
+      "candidates": [
+        {
+          "gene_id": "RvN104",
+          "name": "snkV",
+          "function": "snorple kinase that activates veldrin signals"
+        },
+        {
+          "gene_id": "RvN104",
+          "name": "snkV",
+          "function": "snorple kinase activating veldrin signals"
+        },
+        {
+          "gene_id": "RvN104",
+          "name": "snkV",
+          "function": "glomper ligase assembling praxil chains"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-hard-split-null-001",
+      "domain": "biology",
+      "case_family": "hard_split_null",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": null,
+      "agreement": {
+        "majority_count": 0,
+        "minority_count": 3,
+        "majority_mode": "none",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "Rv9999",
+        "name": "hypX"
+      },
+      "notes": "Three mutually incompatible biological functions; no majority exists.",
+      "candidates": [
+        {
+          "gene_id": "Rv9999",
+          "name": "hypX",
+          "function": "ATP-dependent DNA helicase involved in genome repair"
+        },
+        {
+          "gene_id": "Rv9999",
+          "name": "hypX",
+          "function": "secreted serine protease that degrades host proteins"
+        },
+        {
+          "gene_id": "Rv9999",
+          "name": "hypX",
+          "function": "membrane transporter importing inorganic phosphate"
+        }
+      ]
     }
   ]
 }

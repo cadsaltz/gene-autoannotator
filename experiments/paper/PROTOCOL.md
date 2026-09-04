@@ -44,8 +44,8 @@ Status: `planned` | `fixtures-ready` | `runnable` | `analyzed` | `paper-locked`
 |----|-------|---------------|--------|--------|-------|
 | `bias-1-vs-3-small` | Caden | Multi-model + consensus reduces bias/hallucination vs 1 small LLM | runnable | `configs/bias-1-vs-3-small.yaml` | Primary runner; frozen `bias_cluster_v1` pool (15 sections, 12 genes). Dry-run verified; live pilot/paper10 not yet analyzed — see `analysis/bias_split_cost.md` |
 | `bias-3-small-vs-gemini` | Ethan | Crowd of small models competitive with / complementary to a strong single model | planned | `configs/bias-3-small-vs-gemini.yaml` | |
-| `tiebreak-nonsense` | Caden | Consensus adopts majority answers including made-up words; LLM reconciles nonsense paraphrases (trust extractors, no excerpt) | planned | `configs/tiebreak-nonsense.yaml` | Shared suite `tiebreak_consensus_v1`; see `docs/superpowers/specs/2026-09-03-tiebreak-consensus-experiments-design.md` |
-| `tiebreak-non-nonsense` | Caden | Consensus resolves exact + paraphrase majorities; beats extractor-0 baseline on minority-error cases | planned | `configs/tiebreak-non-nonsense.yaml` | Same suite/runner; config filter only |
+| `tiebreak-nonsense` | Caden | Consensus adopts majority answers including made-up words; LLM reconciles nonsense paraphrases (trust extractors, no excerpt) | fixtures-ready | `configs/tiebreak-nonsense.yaml` | Shared suite `tiebreak_consensus_v1`; see `docs/superpowers/specs/2026-09-03-tiebreak-consensus-experiments-design.md` |
+| `tiebreak-non-nonsense` | Caden | Consensus resolves exact + paraphrase majorities; beats extractor-0 baseline on minority-error cases | fixtures-ready | `configs/tiebreak-non-nonsense.yaml` | Same suite/runner; config filter only |
 | `cost-benefit-1-vs-3` | Caden | Quality gain vs compute cost of 1 vs 3 extractors (+ consensus) | runnable | `configs/cost-benefit-1-vs-3.yaml` | Derive from bias run (`derive_cost_benefit_1_vs_3`); shares `bias_cluster_v1`. Awaiting live pilot/paper10 |
 | `cost-benefit-3-vs-gemini` | Ethan | Cost/quality of 3-small vs Gemini; with/without supplied summaries | planned | `configs/cost-benefit-3-vs-gemini.yaml` | |
 | `split-vs-not` | Caden | How often field decisions are unanimous vs split before tie-break | runnable | `configs/split-vs-not.yaml` | Derive from bias run (`derive_split_vs_not`); shares `bias_cluster_v1`. Awaiting live pilot/paper10 |
@@ -81,3 +81,4 @@ Use stable condition ids in JSONL, e.g.:
 | 2026-08-24 | Task 5: primary bias runner and dry-run wiring smoke; `bias-1-vs-3-small` → `runnable` |
 | 2026-08-24 | Task 8: split/cost derives runnable; operator commands in `analysis/bias_split_cost.md`; live pilot/paper10 pending |
 | 2026-09-03 | Tie-break design approved: shared constructed suite, excerpt=None, biology+general prompts, ~25/75 det/LLM mix; spec `2026-09-03-tiebreak-consensus-experiments-design.md` |
+| 2026-09-03 | Task 3: merged and validated 32-case `tiebreak_consensus_v1` fixture; both tie-break experiments → `fixtures-ready` |
