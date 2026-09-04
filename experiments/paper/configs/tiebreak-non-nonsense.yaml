@@ -5,13 +5,13 @@ claim: >
   Hybrid consensus resolves non-nonsense paraphrase and exact majorities into
   a single labeled expected answer; consensus beats always-taking extractor 0
   when extractor 0 is the minority error.
-status: planned
+status: runnable
 config_filter:
   experiment_tags:
     - tiebreak-non-nonsense
 
 models:
-  consensus: null   # TODO: pin exact Ollama tag at fixture-ready time
+  consensus: qwen3:0.6b
   extractors: []
 
 fixtures:
