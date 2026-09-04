@@ -130,3 +130,32 @@ def test_validate_extractor_zero_minority_is_not_soft_match():
         ],
     }
     assert any("extractor_0 minority" in error for error in validate_case(case))
+
+
+def test_validate_paraphrase_requires_majority_pair_not_minority_bridge():
+    """Minority↔majority Jaccard must not satisfy the paraphrase rule alone."""
+    case = {
+        "case_id": "majority-pair-only",
+        "case_family": "paraphrase_majority",
+        "field_key": "answer",
+        "expect_llm": True,
+        "expected": "apples are red and delicious",
+        "agreement": {"extractor_0_is_minority": True},
+        "candidates": [
+            {"answer": "red delicious apples are great"},
+            {"answer": "apples are red and tasty"},
+            {"answer": "delicious fruit grows on trees"},
+        ],
+    }
+    errors = validate_case(case)
+    assert any("majority candidate pair" in error for error in errors)
+
+
+def test_all_fixture_cases_validate():
+    items = load_tiebreak_fixture(FIXTURE)
+    invalid = [
+        (item["case_id"], validate_case(item))
+        for item in items
+        if validate_case(item)
+    ]
+    assert invalid == []

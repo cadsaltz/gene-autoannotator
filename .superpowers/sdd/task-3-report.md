@@ -1,3 +1,114 @@
+# Task 3 report: tie-break fixture assembly
+
+## Status
+
+Complete. The 32 generated candidate cases were merged into the versioned
+fixture, validated, covered by focused tests, documented in the protocol, and
+committed.
+
+## Commit
+
+- `3af8a41 feat(paper): fill tie-break fixture from subagent-generated candidates`
+- Base supplied for this task: `0edad03f83147019f1af3df08401f2950d5c4a2e`
+
+## Implemented
+
+- Added `experiments/paper/runners/tiebreak_fixture.py`:
+  - `load_tiebreak_fixture(path)` loads and checks the fixture wrapper.
+  - `filter_cases(items, experiment_tags)` requires all requested tags.
+  - `validate_case(case)` enforces candidate shape, exact-majority,
+    paraphrase-path, null-split, and extractor-0-minority rules.
+- Added `experiments/paper/tests/test_tiebreak_fixture.py` with eight focused
+  tests covering fixture composition and each validator behavior.
+- Merged all 32 locked briefs and generated candidate files into
+  `experiments/paper/fixtures/constructed/tiebreak_consensus_v1.json`.
+- Preserved every locked `expected` and `agreement` value.
+- Updated both tie-break experiment rows in `experiments/paper/PROTOCOL.md`
+  from `planned` to `fixtures-ready` and added a revision-log entry.
+
+## Candidate validation repairs
+
+Initial validation found seven candidate-wording issues. Only candidate field
+wording in the merged fixture was changed:
+
+- `general-exact-majority-002`: made extractor 0 clearly fail the soft match.
+- `general-nonsense-paraphrase-003`
+- `biology-paraphrase-majority-007`
+- `biology-nonsense-paraphrase-001`
+- `biology-nonsense-paraphrase-002`
+- `biology-nonsense-paraphrase-003`
+- `biology-nonsense-paraphrase-004`
+
+For the six paraphrase cases, majority wording was minimally adjusted so the
+intended pair reaches `token_jaccard >= 0.35` while avoiding an exact majority.
+
+## Verification
+
+TDD red check:
+
+- Focused test collection failed with the expected
+  `ModuleNotFoundError` before `tiebreak_fixture.py` existed.
+
+Final command:
+
+```text
+/home/caden-saltzberg/projects/sch/gene-autoannotator/.venv/bin/python \
+  -m pytest experiments/paper/tests/test_tiebreak_fixture.py -v
+```
+
+Result:
+
+- `8 passed in 1.30s`
+- Independent fixture audit: `32/32 valid`
+- Every case returned `validate_case(case) == []`.
+- Locked `expected` and `agreement` values matched the briefs.
+- `git diff --check` passed.
+- IDE diagnostics reported no linter errors in the new Python files.
+
+## Remaining worktree state
+
+- `experiments/paper/fixtures/constructed/generated_raw/` remains untracked as
+  requested and was not included in the commit.
+- `.superpowers/sdd/task-2-report.md` was already modified before this task and
+  was left untouched and uncommitted.
+- This report was written after the implementation commit, so it is also not
+  included in `3af8a41`.
+
+## Review follow-up: paraphrase Jaccard majority-pair rule
+
+Addressed the Important Task 3 review finding: paraphrase validation now
+requires `token_jaccard >= 0.35` among **non-minority (majority) candidates**
+only, not across all three candidate pairs.
+
+### Code changes
+
+- Added `_extractor_zero_is_minority(case)` to centralize agreement/notes checks.
+- Added `_majority_candidate_values(...)`:
+  - When extractor 0 is minority, majority pool = `candidates[1:]` (indices 1–2).
+  - Otherwise, majority pool = candidates that `match_soft` to `expected`.
+  - If soft-match finds fewer than two majors, fall back to agreement shape:
+    drop the candidate with lowest token-jaccard to `expected`.
+- `validate_case` paraphrase check now pairs only within the majority pool.
+- Error message updated to say "majority candidate pair".
+
+### Regression tests
+
+- `test_validate_paraphrase_requires_majority_pair_not_minority_bridge`:
+  synthetic case where minority↔majority Jaccard passes (0.429) but
+  majority↔majority fails (0.0); `validate_case` reports an error.
+- `test_all_fixture_cases_validate`: all 32 merged fixture cases return `[]`.
+
+### Verification
+
+```text
+/home/caden-saltzberg/projects/sch/gene-autoannotator/.venv/bin/python \
+  -m pytest experiments/paper/tests/test_tiebreak_fixture.py -v
+```
+
+Result: `10 passed in 2.03s`
+
+All 32 fixture cases still validate cleanly under the corrected rule — no
+candidate wording changes were required.
 # Task 3 Report: Add `worker run` one-shot mode
 
 **Date:** 2026-08-24  

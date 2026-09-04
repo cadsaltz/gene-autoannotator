@@ -8,6 +8,41 @@ from typing import Any, Iterable
 from autoannotation.consensus import token_jaccard
 from experiments.paper.runners.tiebreak_matching import match_exact, match_soft
 
+PARAPHRASE_JACCARD = 0.35
+
+
+def _extractor_zero_is_minority(case: dict[str, Any]) -> bool:
+    agreement = case.get("agreement")
+    if isinstance(agreement, dict) and agreement.get("extractor_0_is_minority") is True:
+        return True
+    notes = str(case.get("notes", "")).lower()
+    return "extractor 0" in notes and any(
+        term in notes for term in ("minority", "conflict", "wrong")
+    )
+
+
+def _majority_candidate_values(
+    values: list[Any],
+    expected: Any,
+    *,
+    extractor_zero_is_minority: bool,
+) -> list[Any]:
+    """Return the non-minority candidate values for paraphrase validation."""
+    if extractor_zero_is_minority:
+        return values[1:]
+
+    soft_matches = [value for value in values if match_soft(value, expected)]
+    if len(soft_matches) >= 2:
+        return soft_matches
+
+    # Fall back to agreement shape: one minority, two majority — drop lowest
+    # token_jaccard to expected when soft-match does not identify both majors.
+    minority_index = min(
+        range(len(values)),
+        key=lambda index: token_jaccard(str(values[index]), str(expected)),
+    )
+    return [value for index, value in enumerate(values) if index != minority_index]
+
 
 def load_tiebreak_fixture(path: str | Path) -> list[dict[str, Any]]:
     """Load the item list from a versioned tie-break fixture."""
@@ -83,27 +118,22 @@ def validate_case(case: dict[str, Any]) -> list[str]:
                 f"{case_id}: paraphrase family would create a deterministic "
                 "exact majority"
             )
-        if not any(
-            token_jaccard(str(left), str(right)) >= 0.35
-            for left, right in combinations(values, 2)
+        majority_values = _majority_candidate_values(
+            values,
+            expected,
+            extractor_zero_is_minority=_extractor_zero_is_minority(case),
+        )
+        if len(majority_values) < 2 or not any(
+            token_jaccard(str(left), str(right)) >= PARAPHRASE_JACCARD
+            for left, right in combinations(majority_values, 2)
         ):
             errors.append(
-                f"{case_id}: paraphrase family requires a candidate pair "
-                "with token_jaccard >= 0.35"
+                f"{case_id}: paraphrase family requires a majority candidate pair "
+                f"with token_jaccard >= {PARAPHRASE_JACCARD}"
             )
 
-    agreement = case.get("agreement")
-    extractor_zero_is_minority = (
-        isinstance(agreement, dict)
-        and agreement.get("extractor_0_is_minority") is True
-    )
-    notes = str(case.get("notes", "")).lower()
-    notes_require_minority = (
-        "extractor 0" in notes
-        and any(term in notes for term in ("minority", "conflict", "wrong"))
-    )
     if (
-        (extractor_zero_is_minority or notes_require_minority)
+        _extractor_zero_is_minority(case)
         and match_soft(values[0], expected)
     ):
         errors.append(
