@@ -1,26 +1,34 @@
 experiment_id: tiebreak-non-nonsense
-config_version: 0
+config_version: 1
 owner: Caden
 claim: >
-  When extractors disagree with plausible alternatives, the tie-breaker selects
-  the evidence-supported value (or abstains) rather than inventing a fourth answer.
+  Hybrid consensus resolves non-nonsense paraphrase and exact majorities into
+  a single labeled expected answer; consensus beats always-taking extractor 0
+  when extractor 0 is the minority error.
 status: planned
+config_filter:
+  experiment_tags:
+    - tiebreak-non-nonsense
 
 models:
+  consensus: null   # TODO: pin exact Ollama tag at fixture-ready time
   extractors: []
-  consensus: null
 
 fixtures:
-  constructed: fixtures/constructed/PLACEHOLDER_splits.json
-  gold: fixtures/gold/PLACEHOLDER.json
+  constructed: fixtures/constructed/tiebreak_consensus_v1.json
 
 conditions:
-  - tiebreak_on_plausible_splits
+  - no_consensus_pick_extractor_0
+  - hybrid_consensus
 
 metrics:
-  - supported_choice_rate
-  - unsupported_invention_rate
-  - abstain_rate
+  - consensus_match_soft_rate
+  - baseline_match_soft_rate
+  - necessity_delta
+  - llm_invoked_rate
+  - expect_llm_calibration_rate
+  - invention_rate
 
 notes: |
-  Planted splits should be labeled with which candidate(s) are supported by the excerpt.
+  Shared suite with tiebreak-nonsense. Includes general apples-style examples.
+  See docs/superpowers/specs/2026-09-03-tiebreak-consensus-experiments-design.md

@@ -1,0 +1,67 @@
+{
+  "fixture_id": "tiebreak_consensus_v1",
+  "selection_criteria": "Constructed merge cases with a single clear expected/majority label per trial. Target ~25% expect_llm=false (deterministic exact majority) and ~75% expect_llm=true (paraphrase / LLM path). Domains: biology + general. No excerpts. Expand to 20–40 cases before paper runs; starter rows below illustrate schema.",
+  "schema_version": 1,
+  "items": [
+    {
+      "case_id": "general-apples-paraphrase-001",
+      "domain": "general",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": ["tiebreak-non-nonsense"],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "apples are red and delicious",
+      "candidates": [
+        {"answer": "apples are green and sour"},
+        {"answer": "apples are red and sweet"},
+        {"answer": "most apples are delicious, especialy the red ones"}
+      ],
+      "notes": "Paper walkthrough example. Extractor 0 is minority error; 1 and 2 share red/delicious meaning."
+    },
+    {
+      "case_id": "general-exact-majority-001",
+      "domain": "general",
+      "case_family": "exact_majority",
+      "experiment_tags": ["tiebreak-non-nonsense"],
+      "field_key": "answer",
+      "expect_llm": false,
+      "expected": "the sky is blue",
+      "candidates": [
+        {"answer": "the sky is blue"},
+        {"answer": "grass is green"},
+        {"answer": "the sky is blue"}
+      ],
+      "notes": "Deterministic exact majority; extractor 1 is the minority."
+    },
+    {
+      "case_id": "general-nonsense-exact-001",
+      "domain": "general",
+      "case_family": "exact_majority_nonsense",
+      "experiment_tags": ["tiebreak-nonsense"],
+      "field_key": "answer",
+      "expect_llm": false,
+      "expected": "zorblin",
+      "candidates": [
+        {"answer": "zorblin"},
+        {"answer": "quantex"},
+        {"answer": "zorblin"}
+      ],
+      "notes": "Majority made-up word must be adopted; deterministic path."
+    },
+    {
+      "case_id": "general-nonsense-paraphrase-001",
+      "domain": "general",
+      "case_family": "paraphrase_majority_nonsense",
+      "experiment_tags": ["tiebreak-nonsense"],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "the zorblin is quantex-bright",
+      "candidates": [
+        {"answer": "widgets are purple"},
+        {"answer": "zorblin looks quantex-bright"},
+        {"answer": "the zorblin is quantex bright"}
+      ],
+      "notes": "Paraphrase majority of gibberish; LLM path; minority is real-looking but wrong relative to majority."
+    }
+  ]
+}

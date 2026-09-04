@@ -1,26 +1,35 @@
 experiment_id: tiebreak-nonsense
-config_version: 0
+config_version: 1
 owner: Caden
 claim: >
-  The consensus / tie-breaker rejects nonsense or unsupported candidate values
-  instead of adopting them into the merged annotation.
+  Hybrid consensus adopts clear majority answers—including made-up nonsense
+  words—and an LLM tie-breaker reconciles paraphrase majorities into one
+  expected answer without reading source excerpts (trust-the-extractors).
 status: planned
+config_filter:
+  experiment_tags:
+    - tiebreak-nonsense
 
 models:
-  extractors: []          # optional if candidates are constructed
-  consensus: null
+  consensus: null   # TODO: pin exact Ollama tag at fixture-ready time
+  extractors: []    # unused — candidates are constructed
 
 fixtures:
-  constructed: fixtures/constructed/PLACEHOLDER_nonsense.json
-  gold: fixtures/gold/PLACEHOLDER.json
+  constructed: fixtures/constructed/tiebreak_consensus_v1.json
 
 conditions:
-  - tiebreak_on_nonsense_candidates
+  - no_consensus_pick_extractor_0
+  - hybrid_consensus
 
 metrics:
-  - nonsense_rejection_rate
-  - nonsense_adoption_rate
-  - null_or_abstain_rate
+  - consensus_match_soft_rate
+  - baseline_match_soft_rate
+  - necessity_delta
+  - llm_invoked_rate
+  - expect_llm_calibration_rate
+  - invention_rate
+  - nonsense_majority_adoption_rate
 
 notes: |
-  Prefer constructed candidates with known-bad strings so ground truth is by design.
+  Shared suite with tiebreak-non-nonsense (approach one). excerpt=None always.
+  See docs/superpowers/specs/2026-09-03-tiebreak-consensus-experiments-design.md
