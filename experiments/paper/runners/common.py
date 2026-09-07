@@ -7,7 +7,7 @@ import random
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -27,6 +27,8 @@ PROFILE_ALIASES = {
     'tcruzi': 'tcruzi-clbrener',
     't-cruzi': 'tcruzi-clbrener',
 }
+
+GENERAL_CATEGORIES = frozenset({'truthful', 'grounded', 'trap'})
 
 
 def resolve_profile_id(value: str) -> str:
@@ -73,11 +75,202 @@ def load_paper_snapshot_fixture(path: Path) -> list[dict[str, Any]]:
     return items
 
 
+def infer_trial_pool(item: dict[str, Any]) -> str:
+    category = item.get('category')
+    if category in GENERAL_CATEGORIES or 'focus_question' in item:
+        return 'general'
+    return 'biology'
+
+
+def load_experiment_items(
+    fixture_config: dict[str, Any],
+    *,
+    fixture_path: Callable[[str], Path],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    fixture_documents: dict[str, Any] = {}
+    items: list[dict[str, Any]] = []
+
+    papers_path = fixture_config.get('papers')
+    if papers_path:
+        path = fixture_path(papers_path)
+        document = json.loads(path.read_text())
+        fixture_documents['papers'] = document
+        items.extend(
+            {**item, 'trial_pool': 'biology'}
+            for item in load_paper_snapshot_fixture(path)
+        )
+
+    general_path = fixture_config.get('general')
+    if general_path:
+        path = fixture_path(general_path)
+        document = json.loads(path.read_text())
+        fixture_documents['general'] = document
+        items.extend(
+            {**item, 'trial_pool': 'general'}
+            for item in load_paper_snapshot_fixture(path)
+        )
+
+    if not items:
+        raise ValueError('fixtures must include papers and/or general')
+
+    genes_path = fixture_config.get('genes')
+    if genes_path:
+        fixture_documents['genes'] = json.loads(fixture_path(genes_path).read_text())
+
+    return items, fixture_documents
+
+
+def extraction_fields_from_manifest(manifest: dict[str, Any]) -> tuple[str, ...]:
+    fields = manifest.get('extraction_fields')
+    if fields:
+        return tuple(str(field) for field in fields)
+    return BIOLOGY_FIELDS
+
+
+def field_kinds_from_manifest(
+    manifest: dict[str, Any],
+    *,
+    default: dict[str, str],
+) -> dict[str, str]:
+    kinds = manifest.get('field_kinds')
+    if kinds:
+        return {str(key): str(value) for key, value in kinds.items()}
+    return default
+
+
+CONSENSUS_CONDITION = 'consensus_D'
+
+
+def extractor_slot_label(index: int) -> str:
+    if index < 26:
+        return chr(ord('A') + index)
+    return str(index + 1)
+
+
+def build_condition_layout(extractor_models: list[str]) -> dict[str, Any]:
+    if len(extractor_models) < 2:
+        raise ValueError(
+            f'models.extractors must contain at least two model tags, got {len(extractor_models)}',
+        )
+    labels = [extractor_slot_label(index) for index in range(len(extractor_models))]
+    extractor_conditions = tuple(f'extractor_{label}' for label in labels)
+    single_conditions = tuple(f'single_{label}' for label in labels)
+    conditions = extractor_conditions + (CONSENSUS_CONDITION,) + single_conditions
+    condition_models: dict[str, str] = {}
+    for label, model in zip(labels, extractor_models):
+        condition_models[f'extractor_{label}'] = model
+        condition_models[f'single_{label}'] = model
+    return {
+        'labels': labels,
+        'conditions': conditions,
+        'extractor_conditions': extractor_conditions,
+        'single_conditions': single_conditions,
+        'consensus_condition': CONSENSUS_CONDITION,
+        'crowd_conditions': extractor_conditions + (CONSENSUS_CONDITION,),
+        'primary_conditions': single_conditions + (CONSENSUS_CONDITION,),
+        'condition_models': condition_models,
+    }
+
+
+def layout_from_conditions(
+    conditions: list[str] | tuple[str, ...],
+    *,
+    condition_models: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    extractor_conditions = tuple(
+        condition for condition in conditions if condition.startswith('extractor_')
+    )
+    single_conditions = tuple(
+        condition for condition in conditions if condition.startswith('single_')
+    )
+    if len(extractor_conditions) < 2:
+        raise ValueError(
+            f'conditions must include at least two extractor_* entries, got {extractor_conditions!r}',
+        )
+    labels = [condition.removeprefix('extractor_') for condition in extractor_conditions]
+    return {
+        'labels': labels,
+        'conditions': tuple(conditions),
+        'extractor_conditions': extractor_conditions,
+        'single_conditions': single_conditions,
+        'consensus_condition': CONSENSUS_CONDITION,
+        'crowd_conditions': extractor_conditions + (CONSENSUS_CONDITION,),
+        'primary_conditions': single_conditions + (CONSENSUS_CONDITION,),
+        'condition_models': dict(condition_models or {}),
+    }
+
+
+def conditions_from_manifest(manifest: dict[str, Any]) -> tuple[str, ...]:
+    conditions = manifest.get('conditions')
+    if conditions:
+        return tuple(str(condition) for condition in conditions)
+    extractors = (manifest.get('model_tags') or {}).get('extractors') or ()
+    return build_condition_layout(list(extractors))['conditions']
+
+
+def extractor_conditions_from_manifest(manifest: dict[str, Any]) -> tuple[str, ...]:
+    extractors = (manifest.get('model_tags') or {}).get('extractors') or ()
+    return build_condition_layout(list(extractors))['extractor_conditions']
+
+
+def condition_layout_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    stored_conditions = manifest.get('conditions')
+    stored_models = manifest.get('condition_models') or {}
+    extractors = list((manifest.get('model_tags') or {}).get('extractors') or ())
+    if stored_conditions:
+        layout = layout_from_conditions(stored_conditions, condition_models=stored_models)
+    elif len(extractors) >= 2:
+        layout = build_condition_layout(extractors)
+    else:
+        layout = build_condition_layout(['unknown-a', 'unknown-b', 'unknown-c'])
+    consensus_model = (manifest.get('model_tags') or {}).get('consensus')
+    if consensus_model:
+        layout = dict(layout)
+        models = dict(layout['condition_models'])
+        models[CONSENSUS_CONDITION] = consensus_model
+        layout['condition_models'] = models
+    return layout
+
+
 def _group_by_profile(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in items:
         grouped[item['profile_id']].append(item)
     return dict(grouped)
+
+
+def validate_distribution(
+    items: list[dict[str, Any]],
+    distribution: dict[str, int],
+    *,
+    fixture_config: dict[str, Any] | None = None,
+) -> None:
+    from collections import Counter
+
+    available = Counter(item['profile_id'] for item in items)
+    missing = {
+        profile_id: count
+        for profile_id, count in distribution.items()
+        if available.get(profile_id, 0) == 0
+    }
+    if not missing:
+        return
+
+    hints = []
+    if fixture_config is not None and not fixture_config.get('general'):
+        if any(key in GENERAL_CATEGORIES for key in missing):
+            hints.append(
+                'config is missing fixtures.general '
+                '(expected fixtures/general_snapshots/general_cluster_v1.json)',
+            )
+    if any(key in GENERAL_CATEGORIES for key in missing):
+        hints.append(
+            'general categories require branch experiments/paper-bias-split-cost or newer',
+        )
+    hint_text = f" {' '.join(hints)}" if hints else ''
+    raise ValueError(
+        f'distribution keys not present in loaded fixtures: {sorted(missing)}.{hint_text}',
+    )
 
 
 def select_trials(

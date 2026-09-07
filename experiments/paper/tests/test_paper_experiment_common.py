@@ -19,8 +19,8 @@ def _items(profile_counts: dict[str, int]) -> list[dict]:
 
 
 def test_select_trials_default_slice():
-    items = [{'trial_id': f't{i}'} for i in range(15)]
-    got = common.select_trials(items, 10, max_trials=15)
+    items = [{'trial_id': f't{i}'} for i in range(300)]
+    got = common.select_trials(items, 10, max_trials=300)
     assert [x['trial_id'] for x in got] == [f't{i}' for i in range(10)]
 
 
@@ -52,3 +52,24 @@ def test_parse_distribution_aliases():
 
 def test_field_values_equal_array_order_insensitive():
     assert common.field_values_equal(['A', 'B'], ['b', 'a'], kind='array')
+
+
+def test_build_condition_layout_grows_with_extractor_count():
+    layout = common.build_condition_layout([
+        'model-a',
+        'model-b',
+        'model-c',
+        'model-d',
+    ])
+    assert layout['conditions'] == (
+        'extractor_A',
+        'extractor_B',
+        'extractor_C',
+        'extractor_D',
+        'consensus_D',
+        'single_A',
+        'single_B',
+        'single_C',
+        'single_D',
+    )
+    assert layout['condition_models']['extractor_D'] == 'model-d'

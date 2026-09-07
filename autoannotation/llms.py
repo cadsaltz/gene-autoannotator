@@ -181,6 +181,31 @@ def _ollama_keep_alive():
     return parsed
 
 
+def _ollama_num_ctx() -> int:
+    """Per-request context window in tokens for direct Ollama chat calls.
+
+    Paper experiments often talk to a standalone ``ollama serve`` that ignores
+    ``worker.env`` fleet knobs. Prefer an explicit annotation override, then the
+    fleet slot size, then Ollama's own context env, else 8192 (fleet default).
+    """
+    for key in (
+        'AUTOANNOTATION_OLLAMA_NUM_CTX',
+        'OLLAMA_FLEET_SLOT_CTX',
+        'OLLAMA_CONTEXT_LENGTH',
+    ):
+        raw = os.getenv(key, '').strip()
+        if not raw:
+            continue
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ValueError(f'Invalid {key}={raw!r}') from exc
+        if value < 1:
+            raise ValueError(f'Invalid {key}={raw!r}')
+        return value
+    return 8192
+
+
 def chat_response_content(response, *, role: str, model: str) -> str:
     try:
         content = response['message']['content']
@@ -275,7 +300,10 @@ def ollama_chat(
     kwargs = {
         'model': model,
         'messages': messages,
-        'options': {'temperature': 0},
+        'options': {
+            'temperature': 0,
+            'num_ctx': _ollama_num_ctx(),
+        },
         'keep_alive': _ollama_keep_alive(),
     }
     if json_schema is not None:
@@ -303,14 +331,17 @@ def _nullable_bool(description):
 def _biology_properties(organism_label='the organism'):
     return {
         'function': _nullable_string(
-            'What the gene product does for the cell (one or two concise sentences).'
+            'Gene product function: what this gene product does for the cell '
+            '(one or two concise sentences). Not a summary of the paper or section; '
+            'gene-specific only.'
         ),
         'functional_category': {
             'type': ['array', 'null'],
             'items': {'type': 'string'},
             'description': (
-                'One or more general cellular functions (e.g., cell wall, respiration, '
-                'virulence, DNA replication/repair). Use null if not supported.'
+                'Functional category (GO-oriented tags): one or more short labels '
+                '(e.g., cell wall, respiration, virulence, DNA replication/repair). '
+                'Not a summary of the excerpt. Use null if not supported.'
             ),
         },
         'drug_susc_impact': _nullable_string(
@@ -452,6 +483,10 @@ Rules:
 - Use JSON null for any field this excerpt does NOT explicitly support about gene {0}.
 - Do not guess, infer from gene class, or use general organism knowledge.
 - Do not use empty strings for unknown fields; use null.
+- Do not summarize the paper, section, methods, results overview, or pathway panel.
+- function must be a gene-specific claim about gene {0} (named {1}) only. If the excerpt
+  discusses many genes and does not explicitly support a claim about this gene product, use null.
+- functional_category must be short GO-oriented tags about this gene product, not a paper summary.
 - For essential_in_vitro and essential_in_vivo, use true or false only when this excerpt reports
   direct experimental evidence (e.g., deletion, transposon, CRISPRi). Otherwise use null.
 - Prefer null over weak or speculative statements.
@@ -481,6 +516,11 @@ Rules:
 - Use JSON null for any field this excerpt does NOT explicitly support about gene {0}.
 - Do not guess, infer from gene class, or use general organism knowledge.
 - Do not use empty strings for unknown fields; use null.
+- Do not summarize the paper, section, methods, results overview, or pathway panel.
+- function must be a gene-specific claim about ortholog gene {0} (named {1}) only. If the
+  excerpt discusses many genes and does not explicitly support a claim about this gene product,
+  use null.
+- functional_category must be short GO-oriented tags about this gene product, not a paper summary.
 - For essential_in_vitro and essential_in_vivo, use true or false only when this excerpt reports
   direct experimental evidence (e.g., deletion, transposon, CRISPRi). Otherwise use null.
 - Prefer null over weak or speculative statements.
@@ -496,10 +536,7 @@ Excerpt:
 
 def _section_fields_block(organism_profile, field_defs_profile=None):
     if organism_profile is None:
-        return (
-            'function, functional_category, drug_susc_impact, infection_impact, '
-            'essential_in_vitro, essential_in_vivo'
-        )
+        return field_defs.format_fields_for_prompt(field_defs.DEFAULT_ANNOTATION_FIELD_DEFS)
     schema_profile = field_defs_profile or organism_profile
     llm_fields = field_defs.llm_schema_fields(schema_profile)
     return field_defs.format_fields_for_prompt(
@@ -733,9 +770,54 @@ class LlmHandler:
         )
         return json.dumps(stamped)
 
+    @staticmethod
+    def _null_section_annotation_json(
+        *,
+        gene_id,
+        gene_name,
+        organism_profile=None,
+        field_defs_profile=None,
+    ):
+        """Identity-only annotation used when the model returns unusable JSON."""
+        payload = {
+            'gene_id': gene_id,
+            'name': gene_name if gene_name is not None else gene_id,
+        }
+        schema_profile = field_defs_profile or organism_profile
+        if schema_profile is not None:
+            biology_fields = field_defs.resolve_effective_fields(schema_profile)
+        else:
+            biology_fields = field_defs.DEFAULT_ANNOTATION_FIELD_DEFS
+        for field_def in biology_fields:
+            payload[field_def.key] = None
+        return json.dumps(
+            normalize_annotation_fields(
+                payload,
+                require_biology_keys=True,
+                organism_profile=organism_profile,
+                field_defs_profile=field_defs_profile,
+            ),
+        )
+
     def __init__(self, cache_dir='./.cache'):
         self.cache_dir = cache_dir
         self.usage_records = []
+        self.prompt_records: list[dict[str, Any]] = []
+
+    def _record_prompt(
+        self,
+        role: str,
+        model: str,
+        prompt: str,
+        *,
+        sent_to_ollama: bool,
+    ) -> None:
+        self.prompt_records.append({
+            'role': role,
+            'model': model,
+            'prompt': prompt,
+            'sent_to_ollama': sent_to_ollama,
+        })
 
     def _usage_from_response(self, response, duration_sec):
         input_tokens = _response_value(response, 'prompt_eval_count')
@@ -949,6 +1031,9 @@ class LlmHandler:
             field_defs_profile=field_defs_profile,
             organism_profile=organism_profile,
         )
+        self._record_prompt(
+            'section_consensus', model, prompt, sent_to_ollama=True,
+        )
         response = ollama_chat(
             model=model,
             messages=[{'role': 'user', 'content': prompt}],
@@ -1064,6 +1149,9 @@ class LlmHandler:
                 model, cache_prompt, batch_schema, role='section_consensus',
             )
             if cached_payload is not None:
+                self._record_prompt(
+                    'section_consensus', model, cache_prompt, sent_to_ollama=False,
+                )
                 self._record_usage(
                     'section_consensus', model, cached_dur, cache_hit=True,
                     usage=self._read_cache_usage(model, cache_prompt, batch_schema),
@@ -1153,6 +1241,9 @@ class LlmHandler:
 
         cached_response, cached_dur = self._read_cache(model, prompt, json_schema)
         if cached_response is not None:
+            self._record_prompt(
+                'section_summary', model, prompt, sent_to_ollama=False,
+            )
             log.debug((
                 f'Returning cached section-summary response ({len(cached_response)} chars)'
             ))
@@ -1172,7 +1263,11 @@ class LlmHandler:
         log.debug((
             f'Submitting section-summary job (length {len(prompt)} chars) to LLM (model {model})'
         ))
+        duration_sec = 0.0
         try:
+            self._record_prompt(
+                'section_summary', model, prompt, sent_to_ollama=True,
+            )
             response = ollama_chat(
                 model=model,
                 messages=[
@@ -1220,7 +1315,19 @@ class LlmHandler:
                     evidence_mode=evidence_mode, ortholog_context=ortholog_context,
                     field_defs_profile=field_defs_profile,
                 )
-            raise RuntimeError(f'Failed to get response back from {model}') from exc
+            # Truncated / invalid JSON (often from a full context window) should not
+            # abort a multi-trial experiment. Keep identity and null the biology fields.
+            log.warning(
+                'Soft-failing section_summary for %s/%s on %s after retry: %s',
+                gene_id, gene_name, model, exc,
+            )
+            response_text = self._null_section_annotation_json(
+                gene_id=gene_id,
+                gene_name=gene_name,
+                organism_profile=organism_profile,
+                field_defs_profile=field_defs_profile,
+            )
+            self._record_usage('section_summary', model, duration_sec, usage={})
         return response_text, duration_sec
 
     def _invalidate_cache(self, model, prompt, json_schema):

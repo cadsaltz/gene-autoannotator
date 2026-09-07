@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from experiments.paper.runners.common import (
+    CONSENSUS_CONDITION,
     append_jsonl,
+    condition_layout_from_manifest,
     load_yaml_config,
     new_run_id,
     stable_json_hash,
@@ -18,21 +20,7 @@ from experiments.paper.runners.common import (
 
 PAPER_DIR = Path(__file__).resolve().parents[1]
 EXPERIMENT_ID = 'cost-benefit-1-vs-3'
-
-PRIMARY_CONDITIONS = (
-    'single_A',
-    'single_B',
-    'single_C',
-    'crowd',
-    'consensus_D',
-)
-EXTRACTOR_CONDITIONS = (
-    'extractor_A',
-    'extractor_B',
-    'extractor_C',
-)
-CONDITIONS = PRIMARY_CONDITIONS + EXTRACTOR_CONDITIONS
-CROWD_CONDITIONS = EXTRACTOR_CONDITIONS + ('consensus_D',)
+CROWD_CONDITION = 'crowd'
 
 
 def _git_sha() -> str:
@@ -125,12 +113,20 @@ def _aggregate_rows(
     field_scores: list[dict[str, Any]],
     observables: list[dict[str, Any]],
     *,
+    layout: dict[str, Any],
     include_extractors: bool = True,
 ) -> list[dict[str, Any]]:
-    conditions = CONDITIONS if include_extractors else PRIMARY_CONDITIONS
+    primary_conditions = layout['single_conditions'] + (CROWD_CONDITION, CONSENSUS_CONDITION)
+    extractor_conditions = layout['extractor_conditions']
+    crowd_conditions = layout['crowd_conditions']
+    conditions = (
+        primary_conditions + extractor_conditions
+        if include_extractors
+        else primary_conditions
+    )
     rows = []
     for condition in conditions:
-        score_condition = 'consensus_D' if condition == 'crowd' else condition
+        score_condition = CONSENSUS_CONDITION if condition == CROWD_CONDITION else condition
         condition_scores = [
             record for record in field_scores if record['condition'] == score_condition
         ]
@@ -139,7 +135,7 @@ def _aggregate_rows(
         tokens: list[int] = []
         for observable in observables:
             metrics_by_condition = observable.get('condition_metrics') or {}
-            cost_conditions = CROWD_CONDITIONS if condition == 'crowd' else (condition,)
+            cost_conditions = crowd_conditions if condition == CROWD_CONDITION else (condition,)
             condition_metrics = [
                 metrics_by_condition.get(cost_condition)
                 for cost_condition in cost_conditions
@@ -163,6 +159,14 @@ def _aggregate_rows(
 
         rows.append({
             'condition': condition,
+            'model': next(
+                (
+                    (observable.get('condition_metrics') or {}).get(condition, {}).get('model')
+                    for observable in observables
+                    if (observable.get('condition_metrics') or {}).get(condition, {}).get('model')
+                ),
+                None,
+            ),
             'unsupported_rate': _rate(condition_scores, 'unsupported'),
             'supported_rate': _rate(condition_scores, 'supported'),
             'null_rate': _rate(condition_scores, 'null'),
@@ -177,10 +181,14 @@ def _aggregate_rows(
     return rows
 
 
-def _crowd_wall_time_per_trial(observable: dict[str, Any]) -> float | None:
+def _crowd_wall_time_per_trial(
+    observable: dict[str, Any],
+    *,
+    crowd_conditions: tuple[str, ...],
+) -> float | None:
     metrics_by_condition = observable.get('condition_metrics') or {}
     durations: list[float] = []
-    for condition in CROWD_CONDITIONS:
+    for condition in crowd_conditions:
         metrics = metrics_by_condition.get(condition)
         duration = _metric_value(metrics, 'duration_sec')
         if duration is None:
@@ -189,18 +197,25 @@ def _crowd_wall_time_per_trial(observable: dict[str, Any]) -> float | None:
     return sum(durations)
 
 
-def verify_crowd_timing(observables: list[dict[str, Any]]) -> dict[str, Any]:
+def verify_crowd_timing(
+    observables: list[dict[str, Any]],
+    *,
+    crowd_conditions: tuple[str, ...],
+) -> dict[str, Any]:
     """Return crowd-vs-single wall-time check (None durations skipped)."""
     violations = []
     checked_trials = 0
     for observable in observables:
-        crowd_time = _crowd_wall_time_per_trial(observable)
+        crowd_time = _crowd_wall_time_per_trial(
+            observable,
+            crowd_conditions=crowd_conditions,
+        )
         if crowd_time is None:
             continue
         checked_trials += 1
         metrics_by_condition = observable.get('condition_metrics') or {}
-        for condition in PRIMARY_CONDITIONS:
-            if not condition.startswith('single_'):
+        for condition in observable.get('outputs', {}):
+            if not str(condition).startswith('single_'):
                 continue
             duration = _metric_value(
                 metrics_by_condition.get(condition), 'duration_sec',
@@ -244,15 +259,23 @@ def derive_cost_benefit_1_vs_3(
             f'expected experiment_id {EXPERIMENT_ID!r}, got {config.get("experiment_id")!r}',
         )
 
+    layout = condition_layout_from_manifest(parent_manifest)
+    primary_conditions = layout['single_conditions'] + (CROWD_CONDITION, CONSENSUS_CONDITION)
+    crowd_conditions = layout['crowd_conditions']
+
     records = _load_bias_records(bias_run_dir)
     observables = _load_trial_observables(records)
     field_scores = _load_field_scores(records)
     aggregate_rows = _aggregate_rows(
         field_scores,
         observables,
+        layout=layout,
         include_extractors=include_extractors,
     )
-    timing_check = verify_crowd_timing(observables)
+    timing_check = verify_crowd_timing(
+        observables,
+        crowd_conditions=crowd_conditions,
+    )
 
     run_id = run_id or new_run_id()
     output_dir = PAPER_DIR / 'results' / EXPERIMENT_ID / run_id
@@ -282,6 +305,8 @@ def derive_cost_benefit_1_vs_3(
         'conditions': [
             row['condition'] for row in aggregate_rows
         ],
+        'primary_conditions': list(primary_conditions),
+        'crowd_conditions': list(crowd_conditions),
         'crowd_timing_check': timing_check,
         'timestamp': datetime.now(timezone.utc).isoformat(),
     }

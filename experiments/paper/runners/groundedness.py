@@ -94,7 +94,6 @@ def truncate_premise_for_nli(
     budget = max_length - len(hyp_ids) - special
     premise_tokens_before = len(prem_ids)
     if budget <= 0:
-        # Hypothesis alone fills the window; keep empty premise rather than crashing.
         return '', True, premise_tokens_before
     if len(prem_ids) <= budget:
         return premise, False, premise_tokens_before
@@ -111,8 +110,10 @@ def make_hf_nli_fn(model_id: str = 'roberta-large-mnli'):
     max_length = int(tokenizer.model_max_length)
     if max_length > 1_000_000:
         max_length = int(nli.model.config.max_position_embeddings)
-    # RoBERTa position embeddings are typically 514 including specials; keep a safe cap.
-    max_length = min(max_length, int(getattr(nli.model.config, 'max_position_embeddings', max_length)))
+    max_length = min(
+        max_length,
+        int(getattr(nli.model.config, 'max_position_embeddings', max_length)),
+    )
 
     def _fn(premise: str, hypothesis: str):
         truncated_premise, premise_truncated, premise_tokens_before = truncate_premise_for_nli(

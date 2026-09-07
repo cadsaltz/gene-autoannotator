@@ -42,7 +42,8 @@ Status: `planned` | `fixtures-ready` | `runnable` | `analyzed` | `paper-locked`
 
 | ID | Owner | Claim (short) | Status | Config | Notes |
 |----|-------|---------------|--------|--------|-------|
-| `bias-1-vs-3-small` | Caden | Multi-model + consensus reduces bias/hallucination vs 1 small LLM | runnable | `configs/bias-1-vs-3-small.yaml` | Primary runner; frozen `bias_cluster_v1` pool (15 sections, 12 genes). Dry-run verified; live pilot/paper10 not yet analyzed — see `analysis/bias_split_cost.md` |
+| `bias-1-vs-3-small` | Caden | Multi-model + consensus reduces bias/hallucination vs 1 small LLM | runnable | `configs/bias-1-vs-3-small.yaml` | Primary runner; frozen `bias_cluster_v1` pool (15 sections). Multi-organism extension: `configs/bias-multi-organism-v2.yaml` + `bias_cluster_v2` (300 sections). Use `--distribution profile:count` to subsample by organism. |
+| `bias-general-1-vs-3` | Caden | Same 1-vs-3 setup on general passages (truthful / grounded / trap) | runnable | `configs/bias-general-1-vs-3.yaml` | Frozen `general_cluster_v1` (75 trials). Build via `scripts/build_general_cluster_v1.py`. `--distribution truthful:5` etc. |
 | `bias-3-small-vs-gemini` | Ethan | Crowd of small models competitive with / complementary to a strong single model | planned | `configs/bias-3-small-vs-gemini.yaml` | |
 | `tiebreak-nonsense` | Caden | Consensus adopts majority answers including made-up words; LLM reconciles nonsense paraphrases (trust extractors, no excerpt) | runnable | `configs/tiebreak-nonsense.yaml` | Shared suite and runner; 2026-09-03 full live run blocked by wedged Ollama; see `analysis/tiebreak_consensus.md` |
 | `tiebreak-non-nonsense` | Caden | Consensus resolves exact + paraphrase majorities; beats extractor-0 baseline on minority-error cases | runnable | `configs/tiebreak-non-nonsense.yaml` | Live n=3 pilot recorded; pinned model failed apples paraphrase; full run blocked by Ollama |
@@ -80,6 +81,7 @@ Use stable condition ids in JSONL, e.g.:
 | 2026-08-24 | Task 4: frozen `bias_cluster_v1` fixture pool; bias/split/cost configs → `fixtures-ready` |
 | 2026-08-24 | Task 5: primary bias runner and dry-run wiring smoke; `bias-1-vs-3-small` → `runnable` |
 | 2026-08-24 | Task 8: split/cost derives runnable; operator commands in `analysis/bias_split_cost.md`; live pilot/paper10 pending |
+| 2026-08-25 | Multi-organism `bias_cluster_v2` fixture (100 MTB + 100 E. coli + 100 T. cruzi); runner `--distribution` for organism mix at run time |
 | 2026-09-03 | Tie-break design approved: shared constructed suite, excerpt=None, biology+general prompts, ~25/75 det/LLM mix; spec `2026-09-03-tiebreak-consensus-experiments-design.md` |
 | 2026-09-03 | Task 3: merged and validated 32-case `tiebreak_consensus_v1` fixture; both tie-break experiments → `fixtures-ready` |
 | 2026-09-03 | Task 5: tie-break runner, scored dry-run path, and operator notes; both tie-break experiments → `runnable` |

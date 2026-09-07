@@ -20,10 +20,13 @@ models:
 fixtures:
   papers: fixtures/paper_snapshots/bias_cluster_v2.json
   genes: fixtures/gene_sets/bias_cluster_v2.json
+  general: fixtures/general_snapshots/general_cluster_v1.json
 
-# Default full-pool run. Override at CLI, e.g.:
+# Default full-pool biology run. Override at CLI, e.g.:
 #   --distribution mtb-h37rv:5 --distribution ecoli-k12-mg1655:5 --distribution tcruzi-clbrener:5
-#   --distribution mtb-h37rv:100
+#   --distribution mtb-h37rv:5 --distribution ecoli:5 --distribution tcruzi:5 \
+#   --distribution truthful:2 --distribution grounded:2 --distribution trap:1 \
+#   --run-id mixed20
 distribution:
   mtb-h37rv: 100
   ecoli-k12-mg1655: 100
@@ -51,4 +54,5 @@ metrics:
 
 notes: |
   bias_cluster_v2 fixture built via experiments/paper/scripts/build_multi_organism_fixture.py.
-  Use --distribution on the runner to subsample by organism without editing the fixture.
+  general_cluster_v1 via experiments/paper/scripts/build_general_cluster_v1.py.
+  Use --distribution for biology organisms and/or general categories in one run.

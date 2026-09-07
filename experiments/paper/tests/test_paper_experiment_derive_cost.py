@@ -8,6 +8,7 @@ from experiments.paper.runners.common import BIOLOGY_FIELDS
 
 AGGREGATE_COLUMNS = (
     'condition',
+    'model',
     'unsupported_rate',
     'supported_rate',
     'null_rate',

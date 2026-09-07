@@ -44,12 +44,14 @@ class AnnotationFieldDef:
 REQUIRED_DEFAULT_FIELDS = (
     AnnotationFieldDef(
         key='function',
-        label='Function',
+        label='Gene product function',
         description=(
-            'What the gene product does for the cell (one or two concise sentences). '
-            'State mechanism and whether it performs vs regulates a process. '
-            'Do not stuff category labels or citation IDs into this field; put citations '
-            'only if essential to the claim. Use null if the excerpt does not support this.'
+            'What this gene product does for the cell (one or two concise sentences). '
+            'State the gene-specific mechanism and whether it performs vs regulates a '
+            'process. This is not a summary of the paper, section, methods, or pathway '
+            'panel. Do not describe other genes. Do not stuff category labels or citation '
+            'IDs into this field; put citations only if essential to the claim. Use null '
+            'if the excerpt does not explicitly support a claim about this gene product.'
         ),
         type='string',
         required=True,
@@ -58,15 +60,16 @@ REQUIRED_DEFAULT_FIELDS = (
     ),
     AnnotationFieldDef(
         key='functional_category',
-        label='Functional category',
+        label='Functional category (GO-oriented tags)',
         description=(
-            'One or more short functional labels (about 2–6 words each). Prefer '
+            'One or more short GO-oriented functional tags (about 2–6 words each). Prefer '
             'Gene-Ontology-friendly phrasing such as "regulation of translation", '
             '"protein folding", "copper ion transport", "mRNA export from nucleus". '
             'If the gene regulates a process, say "regulation of X" rather than bare "X". '
-            'One concept per list item. Do not include PMIDs, PMC IDs, locus IDs, or long '
-            'sentences. Prefer a small set of high-confidence labels over a long speculative '
-            'list. Use null if not supported.'
+            'One concept per list item. This is not a summary of the excerpt or paper. '
+            'Do not include PMIDs, PMC IDs, locus IDs, or long sentences. Prefer a small '
+            'set of high-confidence labels over a long speculative list. Use null if not '
+            'supported.'
         ),
         type='array:string',
         required=True,
@@ -297,7 +300,7 @@ def format_fields_for_prompt(fields, *, species_name=None, canonical_name=None):
             species_name=species_name,
             canonical_name=canonical_name,
         )
-        lines.append(f'- {field_def.key}: {description}')
+        lines.append(f'- {field_def.key} ({field_def.label}): {description}')
     return '\n'.join(lines)
 
 
