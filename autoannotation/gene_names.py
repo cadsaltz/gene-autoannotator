@@ -1,3 +1,4 @@
+import errno
 import json
 import logging
 import os
@@ -145,11 +146,22 @@ def lookup_cached_gene_name(profile, locus, cache_dir=DEFAULT_GENE_NAME_CACHE_DI
 
 
 def write_cached_gene_name(record, cache_dir=DEFAULT_GENE_NAME_CACHE_DIR):
-    os.makedirs(cache_dir, exist_ok=True)
-    payload = _read_cache(cache_dir, record.profile_id)
-    payload[record.locus] = record.to_dict()
-    with open(_cache_path(cache_dir, record.profile_id), 'w', encoding='utf8') as cache_file:
-        json.dump(payload, cache_file, indent=2, sort_keys=True)
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        payload = _read_cache(cache_dir, record.profile_id)
+        payload[record.locus] = record.to_dict()
+        with open(_cache_path(cache_dir, record.profile_id), 'w', encoding='utf8') as cache_file:
+            json.dump(payload, cache_file, indent=2, sort_keys=True)
+    except OSError as exc:
+        # Disk full / quota must not abort annotation after a successful lookup.
+        if getattr(exc, "errno", None) not in {errno.ENOSPC, getattr(errno, "EDQUOT", -1)}:
+            raise
+        log.warning(
+            "Gene-name cache write failed for %s/%s (%s); continuing without cache",
+            record.profile_id,
+            record.locus,
+            exc,
+        )
 
 
 def _aliases_for_supplied_name(gene_name):
