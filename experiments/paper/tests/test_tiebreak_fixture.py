@@ -14,8 +14,8 @@ FIXTURE = Path(
 
 def test_suite_mix_and_size():
     items = load_tiebreak_fixture(FIXTURE)
-    assert len(items) == 32
-    assert sum(1 for item in items if not item["expect_llm"]) == 8
+    assert len(items) == 42
+    assert sum(1 for item in items if not item["expect_llm"]) == 12
 
 
 def test_apples_case_present():

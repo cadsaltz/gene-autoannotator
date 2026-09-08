@@ -1,6 +1,6 @@
 {
   "fixture_id": "tiebreak_consensus_v1",
-  "selection_criteria": "Constructed 32-case tie-break suite spanning deterministic exact majorities and LLM-resolved paraphrase or hard-split cases across general and biology domains.",
+  "selection_criteria": "Constructed tie-break suite covering unanimous 3/3 exact and paraphrase agreement, 2/3 exact/paraphrase majorities, and hard-split (no consensus) cases across general and biology domains.",
   "schema_version": 1,
   "items": [
     {
@@ -1136,6 +1136,361 @@
           "gene_id": "Rv9999",
           "name": "hypX",
           "function": "membrane transporter importing inorganic phosphate"
+        }
+      ]
+    },
+    {
+      "case_id": "general-exact-unanimous-001",
+      "domain": "general",
+      "case_family": "exact_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": false,
+      "expected": "the ocean is salty",
+      "agreement": {
+        "majority_count": 3,
+        "minority_count": 0,
+        "majority_mode": "exact",
+        "minority_role": "none",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "notes": "All three candidates identical; deterministic unanimous exact.",
+      "candidates": [
+        {
+          "answer": "the ocean is salty"
+        },
+        {
+          "answer": "the ocean is salty"
+        },
+        {
+          "answer": "the ocean is salty"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-exact-unanimous-001",
+      "domain": "biology",
+      "case_family": "exact_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": false,
+      "expected": "sigma factor initiating transcription",
+      "agreement": {
+        "majority_count": 3,
+        "minority_count": 0,
+        "majority_mode": "exact",
+        "minority_role": "none",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "Rv2703",
+        "name": "sigA"
+      },
+      "notes": "All three function strings identical; deterministic unanimous exact.",
+      "candidates": [
+        {
+          "gene_id": "Rv2703",
+          "name": "sigA",
+          "function": "sigma factor initiating transcription"
+        },
+        {
+          "gene_id": "Rv2703",
+          "name": "sigA",
+          "function": "sigma factor initiating transcription"
+        },
+        {
+          "gene_id": "Rv2703",
+          "name": "sigA",
+          "function": "sigma factor initiating transcription"
+        }
+      ]
+    },
+    {
+      "case_id": "general-paraphrase-unanimous-001",
+      "domain": "general",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "cats sleep for many hours each day",
+      "agreement": {
+        "majority_count": 3,
+        "minority_count": 0,
+        "majority_mode": "paraphrase",
+        "minority_role": "none",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "notes": "All three paraphrase the same meaning; no dissenting minority.",
+      "candidates": [
+        {
+          "answer": "each day, cats spend many hours sleeping"
+        },
+        {
+          "answer": "cats sleep many hours during a day"
+        },
+        {
+          "answer": "a cat sleeps for lots of hours every day"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-paraphrase-unanimous-001",
+      "domain": "biology",
+      "case_family": "paraphrase_majority",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "outer membrane porin that allows nutrient uptake",
+      "agreement": {
+        "majority_count": 3,
+        "minority_count": 0,
+        "majority_mode": "paraphrase",
+        "minority_role": "none",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "Rv0442c",
+        "name": "ompA"
+      },
+      "notes": "Three paraphrases of porin nutrient uptake; no minority conflict.",
+      "candidates": [
+        {
+          "gene_id": "Rv0442c",
+          "name": "ompA",
+          "function": "porin in the outer membrane enabling uptake of nutrients"
+        },
+        {
+          "gene_id": "Rv0442c",
+          "name": "ompA",
+          "function": "nutrient-uptake porin located in the outer membrane"
+        },
+        {
+          "gene_id": "Rv0442c",
+          "name": "ompA",
+          "function": "outer-membrane porin protein that permits nutrient import"
+        }
+      ]
+    },
+    {
+      "case_id": "general-nonsense-hard-split-null-001",
+      "domain": "general",
+      "case_family": "hard_split_null",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": null,
+      "agreement": {
+        "majority_count": 0,
+        "minority_count": 3,
+        "majority_mode": "none",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "notes": "Three incompatible nonsense claims; expect null, no invention.",
+      "candidates": [
+        {
+          "answer": "the zorblin sings at quantex dawn"
+        },
+        {
+          "answer": "mivvles freeze into plaxen stone"
+        },
+        {
+          "answer": "a brenwick digs under the veldrin sea"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-nonsense-hard-split-null-001",
+      "domain": "biology",
+      "case_family": "hard_split_null",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": null,
+      "agreement": {
+        "majority_count": 0,
+        "minority_count": 3,
+        "majority_mode": "none",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "GENE1",
+        "name": "zorA"
+      },
+      "notes": "Three incompatible nonsense functions; expect null.",
+      "candidates": [
+        {
+          "gene_id": "GENE1",
+          "name": "zorA",
+          "function": "zorblinase that cleaves quantex rings"
+        },
+        {
+          "gene_id": "GENE1",
+          "name": "zorA",
+          "function": "flarnok transporter for vesk particles"
+        },
+        {
+          "gene_id": "GENE1",
+          "name": "zorA",
+          "function": "brenwick synthase producing glim polymers"
+        }
+      ]
+    },
+    {
+      "case_id": "general-nonsense-exact-unanimous-001",
+      "domain": "general",
+      "case_family": "exact_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": false,
+      "expected": "plaxen",
+      "agreement": {
+        "majority_count": 3,
+        "minority_count": 0,
+        "majority_mode": "exact",
+        "minority_role": "none",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "notes": "Unanimous exact nonsense token.",
+      "candidates": [
+        {
+          "answer": "plaxen"
+        },
+        {
+          "answer": "plaxen"
+        },
+        {
+          "answer": "plaxen"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-nonsense-exact-unanimous-001",
+      "domain": "biology",
+      "case_family": "exact_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": false,
+      "expected": "drozzle fibril chaperone",
+      "agreement": {
+        "majority_count": 3,
+        "minority_count": 0,
+        "majority_mode": "exact",
+        "minority_role": "none",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "GENE1",
+        "name": "droB"
+      },
+      "notes": "Unanimous exact nonsense function string.",
+      "candidates": [
+        {
+          "gene_id": "GENE1",
+          "name": "droB",
+          "function": "drozzle fibril chaperone"
+        },
+        {
+          "gene_id": "GENE1",
+          "name": "droB",
+          "function": "drozzle fibril chaperone"
+        },
+        {
+          "gene_id": "GENE1",
+          "name": "droB",
+          "function": "drozzle fibril chaperone"
+        }
+      ]
+    },
+    {
+      "case_id": "general-nonsense-paraphrase-unanimous-001",
+      "domain": "general",
+      "case_family": "paraphrase_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "answer",
+      "expect_llm": true,
+      "expected": "quibblets orbit the narvik moon",
+      "agreement": {
+        "majority_count": 3,
+        "minority_count": 0,
+        "majority_mode": "paraphrase",
+        "minority_role": "none",
+        "extractor_0_is_minority": false
+      },
+      "identity": null,
+      "notes": "Three nonsense paraphrases of the same claim; no minority.",
+      "candidates": [
+        {
+          "answer": "around the narvik moon, quibblets orbit"
+        },
+        {
+          "answer": "quibblets are orbiting the moon called narvik"
+        },
+        {
+          "answer": "the narvik moon has quibblets in orbit"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-nonsense-paraphrase-unanimous-001",
+      "domain": "biology",
+      "case_family": "paraphrase_majority_nonsense",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": "trazzle hydrolase that dissolves fenwick gels",
+      "agreement": {
+        "majority_count": 3,
+        "minority_count": 0,
+        "majority_mode": "paraphrase",
+        "minority_role": "none",
+        "extractor_0_is_minority": false
+      },
+      "identity": {
+        "gene_id": "GENE1",
+        "name": "traZ"
+      },
+      "notes": "Three nonsense paraphrases; adopt majority gibberish via LLM.",
+      "candidates": [
+        {
+          "gene_id": "GENE1",
+          "name": "traZ",
+          "function": "hydrolase called trazzle that dissolves fenwick gels"
+        },
+        {
+          "gene_id": "GENE1",
+          "name": "traZ",
+          "function": "trazzle hydrolase dissolving gels made of fenwick"
+        },
+        {
+          "gene_id": "GENE1",
+          "name": "traZ",
+          "function": "fenwick-gel dissolving activity from trazzle hydrolase"
         }
       ]
     }
