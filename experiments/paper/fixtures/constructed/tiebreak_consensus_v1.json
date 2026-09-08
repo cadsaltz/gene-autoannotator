@@ -1493,6 +1493,228 @@
           "function": "fenwick-gel dissolving activity from trazzle hydrolase"
         }
       ]
+    },
+    {
+      "case_id": "general-multi-field-001",
+      "domain": "general",
+      "case_family": "multi_field_mixed",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_keys": [
+        "color",
+        "size",
+        "texture"
+      ],
+      "field_key": "color",
+      "expect_llm": false,
+      "expected": {
+        "color": "blue",
+        "size": "big",
+        "texture": "soft"
+      },
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "exact",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false,
+        "field_modes": {
+          "color": "exact",
+          "size": "exact",
+          "texture": "exact"
+        }
+      },
+      "identity": null,
+      "notes": "Multi-field PoC: per-field exact majorities compose to blue/big/soft.",
+      "candidates": [
+        {
+          "color": "blue",
+          "size": "big",
+          "texture": "soft"
+        },
+        {
+          "color": "blue",
+          "size": "small",
+          "texture": "soft"
+        },
+        {
+          "color": "red",
+          "size": "big",
+          "texture": "rough"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-multi-field-001",
+      "domain": "biology",
+      "case_family": "multi_field_mixed",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_keys": [
+        "function",
+        "drug_susc_impact",
+        "infection_impact"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": {
+        "function": "ATP-dependent Holliday junction branch migration",
+        "drug_susc_impact": "no direct drug susceptibility effect reported",
+        "infection_impact": "maintains chromosomal stability during macrophage infection"
+      },
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "mixed",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false,
+        "field_modes": {
+          "function": "exact",
+          "drug_susc_impact": "exact",
+          "infection_impact": "paraphrase"
+        }
+      },
+      "identity": {
+        "gene_id": "Rv0631c",
+        "name": "ruvA"
+      },
+      "notes": "Two exact-majority fields plus one paraphrase-only field to invite LLM merge.",
+      "candidates": [
+        {
+          "gene_id": "Rv0631c",
+          "name": "ruvA",
+          "function": "ATP-dependent Holliday junction branch migration",
+          "drug_susc_impact": "no direct drug susceptibility effect reported",
+          "infection_impact": "supports genome integrity during macrophage infection"
+        },
+        {
+          "gene_id": "Rv0631c",
+          "name": "ruvA",
+          "function": "ATP-dependent Holliday junction branch migration",
+          "drug_susc_impact": "confers isoniazid resistance in vitro",
+          "infection_impact": "maintains chromosomal stability inside infected macrophages"
+        },
+        {
+          "gene_id": "Rv0631c",
+          "name": "ruvA",
+          "function": "putative outer membrane lipid transporter",
+          "drug_susc_impact": "no direct drug susceptibility effect reported",
+          "infection_impact": "increases extracellular polysaccharide secretion"
+        }
+      ]
+    },
+    {
+      "case_id": "general-nonsense-multi-field-001",
+      "domain": "general",
+      "case_family": "multi_field_mixed",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_keys": [
+        "color",
+        "size",
+        "texture"
+      ],
+      "field_key": "color",
+      "expect_llm": false,
+      "expected": {
+        "color": "zylor",
+        "size": "glimpex",
+        "texture": "vorbish"
+      },
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "exact",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false,
+        "field_modes": {
+          "color": "exact",
+          "size": "exact",
+          "texture": "exact"
+        }
+      },
+      "identity": null,
+      "notes": "Nonsense multi-field PoC with the same exact-majority pattern as general-multi-field-001.",
+      "candidates": [
+        {
+          "color": "zylor",
+          "size": "glimpex",
+          "texture": "vorbish"
+        },
+        {
+          "color": "zylor",
+          "size": "quarnik",
+          "texture": "vorbish"
+        },
+        {
+          "color": "plenth",
+          "size": "glimpex",
+          "texture": "morkel"
+        }
+      ]
+    },
+    {
+      "case_id": "biology-nonsense-multi-field-001",
+      "domain": "biology",
+      "case_family": "multi_field_mixed",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_keys": [
+        "function",
+        "drug_susc_impact",
+        "infection_impact"
+      ],
+      "field_key": "function",
+      "expect_llm": true,
+      "expected": {
+        "function": "flarnocycle ATP wobble synthase",
+        "drug_susc_impact": "blorfin-mediated quindle resistance absent",
+        "infection_impact": "stabilizes cromulent filaments inside host vacuoles"
+      },
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "mixed",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false,
+        "field_modes": {
+          "function": "exact",
+          "drug_susc_impact": "exact",
+          "infection_impact": "paraphrase"
+        }
+      },
+      "identity": {
+        "gene_id": "Rv0631c",
+        "name": "ruvA"
+      },
+      "notes": "Nonsense biology multi-field with exact majorities plus one paraphrase field.",
+      "candidates": [
+        {
+          "gene_id": "Rv0631c",
+          "name": "ruvA",
+          "function": "flarnocycle ATP wobble synthase",
+          "drug_susc_impact": "blorfin-mediated quindle resistance absent",
+          "infection_impact": "keeps cromulent filaments stable during host vacuole infection"
+        },
+        {
+          "gene_id": "Rv0631c",
+          "name": "ruvA",
+          "function": "flarnocycle ATP wobble synthase",
+          "drug_susc_impact": "induces zorplex drug hypersusceptibility",
+          "infection_impact": "stabilizes cromulent filaments inside infected host vacuoles"
+        },
+        {
+          "gene_id": "Rv0631c",
+          "name": "ruvA",
+          "function": "spindle-lattice quark phosphatase",
+          "drug_susc_impact": "blorfin-mediated quindle resistance absent",
+          "infection_impact": "amplifies extracellular snorfle secretion"
+        }
+      ]
     }
   ]
 }

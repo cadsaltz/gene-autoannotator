@@ -70,17 +70,52 @@ def filter_cases(
     ]
 
 
+def _field_keys_for_case(case: dict[str, Any]) -> list[str]:
+    raw = case.get("field_keys")
+    if isinstance(raw, list) and raw:
+        return [str(key) for key in raw]
+    field_key = case.get("field_key")
+    return [str(field_key)] if field_key is not None else []
+
+
 def validate_case(case: dict[str, Any]) -> list[str]:
     """Return all structural and agreement errors for one constructed case."""
     errors: list[str] = []
     case_id = case.get("case_id", "<unknown>")
     candidates = case.get("candidates")
-    field_key = case.get("field_key")
+    field_keys = _field_keys_for_case(case)
+    family = str(case.get("case_family", ""))
 
     if not isinstance(candidates, list) or len(candidates) != 3:
         errors.append(f"{case_id}: expected exactly 3 candidates")
 
+    if not field_keys:
+        errors.append(f"{case_id}: missing field_key or field_keys")
+        return errors
+
     candidate_items = candidates if isinstance(candidates, list) else []
+
+    if family == "multi_field_mixed":
+        expected = case.get("expected")
+        if not isinstance(expected, dict):
+            errors.append(f"{case_id}: multi_field_mixed expected must be an object")
+            return errors
+        if set(expected.keys()) != set(field_keys):
+            errors.append(
+                f"{case_id}: expected keys must match field_keys {field_keys!r}"
+            )
+        for index, candidate in enumerate(candidate_items):
+            if not isinstance(candidate, dict):
+                errors.append(f"{case_id}: candidate {index} must be an object")
+                continue
+            for field_key in field_keys:
+                if field_key not in candidate:
+                    errors.append(
+                        f"{case_id}: candidate {index} missing field_key {field_key!r}"
+                    )
+        return errors
+
+    field_key = field_keys[0]
     values: list[Any] = []
     for index, candidate in enumerate(candidate_items):
         if not isinstance(candidate, dict) or field_key not in candidate:
@@ -94,7 +129,6 @@ def validate_case(case: dict[str, Any]) -> list[str]:
         return errors
 
     expected = case.get("expected")
-    family = str(case.get("case_family", ""))
     expect_llm = case.get("expect_llm")
 
     if expected is None:

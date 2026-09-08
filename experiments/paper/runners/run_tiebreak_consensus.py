@@ -37,6 +37,7 @@ from experiments.paper.runners.tiebreak_fixture import (
 )
 from experiments.paper.runners.tiebreak_matching import (
     is_invention,
+    is_multi_invention,
     match_exact,
     match_soft,
 )
@@ -47,6 +48,11 @@ CONDITIONS = (
     "hybrid_consensus",
 )
 DRY_SOFT_MATCH = 0.35
+
+# Production normalize_annotation_fields only keeps biology keys. Map general
+# multi-field labels onto three string biology slots for the merge, then map back.
+GENERAL_MULTI_SLOTS = ("function", "drug_susc_impact", "infection_impact")
+BIOLOGY_MULTI_FIELDS = ("function", "drug_susc_impact", "infection_impact")
 
 
 def _fixture_path(path_value: str) -> Path:
@@ -130,6 +136,9 @@ def _case_records(
     *,
     batch_merger: BatchMerger,
 ) -> list[dict[str, Any]]:
+    if str(case.get("case_family", "")) == "multi_field_mixed":
+        return _multi_field_case_records(case, batch_merger=batch_merger)
+
     field_key = case["field_key"]
     candidates = case["candidates"]
     candidate_values = [candidate.get(field_key) for candidate in candidates]
@@ -180,21 +189,117 @@ def _case_records(
     return [baseline, hybrid]
 
 
+def _multi_field_case_records(
+    case: dict[str, Any],
+    *,
+    batch_merger: BatchMerger,
+) -> list[dict[str, Any]]:
+    field_keys = [str(key) for key in case["field_keys"]]
+    candidates = case["candidates"]
+    expected = case["expected"]
+    identity = case.get("identity") or {}
+
+    baseline_observed = {key: candidates[0].get(key) for key in field_keys}
+    baseline = _score_record(
+        case,
+        condition=CONDITIONS[0],
+        observed=baseline_observed,
+        provenance="extractor_0",
+        llm_invoked=False,
+        candidate_values=candidates,
+        field_keys=field_keys,
+    )
+
+    if case["domain"] == "general":
+        if len(field_keys) > len(GENERAL_MULTI_SLOTS):
+            raise ValueError(
+                f"{case['case_id']}: general multi-field supports at most "
+                f"{len(GENERAL_MULTI_SLOTS)} fields"
+            )
+        slot_by_field = {
+            field_key: GENERAL_MULTI_SLOTS[index]
+            for index, field_key in enumerate(field_keys)
+        }
+        consensus_candidates = [
+            {
+                slot_by_field[field_key]: candidate.get(field_key)
+                for field_key in field_keys
+            }
+            for candidate in candidates
+        ]
+        fields = tuple(
+            FieldSpec(slot_by_field[field_key], "string") for field_key in field_keys
+        )
+    else:
+        slot_by_field = {field_key: field_key for field_key in field_keys}
+        consensus_candidates = [
+            {
+                "gene_id": identity.get("gene_id", candidate.get("gene_id", "GENE1")),
+                "name": identity.get("name", candidate.get("name", "gene")),
+                **{field_key: candidate.get(field_key) for field_key in field_keys},
+            }
+            for candidate in candidates
+        ]
+        fields = (
+            FieldSpec("gene_id", "identity"),
+            FieldSpec("name", "identity"),
+            *(FieldSpec(field_key, "string") for field_key in field_keys),
+        )
+
+    merged, provenance, llm_calls = hybrid_section_consensus(
+        consensus_candidates,
+        excerpt=None,
+        expected_gene_id=identity.get("gene_id", "GENE1"),
+        expected_name=identity.get("name", "gene"),
+        fields=fields,
+        batch_merger=batch_merger,
+    )
+    observed = {
+        field_key: merged.get(slot_by_field[field_key]) for field_key in field_keys
+    }
+    field_provenance = {
+        field_key: provenance.get(slot_by_field[field_key], "missing")
+        for field_key in field_keys
+    }
+    llm_invoked = llm_calls > 0 or any(
+        value == "llm_batch_merge" for value in field_provenance.values()
+    )
+    hybrid = _score_record(
+        case,
+        condition=CONDITIONS[1],
+        observed=observed,
+        provenance=field_provenance,
+        llm_invoked=llm_invoked,
+        candidate_values=candidates,
+        field_keys=field_keys,
+    )
+    # Keep expected on the record for reviewers (dict).
+    hybrid["expected"] = expected
+    return [baseline, hybrid]
+
+
 def _score_record(
     case: dict[str, Any],
     *,
     condition: str,
     observed: Any,
-    provenance: str,
+    provenance: Any,
     llm_invoked: bool,
     candidate_values: list[Any],
+    field_keys: list[str] | None = None,
 ) -> dict[str, Any]:
     expected = case.get("expected")
+    if field_keys:
+        invention = is_multi_invention(observed, candidate_values, field_keys)
+        field_key_label = ",".join(field_keys)
+    else:
+        invention = is_invention(observed, candidate_values)
+        field_key_label = case["field_key"]
     return {
         "case_id": case["case_id"],
         "domain": case["domain"],
         "case_family": case["case_family"],
-        "field_key": case["field_key"],
+        "field_key": field_key_label,
         "condition": condition,
         "candidates": case["candidates"],
         "expected": expected,
@@ -203,7 +308,7 @@ def _score_record(
         "provenance": provenance,
         "match_exact": match_exact(observed, expected),
         "match_soft": match_soft(observed, expected),
-        "invention": is_invention(observed, candidate_values),
+        "invention": invention,
         "expect_llm": bool(case["expect_llm"]),
         "expect_llm_matched": llm_invoked == bool(case["expect_llm"]),
     }

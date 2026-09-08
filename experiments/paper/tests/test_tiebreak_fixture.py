@@ -14,8 +14,8 @@ FIXTURE = Path(
 
 def test_suite_mix_and_size():
     items = load_tiebreak_fixture(FIXTURE)
-    assert len(items) == 42
-    assert sum(1 for item in items if not item["expect_llm"]) == 12
+    assert len(items) == 46
+    assert sum(1 for item in items if not item["expect_llm"]) == 14
 
 
 def test_apples_case_present():
@@ -159,3 +159,22 @@ def test_all_fixture_cases_validate():
         if validate_case(item)
     ]
     assert invalid == []
+
+
+def test_validate_multi_field_mixed_accepted():
+    case = {
+        "case_id": "multi-poc",
+        "domain": "general",
+        "case_family": "multi_field_mixed",
+        "experiment_tags": ["tiebreak-non-nonsense"],
+        "field_keys": ["color", "size", "texture"],
+        "field_key": "color",
+        "expect_llm": False,
+        "expected": {"color": "blue", "size": "big", "texture": "soft"},
+        "candidates": [
+            {"color": "blue", "size": "big", "texture": "soft"},
+            {"color": "blue", "size": "small", "texture": "soft"},
+            {"color": "red", "size": "big", "texture": "rough"},
+        ],
+    }
+    assert validate_case(case) == []
