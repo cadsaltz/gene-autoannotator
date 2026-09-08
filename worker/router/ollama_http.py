@@ -18,6 +18,7 @@ def chat(
     messages: list[dict],
     format=None,
     keep_alive: int | str | None = None,
+    think: bool | None = None,
     timeout_sec: float | None = None,
 ) -> dict:
     """Call Ollama ``/api/chat`` (``timeout_sec=None`` waits indefinitely)."""
@@ -31,6 +32,8 @@ def chat(
         body["format"] = format
     if keep_alive is not None:
         body["keep_alive"] = keep_alive
+    if think is not None:
+        body["think"] = think
 
     with httpx.Client(timeout=_httpx_timeout(timeout_sec)) as client:
         response = client.post(url, json=body)
