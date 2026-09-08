@@ -30,7 +30,7 @@ def test_dry_run_writes_scored_artifacts_without_ollama(tmp_path, monkeypatch):
     assert (run_dir / "aggregate.csv").is_file()
 
     manifest = json.loads((run_dir / "manifest.json").read_text())
-    assert manifest["model_tags"]["consensus"] == "qwen3:0.6b"
+    assert manifest["model_tags"]["consensus"] == "qwen3:8b"
     assert manifest["dry_run"] is True
 
     records = [

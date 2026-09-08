@@ -18,16 +18,17 @@ python -m experiments.paper.runners.run_tiebreak_consensus \
 
 ## Live runs
 
-Ensure Ollama has the pinned `qwen3:0.6b` model, then run:
+Use the same consensus model as the rest of the pipeline (`qwen3:8b`). Ensure
+Ollama has that model, then run:
 
 ```bash
 python -m experiments.paper.runners.run_tiebreak_consensus \
   --config experiments/paper/configs/tiebreak-non-nonsense.yaml \
-  --run-id paper-non-nonsense-v1
+  --run-id paper-non-nonsense-v2
 
 python -m experiments.paper.runners.run_tiebreak_consensus \
   --config experiments/paper/configs/tiebreak-nonsense.yaml \
-  --run-id paper-nonsense-v1
+  --run-id paper-nonsense-v2
 ```
 
 Each command writes `manifest.json`, `records.jsonl`, and `aggregate.csv` under
