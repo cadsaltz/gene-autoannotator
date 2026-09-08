@@ -165,6 +165,8 @@ def _make_handler(
             chat_kwargs: dict = {"model": model, "messages": messages}
             if format_ is not None:
                 chat_kwargs["format"] = format_
+            if "think" in body:
+                chat_kwargs["think"] = body.get("think")
             keep_alive = _parse_keep_alive(body.get("keep_alive"))
             if keep_alive is None:
                 keep_alive = _keep_alive_from_env()

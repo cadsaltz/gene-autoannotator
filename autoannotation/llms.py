@@ -214,8 +214,38 @@ def chat_response_content(response, *, role: str, model: str) -> str:
             f'Ollama {role} response missing message content (model {model})'
         ) from exc
     if not isinstance(content, str) or not content.strip():
+        thinking = ''
+        try:
+            thinking = response['message'].get('thinking') or ''
+        except (AttributeError, TypeError):
+            thinking = ''
+        if isinstance(thinking, str) and thinking.strip():
+            raise RuntimeError(
+                f'Ollama {role} returned empty content (model {model}); '
+                f'response was only in thinking ({len(thinking)} chars). '
+                f'Pass think=False for structured JSON outputs.'
+            )
         raise RuntimeError(f'Ollama {role} returned empty content (model {model})')
     return content
+
+
+def _ollama_think() -> bool | None:
+    """Whether Ollama should emit a thinking trace.
+
+    Qwen3 and other thinking models default thinking ON. With thinking on,
+    structured ``format``/JSON responses often leave ``message.content`` empty
+    (the model spends the budget inside ``thinking``). Annotation consensus and
+    extraction need the JSON in ``content``, so default to think=False.
+    Set ``AUTOANNOTATION_OLLAMA_THINK=1`` to opt back in.
+    """
+    raw = os.getenv('AUTOANNOTATION_OLLAMA_THINK', '').strip().lower()
+    if not raw:
+        return False
+    if raw in ('1', 'true', 'yes', 'on'):
+        return True
+    if raw in ('0', 'false', 'no', 'off'):
+        return False
+    raise ValueError(f'Invalid AUTOANNOTATION_OLLAMA_THINK={raw!r}')
 
 
 def parse_response_json(text: str, *, role: str, model: str) -> dict:
@@ -265,8 +295,10 @@ def ollama_chat(
     json_schema=None,
     role: str = 'inference',
     job_id: str | None = None,
+    think: bool | None = None,
 ):
     job_id = job_id or os.getenv('ANNOTATION_JOB_ID')
+    think = _ollama_think() if think is None else think
     router = _router_client()
     if router is not None:
         chat_kwargs = {
@@ -275,6 +307,7 @@ def ollama_chat(
             'role': role,
             'job_id': job_id,
             'keep_alive': _ollama_keep_alive(),
+            'think': think,
         }
         if json_schema is not None:
             chat_kwargs['format'] = json_schema
@@ -305,6 +338,7 @@ def ollama_chat(
             'num_ctx': _ollama_num_ctx(),
         },
         'keep_alive': _ollama_keep_alive(),
+        'think': think,
     }
     if json_schema is not None:
         kwargs['format'] = json_schema

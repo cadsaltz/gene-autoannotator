@@ -20,6 +20,7 @@ class RouterClient:
         role: str = "inference",
         job_id: str | None = None,
         keep_alive: int | str | None = None,
+        think: bool | None = None,
     ) -> dict:
         payload: dict = {
             "model": model,
@@ -31,6 +32,8 @@ class RouterClient:
             payload["format"] = format
         if keep_alive is not None:
             payload["keep_alive"] = keep_alive
+        if think is not None:
+            payload["think"] = think
         response = self._http.post("/v1/chat", json=payload)
         response.raise_for_status()
         payload = response.json()
