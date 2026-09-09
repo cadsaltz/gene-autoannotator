@@ -18,7 +18,7 @@ python -m experiments.paper.runners.run_tiebreak_consensus \
 
 ## Live runs
 
-Use the same consensus model as the rest of the pipeline (`qwen3:8b`). Ollama
+Use consensus model `qwen3.5:27b` (pinned in the tie-break configs). Ollama
 chat calls disable thinking by default (`think=false`) so Qwen3 fills
 `message.content` for structured JSON. Ensure Ollama has that model, then run:
 

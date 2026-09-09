@@ -6,12 +6,12 @@ claim: >
   words—and an LLM tie-breaker reconciles paraphrase majorities into one
   expected answer without reading source excerpts (trust-the-extractors).
 status: runnable
-config_filter:
-  experiment_tags:
+case_selection:
+  include_tags:
     - tiebreak-nonsense
 
 models:
-  consensus: qwen3:8b
+  consensus: qwen3.5:27b
   extractors: []    # unused — candidates are constructed
 
 fixtures:

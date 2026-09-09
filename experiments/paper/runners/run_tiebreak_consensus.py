@@ -31,8 +31,10 @@ from experiments.paper.runners.general_consensus import (
     make_general_batch_merger,
 )
 from experiments.paper.runners.tiebreak_fixture import (
+    case_counts_by_tag,
     filter_cases,
     load_tiebreak_fixture,
+    resolve_case_selection,
     validate_case,
 )
 from experiments.paper.runners.tiebreak_matching import (
@@ -386,7 +388,11 @@ def run_experiment(
     config_path = Path(config_path)
     config = load_yaml_config(config_path)
     experiment_id = config.get("experiment_id")
-    if experiment_id not in {"tiebreak-nonsense", "tiebreak-non-nonsense"}:
+    if experiment_id not in {
+        "tiebreak-consensus",
+        "tiebreak-nonsense",
+        "tiebreak-non-nonsense",
+    }:
         raise ValueError(f"unsupported tie-break experiment_id: {experiment_id!r}")
     if tuple(config.get("conditions") or ()) != CONDITIONS:
         raise ValueError(f"conditions must be exactly {CONDITIONS!r}")
@@ -396,9 +402,11 @@ def run_experiment(
         raise ValueError("models.consensus is required")
     fixture_path = _fixture_path((config.get("fixtures") or {})["constructed"])
     fixture_document = json.loads(fixture_path.read_text())
+    include_tags, match_any = resolve_case_selection(config)
     cases = filter_cases(
         load_tiebreak_fixture(fixture_path),
-        (config.get("config_filter") or {}).get("experiment_tags") or (),
+        include_tags,
+        match_any=match_any,
     )
     invalid = [
         error
@@ -431,6 +439,11 @@ def run_experiment(
         "fixture_path": str(fixture_path),
         "fixture_hash": stable_json_hash(fixture_document),
         "case_count": len(cases),
+        "case_selection": {
+            "include_tags": include_tags,
+            "match_any": match_any,
+        },
+        "case_counts_by_tag": case_counts_by_tag(cases),
         "conditions": list(CONDITIONS),
         "model_tags": {"consensus": consensus_model},
         "excerpt_policy": "always_none",

@@ -1,14 +1,15 @@
-experiment_id: tiebreak-non-nonsense
+experiment_id: tiebreak-consensus
 config_version: 1
 owner: Caden
 claim: >
-  Hybrid consensus resolves non-nonsense paraphrase and exact majorities into
-  a single labeled expected answer; consensus beats always-taking extractor 0
-  when extractor 0 is the minority error.
+  Combined tie-break suite: non-nonsense paraphrase/exact majorities and nonsense
+  majority adoption in one run with tag-scoped aggregates.
 status: runnable
+
 case_selection:
   include_tags:
     - tiebreak-non-nonsense
+    - tiebreak-nonsense
 
 models:
   consensus: qwen3.5:27b
@@ -28,7 +29,8 @@ metrics:
   - llm_invoked_rate
   - expect_llm_calibration_rate
   - invention_rate
+  - nonsense_majority_adoption_rate
 
 notes: |
-  Shared suite with tiebreak-nonsense. Includes general apples-style examples.
-  See docs/superpowers/specs/2026-09-03-tiebreak-consensus-experiments-design.md
+  Primary config for the unified tie-break suite. Presets tiebreak-non-nonsense
+  and tiebreak-nonsense select one tag each from the same fixture.

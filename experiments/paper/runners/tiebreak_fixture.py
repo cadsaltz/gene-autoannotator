@@ -60,14 +60,48 @@ def load_tiebreak_fixture(path: str | Path) -> list[dict[str, Any]]:
 def filter_cases(
     items: Iterable[dict[str, Any]],
     experiment_tags: Iterable[str],
+    *,
+    match_any: bool = False,
 ) -> list[dict[str, Any]]:
-    """Return cases containing every requested experiment tag."""
+    """Return cases matching requested experiment tags.
+
+    When ``match_any`` is True (``case_selection.include_tags``), include a case
+    if it has any listed tag. Otherwise (legacy ``config_filter.experiment_tags``),
+    include a case only when it has every listed tag.
+    """
     requested = set(experiment_tags)
+    if not requested:
+        return []
+    if match_any:
+        return [
+            item
+            for item in items
+            if requested.intersection(item.get("experiment_tags", []))
+        ]
     return [
         item
         for item in items
         if requested.issubset(set(item.get("experiment_tags", [])))
     ]
+
+
+def resolve_case_selection(config: dict[str, Any]) -> tuple[list[str], bool]:
+    """Return ``(include_tags, match_any)`` from a tie-break config."""
+    case_selection = config.get("case_selection") or {}
+    include_tags = case_selection.get("include_tags")
+    if include_tags:
+        return [str(tag) for tag in include_tags], True
+    legacy_tags = (config.get("config_filter") or {}).get("experiment_tags") or []
+    return [str(tag) for tag in legacy_tags], False
+
+
+def case_counts_by_tag(cases: Iterable[dict[str, Any]]) -> dict[str, int]:
+    """Count selected cases that carry each experiment tag."""
+    counts: dict[str, int] = {}
+    for case in cases:
+        for tag in case.get("experiment_tags", []):
+            counts[str(tag)] = counts.get(str(tag), 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _field_keys_for_case(case: dict[str, Any]) -> list[str]:

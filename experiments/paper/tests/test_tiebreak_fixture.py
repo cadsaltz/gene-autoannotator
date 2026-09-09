@@ -49,11 +49,43 @@ def test_validate_exact_majority_has_two_identical():
 
 def test_filter_by_experiment_tag():
     items = load_tiebreak_fixture(FIXTURE)
-    nonsense = filter_cases(items, ["tiebreak-nonsense"])
-    assert nonsense
+    nonsense = filter_cases(items, ["tiebreak-nonsense"], match_any=True)
+    assert len(nonsense) == 21
     assert all(
         "tiebreak-nonsense" in item["experiment_tags"] for item in nonsense
     )
+
+
+def test_filter_include_tags_union_selects_full_suite():
+    items = load_tiebreak_fixture(FIXTURE)
+    selected = filter_cases(
+        items,
+        ["tiebreak-non-nonsense", "tiebreak-nonsense"],
+        match_any=True,
+    )
+    assert len(selected) == 48
+
+
+def test_filter_single_tag_subset_sizes():
+    items = load_tiebreak_fixture(FIXTURE)
+    non_nonsense = filter_cases(
+        items,
+        ["tiebreak-non-nonsense"],
+        match_any=True,
+    )
+    nonsense = filter_cases(items, ["tiebreak-nonsense"], match_any=True)
+    assert len(non_nonsense) == 27
+    assert len(nonsense) == 21
+
+
+def test_filter_legacy_and_requires_all_tags():
+    items = load_tiebreak_fixture(FIXTURE)
+    assert filter_cases(
+        items,
+        ["tiebreak-non-nonsense", "tiebreak-nonsense"],
+        match_any=False,
+    ) == []
+    assert len(filter_cases(items, ["tiebreak-nonsense"], match_any=False)) == 21
 
 
 def test_validate_rejects_wrong_candidate_shape():

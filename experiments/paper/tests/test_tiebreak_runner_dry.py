@@ -30,8 +30,13 @@ def test_dry_run_writes_scored_artifacts_without_ollama(tmp_path, monkeypatch):
     assert (run_dir / "aggregate.csv").is_file()
 
     manifest = json.loads((run_dir / "manifest.json").read_text())
-    assert manifest["model_tags"]["consensus"] == "qwen3:8b"
+    assert manifest["model_tags"]["consensus"] == "qwen3.5:27b"
     assert manifest["dry_run"] is True
+    assert manifest["case_selection"] == {
+        "include_tags": ["tiebreak-non-nonsense"],
+        "match_any": True,
+    }
+    assert manifest["case_counts_by_tag"] == {"tiebreak-non-nonsense": 5}
 
     records = [
         json.loads(line)
