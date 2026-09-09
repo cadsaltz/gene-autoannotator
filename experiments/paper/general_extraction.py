@@ -178,22 +178,63 @@ def get_llm_general_consensus_json(
     model: str,
     retry: bool = True,
 ) -> tuple[str, float]:
+    """Merge general extraction candidates under trust-the-extractors.
+
+    ``hybrid_section_consensus`` always runs biology ``normalize_annotation_fields``,
+    which drops ``direct_answer`` / ``supporting_fact`` / ``extra_detail``. Map those
+    keys onto temporary biology string slots for the merge, then map back.
+
+    ``excerpt`` is accepted for API compatibility with the runner but is **not**
+    passed into hybrid validation: the general consensus prompt is candidate-only
+    (same trust-the-extractors rule as biology batch consensus).
+    """
     if len(candidates) < 2:
         raise ValueError('consensus requires at least two candidate JSON objects')
+
+    del excerpt  # candidate-only merge; do not excerpt-gate general consensus
 
     normalized_candidates = [
         normalize_general_output(candidate) for candidate in candidates
     ]
 
+    # Biology string slots that survive normalize_annotation_fields.
+    slot_keys = ('function', 'drug_susc_impact', 'infection_impact')
+    if len(GENERAL_EXTRACTION_FIELDS) > len(slot_keys):
+        raise ValueError('GENERAL_EXTRACTION_FIELDS longer than available biology slots')
+    slot_by_field = {
+        field_key: slot_keys[index]
+        for index, field_key in enumerate(GENERAL_EXTRACTION_FIELDS)
+    }
+    field_by_slot = {slot: field_key for field_key, slot in slot_by_field.items()}
+    mapped_candidates = [
+        {
+            slot_by_field[field_key]: candidate.get(field_key)
+            for field_key in GENERAL_EXTRACTION_FIELDS
+        }
+        for candidate in normalized_candidates
+    ]
+    mapped_fields = tuple(
+        consensus.FieldSpec(slot_by_field[field_key], 'string')
+        for field_key in GENERAL_EXTRACTION_FIELDS
+    )
+
     def batch_merger(normalized: list[dict[str, Any]], unresolved_fields: list[str]):
+        # unresolved_fields are biology slots; prompt/show general field names.
+        display_fields = [field_by_slot[key] for key in unresolved_fields]
         cache_prompt = GENERAL_CONSENSUS_PROMPT.format(
             candidates_json=json.dumps(
-                [{key: item.get(key) for key in unresolved_fields} for item in normalized],
+                [
+                    {
+                        field_by_slot[key]: item.get(key)
+                        for key in unresolved_fields
+                    }
+                    for item in normalized
+                ],
                 indent=2,
             ),
-            field_list=', '.join(unresolved_fields),
+            field_list=', '.join(display_fields),
         )
-        batch_schema = _batch_consensus_schema(unresolved_fields)
+        batch_schema = _batch_consensus_schema(display_fields)
         cached_payload, cached_dur = handler._load_cached_json(
             model, cache_prompt, batch_schema, role='general_consensus',
         )
@@ -205,7 +246,10 @@ def get_llm_general_consensus_json(
                 'general_consensus', model, cached_dur, cache_hit=True,
                 usage=handler._read_cache_usage(model, cache_prompt, batch_schema),
             )
-            return cached_payload
+            return {
+                slot_by_field[field_key]: cached_payload.get(field_key)
+                for field_key in display_fields
+            }
 
         handler._record_prompt(
             'general_consensus', model, cache_prompt, sent_to_ollama=True,
@@ -227,16 +271,19 @@ def get_llm_general_consensus_json(
             model, cache_prompt, batch_schema,
             json.dumps(parsed), duration_sec, usage=usage,
         )
-        return parsed
+        return {
+            slot_by_field[field_key]: parsed.get(field_key)
+            for field_key in display_fields
+        }
 
     start = time.perf_counter()
     try:
-        merged, _provenance, _llm_calls = consensus.hybrid_section_consensus(
-            normalized_candidates,
-            excerpt=excerpt,
+        merged_slots, _provenance, _llm_calls = consensus.hybrid_section_consensus(
+            mapped_candidates,
+            excerpt=None,
             expected_gene_id=None,
             expected_name='',
-            fields=GENERAL_FIELD_SPECS,
+            fields=mapped_fields,
             organism_profile=None,
             field_defs_profile=None,
             batch_merger=batch_merger,
@@ -246,11 +293,15 @@ def get_llm_general_consensus_json(
             return get_llm_general_consensus_json(
                 handler,
                 candidates,
-                excerpt=excerpt,
+                excerpt='',
                 model=model,
                 retry=False,
             )
         raise RuntimeError(f'Failed to get general consensus from {model}') from exc
 
+    merged = {
+        field_key: merged_slots.get(slot_by_field[field_key])
+        for field_key in GENERAL_EXTRACTION_FIELDS
+    }
     duration_sec = time.perf_counter() - start
     return json.dumps(normalize_general_output(merged)), duration_sec

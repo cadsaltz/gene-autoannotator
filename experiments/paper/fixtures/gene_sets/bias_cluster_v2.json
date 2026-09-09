@@ -5,565 +5,565 @@
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0003",
-      "gene_name": "CDS\t2801..3733\tthrB; homoserine kinase",
+      "gene_name": "thrB",
       "locus": "b0003"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0004",
-      "gene_name": "CDS\t3734..5020\tthrC; threonine synthase",
+      "gene_name": "thrC",
       "locus": "b0004"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0008",
-      "gene_name": "CDS\t8238..9191\ttalB; transaldolase B",
+      "gene_name": "talB",
       "locus": "b0008"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0019",
-      "gene_name": "CDS\t17489..18655\tnhaA; Na(+):H(+) antiporter NhaA",
+      "gene_name": "nhaA",
       "locus": "b0019"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0059",
-      "gene_name": "CDS\tcomplement(60358..63264)\trapA; RNA polymerase-binding ATPase and RNAP recycling factor",
+      "gene_name": "rapA",
       "locus": "b0059"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0063",
-      "gene_name": "CDS\tcomplement(68348..70048)\taraB; ribulokinase",
+      "gene_name": "araB",
       "locus": "b0063"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0076",
-      "gene_name": "CDS\t84368..85312\tleuO; DNA-binding transcriptional dual regulator LeuO",
+      "gene_name": "leuO",
       "locus": "b0076"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0085",
-      "gene_name": "CDS\t93166..94653\tmurE; UDP-N-acetylmuramoyl-L-alanyl-D-glutamate--2",
+      "gene_name": "murE",
       "locus": "b0085"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0087",
-      "gene_name": "CDS\t96002..97084\tmraY; phospho-N-acetylmuramoyl-pentapeptide-transferase",
+      "gene_name": "mraY",
       "locus": "b0087"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0090",
-      "gene_name": "CDS\t99644..100711\tmurG; N-acetylglucosaminyl transferase",
+      "gene_name": "murG",
       "locus": "b0090"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0091",
-      "gene_name": "CDS\t100765..102240\tmurC; UDP-N-acetylmuramate--L-alanine ligase",
+      "gene_name": "murC",
       "locus": "b0091"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0116",
-      "gene_name": "CDS\t127912..129336\tlpd; lipoamide dehydrogenase",
+      "gene_name": "lpd",
       "locus": "b0116"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0188",
-      "gene_name": "CDS\t212331..213629\ttilS; tRNA(Ile)-lysidine synthetase",
+      "gene_name": "tilS",
       "locus": "b0188"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0200",
-      "gene_name": "CDS\t222833..223408\tgmhB; D-glycero-beta-D-manno-heptose-1",
+      "gene_name": "gmhB",
       "locus": "b0200"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0240",
-      "gene_name": "gene\tjoin(257829..257899",
+      "gene_name": "join(257829..257899",
       "locus": "b0240"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0314",
-      "gene_name": "CDS\t329463..331496\tbetT; choline:H(+) symporter",
+      "gene_name": "betT",
       "locus": "b0314"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0315",
-      "gene_name": "CDS\t332371..333459\tpdeL; DNA-binding transcriptional regulator/c-di-GMP phosphodiesterase PdeL",
+      "gene_name": "pdeL",
       "locus": "b0315"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0319",
-      "gene_name": "CDS\t335925..336788\tyahE; DUF2877 domain-containing protein YahE",
+      "gene_name": "yahE",
       "locus": "b0319"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0397",
-      "gene_name": "CDS\tcomplement(412607..415753)\tsbcC; ATP-dependent structure-specific DNA nuclease - SbcC subunit",
+      "gene_name": "sbcC",
       "locus": "b0397"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0406",
-      "gene_name": "CDS\t426137..427264\ttgt; tRNA-guanine transglycosylase",
+      "gene_name": "tgt",
       "locus": "b0406"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0434",
-      "gene_name": "CDS\tcomplement(453589..454167)\tyajG; putative lipoprotein YajG",
+      "gene_name": "yajG",
       "locus": "b0434"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0544",
-      "gene_name": "CDS\t568902..570428\tybcK; putative recombinase YbcK",
+      "gene_name": "ybcK",
       "locus": "b0544"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0587",
-      "gene_name": "CDS\t618254..619387\tfepE; polysaccharide co-polymerase family protein FepE",
+      "gene_name": "fepE",
       "locus": "b0587"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0605",
-      "gene_name": "CDS\t638945..639508\tahpC; alkyl hydroperoxide reductase",
+      "gene_name": "ahpC",
       "locus": "b0605"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0623",
-      "gene_name": "CDS\t657292..657501\tcspE; transcription antiterminator and regulator of RNA stability CspE",
+      "gene_name": "cspE",
       "locus": "b0623"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0642",
-      "gene_name": "CDS\tcomplement(672201..674783)\tleuS; leucine--tRNA ligase",
+      "gene_name": "leuS",
       "locus": "b0642"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0678",
-      "gene_name": "CDS\tcomplement(702811..703611)\tnagB; glucosamine-6-phosphate deaminase",
+      "gene_name": "nagB",
       "locus": "b0678"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0683",
-      "gene_name": "CDS\tcomplement(710200..710646)\tfur; DNA-binding transcriptional dual regulator Fur",
+      "gene_name": "fur",
       "locus": "b0683"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0710",
-      "gene_name": "CDS\t742827..743570\tybgI; radiation resistance protein YbgI",
+      "gene_name": "ybgI",
       "locus": "b0710"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0797",
-      "gene_name": "CDS\t830872..832236\trhlE; ATP-dependent RNA helicase RhlE",
+      "gene_name": "rhlE",
       "locus": "b0797"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0805",
-      "gene_name": "CDS\tcomplement(839249..841531)\tfiu; iron catecholate outer membrane transporter Fiu",
+      "gene_name": "fiu",
       "locus": "b0805"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0846",
-      "gene_name": "CDS\t887423..887959\trcdA; RcdA",
+      "gene_name": "rcdA",
       "locus": "b0846"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0880",
-      "gene_name": "CDS\tcomplement(922366..922590)\tcspD; DNA replication inhibitor CspD",
+      "gene_name": "cspD",
       "locus": "b0880"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0893",
-      "gene_name": "CDS\t939428..940720\tserS; serine--tRNA ligase",
+      "gene_name": "serS",
       "locus": "b0893"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0928",
-      "gene_name": "CDS\tcomplement(984519..985709)\taspC; aspartate aminotransferase",
+      "gene_name": "aspC",
       "locus": "b0928"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b0989",
-      "gene_name": "CDS\tcomplement(1050963..1051175)\tcspH; CspA family protein CspH",
+      "gene_name": "cspH",
       "locus": "b0989"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1012",
-      "gene_name": "CDS\tcomplement(1072863..1074011)\trutA; pyrimidine monooxygenase RutA",
+      "gene_name": "rutA",
       "locus": "b1012"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1136",
-      "gene_name": "CDS\t1195123..1196373\ticd; isocitrate dehydrogenase",
+      "gene_name": "icd",
       "locus": "b1136"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1138",
-      "gene_name": "CDS\tcomplement(1197533..1198237)\tymfE; uncharacterized protein YmfE",
+      "gene_name": "ymfE",
       "locus": "b1138"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1189",
-      "gene_name": "CDS\t1237571..1238869\tdadA; D-amino acid dehydrogenase",
+      "gene_name": "dadA",
       "locus": "b1189"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1197",
-      "gene_name": "CDS\tcomplement(1245679..1247376)\ttreA; periplasmic trehalase",
+      "gene_name": "treA",
       "locus": "b1197"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1237",
-      "gene_name": "CDS\tcomplement(1292509..1292922)\thns; DNA-binding transcriptional dual regulator H-NS",
+      "gene_name": "hns",
       "locus": "b1237"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1334",
-      "gene_name": "CDS\tcomplement(1398774..1399526)\tfnr; DNA-binding transcriptional dual regulator FNR",
+      "gene_name": "fnr",
       "locus": "b1334"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1528",
-      "gene_name": "CDS\t1617028..1618218\tydeA; L-arabinose exporter",
+      "gene_name": "ydeA",
       "locus": "b1528"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1535",
-      "gene_name": "CDS\tcomplement(1622960..1623850)\tdgcZ; diguanylate cyclase DgcZ",
+      "gene_name": "dgcZ",
       "locus": "b1535"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1557",
-      "gene_name": "CDS\tcomplement(1641339..1641554)\tcspB; cold shock-like protein CspB",
+      "gene_name": "cspB",
       "locus": "b1557"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1558",
-      "gene_name": "CDS\t1641855..1642067\tcspF; cold shock-like protein CspF",
+      "gene_name": "cspF",
       "locus": "b1558"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1729",
-      "gene_name": "CDS\t1810934..1812325\ttcyP; cystine/sulfocysteine:cation symporter",
+      "gene_name": "tcyP",
       "locus": "b1729"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1808",
-      "gene_name": "CDS\tcomplement(1891325..1893235)\tyoaA; putative ATP-dependent 5' to 3' DNA helicase",
+      "gene_name": "yoaA",
       "locus": "b1808"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b1823",
-      "gene_name": "CDS\tcomplement(1907226..1907435)\tcspC; transcription antiterminator and regulator of mRNA stability CspC",
+      "gene_name": "cspC",
       "locus": "b1823"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2009",
-      "gene_name": "CDS\tcomplement(2080789..2081262)\tsbmC; DNA gyrase inhibitor",
+      "gene_name": "sbmC",
       "locus": "b2009"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2036",
-      "gene_name": "CDS\tcomplement(2107226..2108329)\tglf; UDP-galactopyranose mutase",
+      "gene_name": "glf",
       "locus": "b2036"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2098",
-      "gene_name": "CDS\t2178821..2180098\tyegT; putative transporter YegT",
+      "gene_name": "yegT",
       "locus": "b2098"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2100",
-      "gene_name": "CDS\t2181096..2182061\tyegV; putative sugar kinase YegV",
+      "gene_name": "yegV",
       "locus": "b2100"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2166",
-      "gene_name": "CDS\tcomplement(2258355..2259296)\tpsuK; putative pseudouridine kinase",
+      "gene_name": "psuK",
       "locus": "b2166"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2215",
-      "gene_name": "CDS\tcomplement(2311646..2312749)\tompC; outer membrane porin C",
+      "gene_name": "ompC",
       "locus": "b2215"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2257",
-      "gene_name": "CDS\t2370908..2372560\tarnT; lipid IVA 4-amino-4-deoxy-L-arabinosyltransferase",
+      "gene_name": "arnT",
       "locus": "b2257"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2423",
-      "gene_name": "CDS\tcomplement(2540804..2541679)\tcysW; sulfate/thiosulfate ABC transporter inner membrane subunit CysW",
+      "gene_name": "cysW",
       "locus": "b2423"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2459",
-      "gene_name": "CDS\tcomplement(2573502..2574305)\teutT; putative ethanolamine utilization cobalamin adenosyltransferase",
+      "gene_name": "eutT",
       "locus": "b2459"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2468",
-      "gene_name": "CDS\tcomplement(2583546..2585525)\taegA; putative oxidoreductase AegA",
+      "gene_name": "aegA",
       "locus": "b2468"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2511",
-      "gene_name": "CDS\tcomplement(2635884..2637356)\tder; 50S ribosomal subunit stability factor",
+      "gene_name": "der",
       "locus": "b2511"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2532",
-      "gene_name": "CDS\tcomplement(2662583..2663323)\ttrmJ; tRNA Cm32/Um32 methyltransferase",
+      "gene_name": "trmJ",
       "locus": "b2532"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2537",
-      "gene_name": "CDS\tcomplement(2668006..2668896)\thcaR; DNA-binding transcriptional dual regulator HcaR",
+      "gene_name": "hcaR",
       "locus": "b2537"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2635",
-      "gene_name": "CDS\t2770445..2770681\typjK; uncharacterized protein YpjK",
+      "gene_name": "ypjK",
       "locus": "b2635"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2666",
-      "gene_name": "CDS\tcomplement(2796870..2797028)\tyqaE; Pmp3 family protein YqaE",
+      "gene_name": "yqaE",
       "locus": "b2666"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2668",
-      "gene_name": "CDS\t2797520..2798044\tygaP; thiosulfate sulfurtransferase YgaP",
+      "gene_name": "ygaP",
       "locus": "b2668"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2752",
-      "gene_name": "CDS\tcomplement(2875421..2876329)\tcysD; sulfate adenylyltransferase subunit 2",
+      "gene_name": "cysD",
       "locus": "b2752"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2763",
-      "gene_name": "CDS\tcomplement(2888387..2890099)\tcysI; sulfite reductase",
+      "gene_name": "cysI",
       "locus": "b2763"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2784",
-      "gene_name": "CDS\tcomplement(2911417..2913651)\trelA; GDP/GTP pyrophosphokinase",
+      "gene_name": "relA",
       "locus": "b2784"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2817",
-      "gene_name": "CDS\tcomplement(2947757..2949010)\tamiC; N-acetylmuramoyl-L-alanine amidase C",
+      "gene_name": "amiC",
       "locus": "b2817"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2909",
-      "gene_name": "CDS\tcomplement(3054866..3055444)\tygfB; PF03695 family protein YgfB",
+      "gene_name": "ygfB",
       "locus": "b2909"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2916",
-      "gene_name": "CDS\t3059753..3060646\targP; DNA-binding transcriptional dual regulator ArgP",
+      "gene_name": "argP",
       "locus": "b2916"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b2925",
-      "gene_name": "CDS\tcomplement(3070165..3071244)\tfbaA; fructose-bisphosphate aldolase class II",
+      "gene_name": "fbaA",
       "locus": "b2925"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3167",
-      "gene_name": "CDS\tcomplement(3312777..3313178)\trbfA; 30S ribosome binding factor",
+      "gene_name": "rbfA",
       "locus": "b3167"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3184",
-      "gene_name": "CDS\tcomplement(3331770..3332735)\tyhbE; putative transporter YhbE",
+      "gene_name": "yhbE",
       "locus": "b3184"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3255",
-      "gene_name": "CDS\t3405436..3405906\taccB; biotin carboxyl carrier protein",
+      "gene_name": "accB",
       "locus": "b3255"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3357",
-      "gene_name": "CDS\t3486120..3486752\tcrp; DNA-binding transcriptional dual regulator CRP",
+      "gene_name": "crp",
       "locus": "b3357"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3387",
-      "gene_name": "CDS\tcomplement(3515077..3515913)\tdam; DNA adenine methyltransferase",
+      "gene_name": "dam",
       "locus": "b3387"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3409",
-      "gene_name": "CDS\t3540407..3542728\tfeoB; Fe(2(+)) transporter FeoB",
+      "gene_name": "feoB",
       "locus": "b3409"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3446",
-      "gene_name": "CDS\t3584759..3585043\tyrhB; putative heat shock chaperone",
+      "gene_name": "yrhB",
       "locus": "b3446"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3459",
-      "gene_name": "CDS\t3597984..3598367\tpanZ; PanD maturation factor",
+      "gene_name": "panZ",
       "locus": "b3459"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3549",
-      "gene_name": "CDS\t3713092..3713655\ttag; 3-methyl-adenine DNA glycosylase I",
+      "gene_name": "tag",
       "locus": "b3549"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3556",
-      "gene_name": "CDS\t3720049..3720261\tcspA; cold shock protein CspA",
+      "gene_name": "cspA",
       "locus": "b3556"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3629",
-      "gene_name": "CDS\tcomplement(3804181..3805116)\twaaS; lipopolysaccharide core biosynthesis protein WaaS",
+      "gene_name": "waaS",
       "locus": "b3629"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3892",
-      "gene_name": "CDS\tcomplement(4081225..4081860)\tfdoI; formate dehydrogenase O subunit gamma",
+      "gene_name": "fdoI",
       "locus": "b3892"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b3941",
-      "gene_name": "CDS\t4132616..4133506\tmetF; 5",
+      "gene_name": "metF",
       "locus": "b3941"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b4034",
-      "gene_name": "CDS\tcomplement(4245229..4246419)\tmalE; maltose ABC transporter periplasmic binding protein",
+      "gene_name": "malE",
       "locus": "b4034"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b4126",
-      "gene_name": "CDS\t4351843..4352073\tyjdI; PF06902 family protein YjdI",
+      "gene_name": "yjdI",
       "locus": "b4126"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b4221",
-      "gene_name": "CDS\t4444112..4447891\ttamB; translocation and assembly module subunit TamB",
+      "gene_name": "tamB",
       "locus": "b4221"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b4236",
-      "gene_name": "gene\t4459488..4459855\tcybC; pseudogene",
+      "gene_name": "cybC",
       "locus": "b4236"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b4239",
-      "gene_name": "CDS\tcomplement(4463054..4464709)\ttreC; trehalose-6-phosphate hydrolase",
+      "gene_name": "treC",
       "locus": "b4239"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b4242",
-      "gene_name": "CDS\t4467625..4470321\tmgtA; Mg(2(+)) importing P-type ATPase",
+      "gene_name": "mgtA",
       "locus": "b4242"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b4306",
-      "gene_name": "CDS\tcomplement(4532437..4533183)\tyjhP; putative methyltransferase YjhP",
+      "gene_name": "yjhP",
       "locus": "b4306"
     },
     {
       "profile_id": "ecoli-k12-mg1655",
       "gene_id": "b4373",
-      "gene_name": "CDS\t4608185..4608631\trimI; protein N-acetyltransferase RimI",
+      "gene_name": "rimI",
       "locus": "b4373"
     },
     {

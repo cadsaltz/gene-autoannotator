@@ -1546,6 +1546,57 @@
       ]
     },
     {
+      "case_id": "general-multi-field-llm-001",
+      "domain": "general",
+      "case_family": "multi_field_mixed",
+      "experiment_tags": [
+        "tiebreak-non-nonsense"
+      ],
+      "field_keys": [
+        "color",
+        "size",
+        "texture"
+      ],
+      "field_key": "color",
+      "expect_llm": true,
+      "expected": {
+        "color": "blue",
+        "size": "big",
+        "texture": "soft"
+      },
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false,
+        "field_modes": {
+          "color": "paraphrase",
+          "size": "paraphrase",
+          "texture": "paraphrase"
+        }
+      },
+      "identity": null,
+      "notes": "Multi-field PoC: per-field paraphrase majorities (no exact 2/3) require LLM; conflict pattern mirrors general-multi-field-001.",
+      "candidates": [
+        {
+          "color": "deep blue coloring",
+          "size": "large in scale",
+          "texture": "soft to the touch"
+        },
+        {
+          "color": "blue-hued appearance",
+          "size": "quite small",
+          "texture": "a gently soft feel"
+        },
+        {
+          "color": "bright red tone",
+          "size": "big overall size",
+          "texture": "rough and coarse"
+        }
+      ]
+    },
+    {
       "case_id": "biology-multi-field-001",
       "domain": "biology",
       "case_family": "multi_field_mixed",
@@ -1653,6 +1704,57 @@
           "color": "plenth",
           "size": "glimpex",
           "texture": "morkel"
+        }
+      ]
+    },
+    {
+      "case_id": "general-nonsense-multi-field-llm-001",
+      "domain": "general",
+      "case_family": "multi_field_mixed",
+      "experiment_tags": [
+        "tiebreak-nonsense"
+      ],
+      "field_keys": [
+        "color",
+        "size",
+        "texture"
+      ],
+      "field_key": "color",
+      "expect_llm": true,
+      "expected": {
+        "color": "zylor",
+        "size": "glimpex",
+        "texture": "vorbish"
+      },
+      "agreement": {
+        "majority_count": 2,
+        "minority_count": 1,
+        "majority_mode": "paraphrase",
+        "minority_role": "conflict",
+        "extractor_0_is_minority": false,
+        "field_modes": {
+          "color": "paraphrase",
+          "size": "paraphrase",
+          "texture": "paraphrase"
+        }
+      },
+      "identity": null,
+      "notes": "Nonsense multi-field PoC with paraphrase majorities (no exact 2/3) requiring LLM; conflict pattern mirrors general-nonsense-multi-field-001.",
+      "candidates": [
+        {
+          "color": "zylor-toned surface",
+          "size": "glimpex in magnitude",
+          "texture": "vorbish to the touch"
+        },
+        {
+          "color": "surface shows zylor hue",
+          "size": "quarnik smallness",
+          "texture": "a gently vorbish feel"
+        },
+        {
+          "color": "plenth bright tone",
+          "size": "overall glimpex scale",
+          "texture": "morkel and coarse"
         }
       ]
     },
