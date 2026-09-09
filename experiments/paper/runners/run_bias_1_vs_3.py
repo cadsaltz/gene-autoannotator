@@ -568,6 +568,15 @@ def _run_optional_derives(
     return derived
 
 
+def _bias_spreadsheet_builder(run_dir: Path) -> Path:
+    """Lazy entry point so openpyxl/builder import only when exporting."""
+    from experiments.paper.scripts.build_chunking_team_review_spreadsheet import (
+        build_run_spreadsheet,
+    )
+
+    return build_run_spreadsheet(run_dir)
+
+
 def _finalize_with_derives(
     output_dir: Path,
     manifest: dict[str, Any],
@@ -575,6 +584,8 @@ def _finalize_with_derives(
     run_id: str,
     derive_split: bool,
     derive_cost: bool,
+    spreadsheet: bool = False,
+    spreadsheet_strict: bool = False,
 ) -> Path:
     if derive_split or derive_cost:
         manifest['derived'] = _run_optional_derives(
@@ -584,6 +595,15 @@ def _finalize_with_derives(
             derive_cost=derive_cost,
         )
         write_json(output_dir / 'manifest.json', manifest)
+    # Spreadsheet after derives so Summary can include split/cost aggregates.
+    if spreadsheet:
+        from experiments.paper.runners.export_review import export_run_spreadsheet
+
+        export_run_spreadsheet(
+            output_dir,
+            _bias_spreadsheet_builder,
+            strict=spreadsheet_strict,
+        )
     return output_dir
 
 
@@ -597,6 +617,8 @@ def run_bias_experiment(
     seed: int | None = None,
     derive_split: bool = False,
     derive_cost: bool = False,
+    spreadsheet: bool = False,
+    spreadsheet_strict: bool = False,
 ) -> Path:
     from autoannotation.section_excerpt_config import section_excerpt_config_from_env
     from autoannotation.worker_env import load_worker_env_into_process
@@ -751,6 +773,8 @@ def run_bias_experiment(
             run_id=run_id,
             derive_split=derive_split,
             derive_cost=derive_cost,
+            spreadsheet=spreadsheet,
+            spreadsheet_strict=spreadsheet_strict,
         )
 
     for trial in run_trials:
@@ -774,6 +798,8 @@ def run_bias_experiment(
         run_id=run_id,
         derive_split=derive_split,
         derive_cost=derive_cost,
+        spreadsheet=spreadsheet,
+        spreadsheet_strict=spreadsheet_strict,
     )
 
 
@@ -810,6 +836,16 @@ def _parse_args() -> argparse.Namespace:
             'results/cost-benefit-1-vs-3/cost_from_<run_id>.'
         ),
     )
+    parser.add_argument(
+        '--spreadsheet',
+        action='store_true',
+        help='Write team_review.xlsx in the bias run directory after a successful run.',
+    )
+    parser.add_argument(
+        '--spreadsheet-strict',
+        action='store_true',
+        help='Fail the run if spreadsheet export errors (default: warn and continue).',
+    )
     return parser.parse_args()
 
 
@@ -825,6 +861,8 @@ def main() -> None:
         seed=args.seed,
         derive_split=args.derive_split,
         derive_cost=args.derive_cost,
+        spreadsheet=args.spreadsheet,
+        spreadsheet_strict=args.spreadsheet_strict,
     )
     print(output_dir)
 
