@@ -21,15 +21,15 @@ export PYTHONPATH=.
 ## Runner flags (bias primary run)
 
 The bias runner can optionally invoke split/cost derives and export a review
-spreadsheet in the same command. Derive failures log a warning and continue;
-spreadsheet failures warn unless `--spreadsheet-strict`.
+spreadsheet in the same command. Derive and spreadsheet failures warn by
+default; `--spreadsheet-strict` makes both fatal.
 
 | Flag | Effect |
 |------|--------|
 | `--derive-split` | After a successful run, derive `split-vs-not` into `results/split-vs-not/split_from_<run_id>/`. |
 | `--derive-cost` | After a successful run, derive `cost-benefit-1-vs-3` into `results/cost-benefit-1-vs-3/cost_from_<run_id>/`. |
 | `--spreadsheet` | Write `team_review.xlsx` in the bias run directory (chunking or standard layout based on excerpt prep). |
-| `--spreadsheet-strict` | Spreadsheet export errors fail the run (default: warn and continue). |
+| `--spreadsheet-strict` | Derive and spreadsheet errors fail the run (default: warn and continue). |
 
 When derives run, `manifest.json` gains a `derived: {split: ..., cost: ...}` block.
 The spreadsheet builder reads split/cost aggregates from those paths when present.

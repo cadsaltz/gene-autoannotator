@@ -100,19 +100,22 @@ def _make_record(
     }
 
 
-def test_aggregate_row_nonsense_metric_uses_tag_not_family():
-    """Nonsense adoption rate must not be diluted by non-nonsense tag rows."""
+def test_aggregate_row_nonsense_metric_uses_family_not_tag():
+    """Adoption rate uses case_family; tag-scoped aggregate rows still exist."""
     records = [
         _make_record(
-            case_id="nn-1",
+            case_id="hard-1",
             condition="no_consensus_pick_extractor_0",
-            experiment_tags=["tiebreak-non-nonsense"],
+            experiment_tags=[NONSENSE_EXPERIMENT_TAG],
+            case_family="hard_split_null",
             match_soft=False,
         ),
         _make_record(
-            case_id="nn-1",
+            case_id="hard-1",
             condition="hybrid_consensus",
-            experiment_tags=["tiebreak-non-nonsense"],
+            experiment_tags=[NONSENSE_EXPERIMENT_TAG],
+            case_family="hard_split_null",
+            # Would inflate a tag-based metric (True + False → 0.5).
             match_soft=True,
         ),
         _make_record(
@@ -127,26 +130,35 @@ def test_aggregate_row_nonsense_metric_uses_tag_not_family():
             condition="hybrid_consensus",
             experiment_tags=[NONSENSE_EXPERIMENT_TAG],
             case_family="exact_majority_nonsense",
+            match_soft=False,
+        ),
+        _make_record(
+            case_id="nn-1",
+            condition="no_consensus_pick_extractor_0",
+            experiment_tags=["tiebreak-non-nonsense"],
+            case_family="exact_majority",
+            match_soft=False,
+        ),
+        _make_record(
+            case_id="nn-1",
+            condition="hybrid_consensus",
+            experiment_tags=["tiebreak-non-nonsense"],
+            case_family="exact_majority",
             match_soft=True,
         ),
     ]
     overall = _aggregate_row(records, scope="overall", value="all")
-    assert overall["case_count"] == 2
-    assert overall["nonsense_majority_adoption_rate"] == 1.0
+    assert overall["case_count"] == 3
+    # Only exact_majority_nonsense is in the family subset; match_soft False → 0.0
+    # (tag-based would have been 0.5 from hard-1 + ns-1).
+    assert overall["nonsense_majority_adoption_rate"] == 0.0
 
-    non_nonsense = _aggregate_row(
-        [record for record in records if "tiebreak-non-nonsense" in record["experiment_tags"]],
-        scope="experiment_tag",
-        value="tiebreak-non-nonsense",
-    )
-    assert non_nonsense["nonsense_majority_adoption_rate"] == 0.0
-
-    nonsense = _aggregate_row(
-        [record for record in records if NONSENSE_EXPERIMENT_TAG in record["experiment_tags"]],
-        scope="experiment_tag",
-        value=NONSENSE_EXPERIMENT_TAG,
-    )
-    assert nonsense["nonsense_majority_adoption_rate"] == 1.0
+    rows = _aggregate_rows(records)
+    tag_values = {
+        row["value"] for row in rows if row["scope"] == "experiment_tag"
+    }
+    assert NONSENSE_EXPERIMENT_TAG in tag_values
+    assert "tiebreak-non-nonsense" in tag_values
 
 
 def test_aggregate_rows_emits_experiment_tag_scope():
@@ -414,3 +426,102 @@ def test_build_run_spreadsheet_omits_absent_tag_sheet(tmp_path):
     out = build_run_spreadsheet(run_dir)
     wb = load_workbook(out)
     assert wb.sheetnames == ["Summary", "Non-nonsense"]
+
+
+def test_consensus_prompt_multi_field_includes_candidate_values():
+    from experiments.paper.scripts.build_tiebreak_team_review_spreadsheet import (
+        consensus_prompt_for_case,
+    )
+
+    hybrid = {
+        "case_id": "general-multi-field-llm-001",
+        "domain": "general",
+        "case_family": "multi_field_mixed",
+        "field_key": "color,size,texture",
+        "field_keys": ["color", "size", "texture"],
+        "llm_invoked": True,
+        "candidates": [
+            {
+                "color": "deep blue coloring",
+                "size": "large in scale",
+                "texture": "soft to the touch",
+            },
+            {
+                "color": "deep blue coloring",
+                "size": "large in scale",
+                "texture": "soft to the touch",
+            },
+            {
+                "color": "reddish",
+                "size": "tiny",
+                "texture": "rough",
+            },
+        ],
+    }
+    prompt = consensus_prompt_for_case(hybrid)
+    assert prompt is not None
+    assert "deep blue coloring" in prompt
+    assert "large in scale" in prompt
+    assert "soft to the touch" in prompt
+    # Must not index with the composite field_key label (all-null fabrication).
+    assert '"color,size,texture"' not in prompt
+    assert '"function": null' not in prompt
+
+
+def test_build_run_spreadsheet_infers_sheets_without_experiment_tags(tmp_path):
+    from openpyxl import load_workbook
+
+    from experiments.paper.scripts.build_tiebreak_team_review_spreadsheet import (
+        build_run_spreadsheet,
+    )
+
+    run_dir = tmp_path / "legacy"
+    run_dir.mkdir(parents=True)
+    records = []
+    for case_id, family in (
+        ("nn-legacy-1", "exact_majority"),
+        ("general-nonsense-legacy-1", "exact_majority_nonsense"),
+    ):
+        for condition in ("no_consensus_pick_extractor_0", "hybrid_consensus"):
+            records.append(
+                {
+                    "case_id": case_id,
+                    "domain": "general",
+                    "case_family": family,
+                    # Intentionally omit experiment_tags (pre-branch records).
+                    "field_key": "label",
+                    "condition": condition,
+                    "candidates": [{"label": "a"}, {"label": "a"}, {"label": "b"}],
+                    "expected": "a",
+                    "observed": "a",
+                    "llm_invoked": False,
+                    "provenance": "extractor_0",
+                    "match_exact": True,
+                    "match_soft": True,
+                    "invention": False,
+                    "expect_llm": False,
+                    "expect_llm_matched": True,
+                }
+            )
+    (run_dir / "records.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in records) + "\n"
+    )
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "experiment_id": "tiebreak-consensus",
+                "run_id": "legacy",
+                "model_tags": {"consensus": "qwen3.5:27b"},
+            }
+        )
+    )
+    (run_dir / "aggregate.csv").write_text(
+        "scope,value,case_count,consensus_match_soft_rate,"
+        "consensus_match_exact_rate,baseline_match_soft_rate,"
+        "necessity_delta,llm_invoked_rate,expect_llm_calibration_rate,"
+        "invention_rate,nonsense_majority_adoption_rate\n"
+        "overall,all,2,1.0,1.0,1.0,0.0,0.0,1.0,0.0,0.0\n"
+    )
+    out = build_run_spreadsheet(run_dir)
+    wb = load_workbook(out)
+    assert wb.sheetnames == ["Summary", "Non-nonsense", "Nonsense"]

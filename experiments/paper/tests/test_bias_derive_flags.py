@@ -151,6 +151,29 @@ def test_derive_failure_warns_and_continues(tmp_path, monkeypatch, caplog):
     )
 
 
+def test_spreadsheet_strict_reraises_derive_failure(tmp_path, monkeypatch):
+    paper_dir = tmp_path / "paper"
+    monkeypatch.setattr(run_bias_1_vs_3, "PAPER_DIR", paper_dir)
+    config_path = _minimal_bias_config(tmp_path)
+
+    def boom(*, bias_run_dir, run_id=None, config_path=None):
+        raise RuntimeError("derive boom")
+
+    monkeypatch.setattr(
+        "experiments.paper.runners.derive_split_vs_not.derive_split_vs_not",
+        boom,
+    )
+
+    with pytest.raises(RuntimeError, match="derive boom"):
+        run_bias_1_vs_3.run_bias_experiment(
+            config_path=config_path,
+            run_id="dry-derive-strict",
+            dry_run=True,
+            derive_split=True,
+            spreadsheet_strict=True,
+        )
+
+
 def test_parse_args_accepts_derive_flags(monkeypatch):
     import sys
 

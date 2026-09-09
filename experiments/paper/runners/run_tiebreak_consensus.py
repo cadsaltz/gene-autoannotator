@@ -298,7 +298,7 @@ def _score_record(
     else:
         invention = is_invention(observed, candidate_values)
         field_key_label = case["field_key"]
-    return {
+    record = {
         "case_id": case["case_id"],
         "domain": case["domain"],
         "case_family": case["case_family"],
@@ -316,6 +316,9 @@ def _score_record(
         "expect_llm": bool(case["expect_llm"]),
         "expect_llm_matched": llm_invoked == bool(case["expect_llm"]),
     }
+    if field_keys:
+        record["field_keys"] = list(field_keys)
+    return record
 
 
 def _rate(records: list[dict[str, Any]], key: str) -> float:
@@ -339,10 +342,12 @@ def _aggregate_row(
     necessity_consensus = [
         record for record in consensus if record["case_id"] in necessity_ids
     ]
+    # Pre-registered metric: family contains "nonsense" (exact/paraphrase
+    # majority-nonsense cases). Tag-scoped aggregate rows slice separately.
     nonsense_consensus = [
         record
         for record in consensus
-        if NONSENSE_EXPERIMENT_TAG in (record.get("experiment_tags") or [])
+        if "nonsense" in record["case_family"]
     ]
     return {
         "scope": scope,

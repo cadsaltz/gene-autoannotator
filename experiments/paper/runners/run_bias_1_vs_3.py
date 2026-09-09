@@ -528,8 +528,9 @@ def _run_optional_derives(
     run_id: str,
     derive_split: bool,
     derive_cost: bool,
+    strict: bool = False,
 ) -> dict[str, str | None]:
-    """Invoke optional split/cost derives; warn and continue on failure."""
+    """Invoke optional split/cost derives; warn (or re-raise if strict) on failure."""
     derived: dict[str, str | None] = {}
     if derive_split:
         try:
@@ -541,6 +542,8 @@ def _run_optional_derives(
             )
             derived['split'] = str(split_dir)
         except Exception:
+            if strict:
+                raise
             logger.warning(
                 'derive-split failed for %s; continuing without split derive',
                 output_dir,
@@ -559,6 +562,8 @@ def _run_optional_derives(
             )
             derived['cost'] = str(cost_dir)
         except Exception:
+            if strict:
+                raise
             logger.warning(
                 'derive-cost failed for %s; continuing without cost derive',
                 output_dir,
@@ -593,6 +598,7 @@ def _finalize_with_derives(
             run_id=run_id,
             derive_split=derive_split,
             derive_cost=derive_cost,
+            strict=spreadsheet_strict,
         )
         write_json(output_dir / 'manifest.json', manifest)
     # Spreadsheet after derives so Summary can include split/cost aggregates.

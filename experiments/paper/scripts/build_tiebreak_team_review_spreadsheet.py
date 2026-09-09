@@ -46,6 +46,9 @@ SHEET_BY_TAG = (
     (NON_NONSENSE_TAG, "Non-nonsense"),
     (NONSENSE_TAG, "Nonsense"),
 )
+# Mirror run_tiebreak_consensus.GENERAL_MULTI_SLOTS (kept inline to avoid importing
+# the runner from this optional openpyxl script).
+GENERAL_MULTI_SLOTS = ("function", "drug_susc_impact", "infection_impact")
 
 header_font = Font(bold=True, color="FFFFFF")
 label_fill = PatternFill("solid", fgColor="D6E3F0")
@@ -98,40 +101,84 @@ def pair_cases(records: list[dict]) -> list[dict]:
     return ordered
 
 
+def infer_experiment_tags(record: dict) -> list[str]:
+    """Return stored tags, or infer for older records that lack experiment_tags."""
+    tags = list(record.get("experiment_tags") or [])
+    if tags:
+        return tags
+    case_family = str(record.get("case_family") or "")
+    case_id = str(record.get("case_id") or "")
+    if "nonsense" in case_family or "nonsense" in case_id:
+        return [NONSENSE_TAG]
+    return [NON_NONSENSE_TAG]
+
+
 def filter_records_by_tag(records: list[dict], tag: str) -> list[dict]:
-    return [
-        row
-        for row in records
-        if tag in (row.get("experiment_tags") or [])
-    ]
+    return [row for row in records if tag in infer_experiment_tags(row)]
+
+
+def field_keys_for_prompt(hybrid: dict) -> list[str]:
+    raw = hybrid.get("field_keys")
+    if isinstance(raw, list) and raw:
+        return [str(key) for key in raw]
+    field_key = str(hybrid.get("field_key") or "")
+    if "," in field_key:
+        return [part.strip() for part in field_key.split(",") if part.strip()]
+    return [field_key] if field_key else []
 
 
 def consensus_prompt_for_case(hybrid: dict) -> str | None:
     """Rebuild the prompt the live merger would send when LLM is invoked.
 
-    General cases are remapped onto the temporary ``function`` slot before the
-    general merger runs (see run_tiebreak_consensus._case_records).
+    General single-field cases are remapped onto the temporary ``function``
+    slot; general multi-field cases map onto GENERAL_MULTI_SLOTS (see
+    run_tiebreak_consensus._multi_field_case_records).
     """
     if not hybrid.get("llm_invoked"):
         return None
 
-    field_key = hybrid["field_key"]
+    field_keys = field_keys_for_prompt(hybrid)
+    if not field_keys:
+        return None
     candidates = hybrid["candidates"]
     domain = hybrid["domain"]
 
     if domain == "general":
-        payload = [{"function": candidate.get(field_key)} for candidate in candidates]
+        if len(field_keys) == 1:
+            payload = [
+                {"function": candidate.get(field_keys[0])} for candidate in candidates
+            ]
+            field_list = "function"
+        else:
+            if len(field_keys) > len(GENERAL_MULTI_SLOTS):
+                raise ValueError(
+                    f"{hybrid.get('case_id')}: general multi-field supports at most "
+                    f"{len(GENERAL_MULTI_SLOTS)} fields"
+                )
+            slot_by_field = {
+                field_key: GENERAL_MULTI_SLOTS[index]
+                for index, field_key in enumerate(field_keys)
+            }
+            payload = [
+                {
+                    slot_by_field[field_key]: candidate.get(field_key)
+                    for field_key in field_keys
+                }
+                for candidate in candidates
+            ]
+            field_list = ",".join(slot_by_field[key] for key in field_keys)
         return GENERAL_BATCH_CONSENSUS_PROMPT.format(
             candidates_json=json.dumps(payload, indent=2, ensure_ascii=False),
-            field_list="function",
+            field_list=field_list,
         ).strip()
 
     payload = [
-        {field_key: candidate.get(field_key)} for candidate in candidates
+        {field_key: candidate.get(field_key) for field_key in field_keys}
+        for candidate in candidates
     ]
     return llms.BATCH_CONSENSUS_PROMPT.format(
         candidates_json=json.dumps(payload, indent=2, ensure_ascii=False),
-        field_list=field_key,
+        field_list=",".join(field_keys),
     ).strip()
 
 

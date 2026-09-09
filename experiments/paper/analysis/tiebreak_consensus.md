@@ -15,9 +15,16 @@ not source-grounded biological accuracy.
 
 The primary config runs the full paper suite in **one** `run_id` → one
 `records.jsonl` → one `aggregate.csv` with overall rows plus
-`scope=experiment_tag` slices. Nonsense-only metrics (e.g.
-`nonsense_majority_adoption_rate`) are computed on the nonsense-tagged subset,
-not diluted by non-nonsense rows.
+`scope=experiment_tag` slices. The pre-registered
+`nonsense_majority_adoption_rate` uses cases whose `case_family` contains
+`"nonsense"` (exact/paraphrase majority-nonsense families; denominator 16 in
+the frozen fixture). Tag-scoped aggregate rows additionally slice the full
+tagged subsets (including hard-split / multi-field rows that carry the
+nonsense tag but are not in those families).
+
+Presets and the primary combined config pin consensus model `qwen3.5:27b`
+(vs the older `qwen3:8b` pilot); live aggregates are not directly comparable
+to early `qwen3:8b` pilots without that model caveat.
 
 ## Flags
 
@@ -32,6 +39,10 @@ Post-hoc export from an existing run directory:
 python experiments/paper/scripts/build_tiebreak_team_review_spreadsheet.py \
   --run-dir experiments/paper/results/tiebreak-consensus/<run-id>
 ```
+
+Older `records.jsonl` files without `experiment_tags` still populate Non-nonsense /
+Nonsense sheets by inferring from `case_family` / `case_id` (e.g. `"nonsense"` in
+either → Nonsense sheet).
 
 ## Dry-run smoke checks
 
@@ -139,8 +150,9 @@ Use the `scope=overall,value=all` aggregate row for the headline table:
 - `necessity_case_count` and `necessity_delta`
 - `llm_invoked_rate` and `expect_llm_calibration_rate`
 - `invention_rate`
-- `nonsense_majority_adoption_rate` for nonsense-tagged rows (or
-  `scope=experiment_tag,value=tiebreak-nonsense` on a combined run)
+- `nonsense_majority_adoption_rate` on the family-based nonsense subset
+  (`"nonsense" in case_family`); on a combined run, also inspect
+  `scope=experiment_tag,value=tiebreak-nonsense` for the broader tagged slice
 
 The `domain`, `case_family`, `expect_llm`, and `experiment_tag` rows support
 stratified appendix checks. Exact-match rates are secondary diagnostics;
