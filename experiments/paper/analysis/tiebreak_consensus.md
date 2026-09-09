@@ -1,12 +1,54 @@
 # Tie-break consensus operator notes
 
-The two experiments use the same frozen constructed fixture and runner. They
-never provide a source excerpt to consensus; live runs therefore test
-candidate-only reconciliation, not source-grounded biological accuracy.
+Constructed tie-break experiments share one frozen fixture
+(`fixtures/constructed/tiebreak_consensus_v1.json`) and one runner. Consensus
+never receives a source excerpt; live runs test candidate-only reconciliation,
+not source-grounded biological accuracy.
+
+## Unified suite and presets
+
+| Config | `experiment_id` | Cases selected |
+|--------|-----------------|----------------|
+| `tiebreak-consensus.yaml` | `tiebreak-consensus` | **Both** `tiebreak-non-nonsense` and `tiebreak-nonsense` (OR / any-of) |
+| `tiebreak-non-nonsense.yaml` | `tiebreak-non-nonsense` | Non-nonsense tag only (legacy-compatible preset) |
+| `tiebreak-nonsense.yaml` | `tiebreak-nonsense` | Nonsense tag only (legacy-compatible preset) |
+
+The primary config runs the full paper suite in **one** `run_id` → one
+`records.jsonl` → one `aggregate.csv` with overall rows plus
+`scope=experiment_tag` slices. Nonsense-only metrics (e.g.
+`nonsense_majority_adoption_rate`) are computed on the nonsense-tagged subset,
+not diluted by non-nonsense rows.
+
+## Flags
+
+| Flag | Effect |
+|------|--------|
+| `--spreadsheet` | After a successful run, write `team_review.xlsx` in the run directory (Summary + per-tag case sheets). Lazy-imports `openpyxl`; not required for normal runs. |
+| `--spreadsheet-strict` | Spreadsheet export errors fail the run (default: log warning and continue). |
+
+Post-hoc export from an existing run directory:
+
+```bash
+python experiments/paper/scripts/build_tiebreak_team_review_spreadsheet.py \
+  --run-dir experiments/paper/results/tiebreak-consensus/<run-id>
+```
 
 ## Dry-run smoke checks
 
+No LLM calls; writes manifest, records, aggregate, and (with `--spreadsheet`)
+`team_review.xlsx`.
+
 ```bash
+cd /path/to/gene-autoannotator
+source .venv/bin/activate
+export PYTHONPATH=.
+
+# Combined suite (recommended)
+python -m experiments.paper.runners.run_tiebreak_consensus \
+  --config experiments/paper/configs/tiebreak-consensus.yaml \
+  --dry-run --limit 3 --spreadsheet
+
+# Preset subsets (legacy-compatible)
 python -m experiments.paper.runners.run_tiebreak_consensus \
   --config experiments/paper/configs/tiebreak-non-nonsense.yaml \
   --dry-run --limit 3
@@ -23,17 +65,28 @@ chat calls disable thinking by default (`think=false`) so Qwen3 fills
 `message.content` for structured JSON. Ensure Ollama has that model, then run:
 
 ```bash
+# Combined tie-break (nonsense + non-nonsense) + review sheet
 python -m experiments.paper.runners.run_tiebreak_consensus \
-  --config experiments/paper/configs/tiebreak-non-nonsense.yaml \
-  --run-id paper-non-nonsense-v2
+  --config experiments/paper/configs/tiebreak-consensus.yaml \
+  --run-id paper-tiebreak-v5 \
+  --spreadsheet
 
+# Preset: nonsense only (legacy-compatible)
 python -m experiments.paper.runners.run_tiebreak_consensus \
   --config experiments/paper/configs/tiebreak-nonsense.yaml \
-  --run-id paper-nonsense-v2
+  --run-id paper-nonsense-v5 \
+  --spreadsheet
+
+# Preset: non-nonsense only
+python -m experiments.paper.runners.run_tiebreak_consensus \
+  --config experiments/paper/configs/tiebreak-non-nonsense.yaml \
+  --run-id paper-non-nonsense-v5 \
+  --spreadsheet
 ```
 
 Each command writes `manifest.json`, `records.jsonl`, and `aggregate.csv` under
-`experiments/paper/results/<experiment-id>/<run-id>/`.
+`experiments/paper/results/<experiment-id>/<run-id>/`. With `--spreadsheet`,
+`team_review.xlsx` is written in the same directory.
 
 ## 2026-09-03 live pilot and blocked full runs
 
@@ -86,8 +139,9 @@ Use the `scope=overall,value=all` aggregate row for the headline table:
 - `necessity_case_count` and `necessity_delta`
 - `llm_invoked_rate` and `expect_llm_calibration_rate`
 - `invention_rate`
-- `nonsense_majority_adoption_rate` for `tiebreak-nonsense`
+- `nonsense_majority_adoption_rate` for nonsense-tagged rows (or
+  `scope=experiment_tag,value=tiebreak-nonsense` on a combined run)
 
-The `domain`, `case_family`, and `expect_llm` rows support stratified appendix
-checks. Exact-match rates are secondary diagnostics; soft-match rates are the
-pre-registered primary outcome.
+The `domain`, `case_family`, `expect_llm`, and `experiment_tag` rows support
+stratified appendix checks. Exact-match rates are secondary diagnostics;
+soft-match rates are the pre-registered primary outcome.

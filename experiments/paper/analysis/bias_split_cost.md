@@ -18,13 +18,39 @@ source .venv/bin/activate
 export PYTHONPATH=.
 ```
 
-Dry-run wiring check (no LLM/NLI):
+## Runner flags (bias primary run)
+
+The bias runner can optionally invoke split/cost derives and export a review
+spreadsheet in the same command. Derive failures log a warning and continue;
+spreadsheet failures warn unless `--spreadsheet-strict`.
+
+| Flag | Effect |
+|------|--------|
+| `--derive-split` | After a successful run, derive `split-vs-not` into `results/split-vs-not/split_from_<run_id>/`. |
+| `--derive-cost` | After a successful run, derive `cost-benefit-1-vs-3` into `results/cost-benefit-1-vs-3/cost_from_<run_id>/`. |
+| `--spreadsheet` | Write `team_review.xlsx` in the bias run directory (chunking or standard layout based on excerpt prep). |
+| `--spreadsheet-strict` | Spreadsheet export errors fail the run (default: warn and continue). |
+
+When derives run, `manifest.json` gains a `derived: {split: ..., cost: ...}` block.
+The spreadsheet builder reads split/cost aggregates from those paths when present.
+
+## Dry-run wiring check (no LLM/NLI)
 
 ```bash
 python -m experiments.paper.runners.run_bias_1_vs_3 \
   --config experiments/paper/configs/bias-1-vs-3-small.yaml \
   --n-trials 1 --run-id dry1 --dry-run
+
+# With inline derives + review sheet (no Ollama)
+python -m experiments.paper.runners.run_bias_1_vs_3 \
+  --config experiments/paper/configs/bias-1-vs-3-small.yaml \
+  --n-trials 1 --run-id dry1-flags --dry-run \
+  --derive-split --derive-cost --spreadsheet
 ```
+
+Multi-organism / mixed biology+general runs use the same flags on
+`bias-multi-organism-v2.yaml` (override trial counts with `--n-trials` or
+`--distribution`).
 
 ## Pilot (N=1)
 
@@ -36,7 +62,8 @@ python -m experiments.paper.runners.run_bias_1_vs_3 \
   --n-trials 1 --run-id pilot1
 ```
 
-After pilot, derive split and cost from the same bias run:
+After pilot, derive split and cost from the same bias run (manual, if not using
+`--derive-split` / `--derive-cost` on the primary command):
 
 ```bash
 python -m experiments.paper.runners.derive_split_vs_not \
@@ -57,10 +84,23 @@ before paper10 (live runs only — dry-run aggregate rows are zero-valued placeh
 Only after pilot looks good:
 
 ```bash
+# Bias + derives + review sheet (single command)
+python -m experiments.paper.runners.run_bias_1_vs_3 \
+  --config experiments/paper/configs/bias-multi-organism-v2.yaml \
+  --run-id mixed20_chunking_v2 \
+  --derive-split --derive-cost --spreadsheet
+
+# Small-pool paper run (v1 fixture)
 python -m experiments.paper.runners.run_bias_1_vs_3 \
   --config experiments/paper/configs/bias-1-vs-3-small.yaml \
-  --n-trials 10 --run-id paper10
+  --n-trials 10 --run-id paper10 \
+  --derive-split --derive-cost --spreadsheet
+```
 
+Manual derive commands remain supported for re-deriving from an existing bias
+run without re-running LLMs:
+
+```bash
 python -m experiments.paper.runners.derive_split_vs_not \
   --bias-run-dir experiments/paper/results/bias-1-vs-3-small/paper10 \
   --run-id split_from_paper10
@@ -71,6 +111,13 @@ python -m experiments.paper.runners.derive_cost_benefit_1_vs_3 \
 ```
 
 Use `--primary-only` on the cost derive if the paper table omits per-extractor rows.
+
+Post-hoc spreadsheet from an existing bias run:
+
+```bash
+python experiments/paper/scripts/build_chunking_team_review_spreadsheet.py \
+  --run-dir experiments/paper/results/bias-1-vs-3-small/<run-id>
+```
 
 ## Aggregate → paper mapping
 
