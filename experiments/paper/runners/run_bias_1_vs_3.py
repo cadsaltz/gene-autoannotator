@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -29,6 +30,8 @@ from experiments.paper.runners.common import (
     write_aggregate_csv,
     write_json,
 )
+
+logger = logging.getLogger(__name__)
 
 PAPER_DIR = Path(__file__).resolve().parents[1]
 ALLOWED_EXPERIMENT_IDS = frozenset({'bias-1-vs-3-small', 'bias-general-1-vs-3'})
@@ -519,6 +522,71 @@ def _trial_meta(trial: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
     return meta
 
 
+def _run_optional_derives(
+    output_dir: Path,
+    *,
+    run_id: str,
+    derive_split: bool,
+    derive_cost: bool,
+) -> dict[str, str | None]:
+    """Invoke optional split/cost derives; warn and continue on failure."""
+    derived: dict[str, str | None] = {}
+    if derive_split:
+        try:
+            from experiments.paper.runners.derive_split_vs_not import derive_split_vs_not
+
+            split_dir = derive_split_vs_not(
+                bias_run_dir=output_dir,
+                run_id=f'split_from_{run_id}',
+            )
+            derived['split'] = str(split_dir)
+        except Exception:
+            logger.warning(
+                'derive-split failed for %s; continuing without split derive',
+                output_dir,
+                exc_info=True,
+            )
+            derived['split'] = None
+    if derive_cost:
+        try:
+            from experiments.paper.runners.derive_cost_benefit_1_vs_3 import (
+                derive_cost_benefit_1_vs_3,
+            )
+
+            cost_dir = derive_cost_benefit_1_vs_3(
+                bias_run_dir=output_dir,
+                run_id=f'cost_from_{run_id}',
+            )
+            derived['cost'] = str(cost_dir)
+        except Exception:
+            logger.warning(
+                'derive-cost failed for %s; continuing without cost derive',
+                output_dir,
+                exc_info=True,
+            )
+            derived['cost'] = None
+    return derived
+
+
+def _finalize_with_derives(
+    output_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    run_id: str,
+    derive_split: bool,
+    derive_cost: bool,
+) -> Path:
+    if derive_split or derive_cost:
+        manifest['derived'] = _run_optional_derives(
+            output_dir,
+            run_id=run_id,
+            derive_split=derive_split,
+            derive_cost=derive_cost,
+        )
+        write_json(output_dir / 'manifest.json', manifest)
+    return output_dir
+
+
 def run_bias_experiment(
     *,
     config_path: Path,
@@ -527,6 +595,8 @@ def run_bias_experiment(
     dry_run: bool = False,
     distribution=None,
     seed: int | None = None,
+    derive_split: bool = False,
+    derive_cost: bool = False,
 ) -> Path:
     from autoannotation.section_excerpt_config import section_excerpt_config_from_env
     from autoannotation.worker_env import load_worker_env_into_process
@@ -675,7 +745,13 @@ def run_bias_experiment(
             output_dir / 'aggregate.csv',
             _aggregate_rows(observables, conditions=conditions),
         )
-        return output_dir
+        return _finalize_with_derives(
+            output_dir,
+            manifest,
+            run_id=run_id,
+            derive_split=derive_split,
+            derive_cost=derive_cost,
+        )
 
     for trial in run_trials:
         observable = _run_live_trial(
@@ -692,7 +768,13 @@ def run_bias_experiment(
         output_dir / 'aggregate.csv',
         _aggregate_rows(observables, conditions=conditions),
     )
-    return output_dir
+    return _finalize_with_derives(
+        output_dir,
+        manifest,
+        run_id=run_id,
+        derive_split=derive_split,
+        derive_cost=derive_cost,
+    )
 
 
 def _parse_args() -> argparse.Namespace:
@@ -715,6 +797,19 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument('--run-id')
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument(
+        '--derive-split',
+        action='store_true',
+        help='After a successful run, derive split-vs-not into results/split-vs-not/split_from_<run_id>.',
+    )
+    parser.add_argument(
+        '--derive-cost',
+        action='store_true',
+        help=(
+            'After a successful run, derive cost-benefit-1-vs-3 into '
+            'results/cost-benefit-1-vs-3/cost_from_<run_id>.'
+        ),
+    )
     return parser.parse_args()
 
 
@@ -728,6 +823,8 @@ def main() -> None:
         dry_run=args.dry_run,
         distribution=distribution,
         seed=args.seed,
+        derive_split=args.derive_split,
+        derive_cost=args.derive_cost,
     )
     print(output_dir)
 
