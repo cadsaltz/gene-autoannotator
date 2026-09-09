@@ -50,6 +50,7 @@ CONDITIONS = (
     "hybrid_consensus",
 )
 DRY_SOFT_MATCH = 0.35
+NONSENSE_EXPERIMENT_TAG = "tiebreak-nonsense"
 
 # Production normalize_annotation_fields only keeps biology keys. Map general
 # multi-field labels onto three string biology slots for the merge, then map back.
@@ -301,6 +302,7 @@ def _score_record(
         "case_id": case["case_id"],
         "domain": case["domain"],
         "case_family": case["case_family"],
+        "experiment_tags": list(case.get("experiment_tags") or []),
         "field_key": field_key_label,
         "condition": condition,
         "candidates": case["candidates"],
@@ -340,7 +342,7 @@ def _aggregate_row(
     nonsense_consensus = [
         record
         for record in consensus
-        if "nonsense" in record["case_family"]
+        if NONSENSE_EXPERIMENT_TAG in (record.get("experiment_tags") or [])
     ]
     return {
         "scope": scope,
@@ -374,6 +376,20 @@ def _aggregate_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 record for record in records if str(record[key]) == value
             ]
             rows.append(_aggregate_row(subset, scope=key, value=value))
+    tag_values = sorted(
+        {
+            tag
+            for record in records
+            for tag in (record.get("experiment_tags") or [])
+        }
+    )
+    for tag in tag_values:
+        subset = [
+            record
+            for record in records
+            if tag in (record.get("experiment_tags") or [])
+        ]
+        rows.append(_aggregate_row(subset, scope="experiment_tag", value=tag))
     return rows
 
 
