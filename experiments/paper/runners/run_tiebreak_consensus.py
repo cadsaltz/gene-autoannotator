@@ -393,6 +393,15 @@ def _aggregate_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
+def _tiebreak_spreadsheet_builder(run_dir: Path) -> Path:
+    """Lazy entry point so openpyxl/builder import only when exporting."""
+    from experiments.paper.scripts.build_tiebreak_team_review_spreadsheet import (
+        build_run_spreadsheet,
+    )
+
+    return build_run_spreadsheet(run_dir)
+
+
 def run_experiment(
     *,
     config_path: Path,
@@ -400,6 +409,8 @@ def run_experiment(
     dry_run: bool = False,
     limit: int | None = None,
     results_root: Path | None = None,
+    spreadsheet: bool = False,
+    spreadsheet_strict: bool = False,
 ) -> Path:
     config_path = Path(config_path)
     config = load_yaml_config(config_path)
@@ -479,6 +490,14 @@ def run_experiment(
             records.append(record)
             append_jsonl(records_path, record)
     write_aggregate_csv(output_dir / "aggregate.csv", _aggregate_rows(records))
+    if spreadsheet:
+        from experiments.paper.runners.export_review import export_run_spreadsheet
+
+        export_run_spreadsheet(
+            output_dir,
+            _tiebreak_spreadsheet_builder,
+            strict=spreadsheet_strict,
+        )
     return output_dir
 
 
@@ -490,6 +509,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--run-id")
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--spreadsheet",
+        action="store_true",
+        help="Write team_review.xlsx in the run directory after a successful run.",
+    )
+    parser.add_argument(
+        "--spreadsheet-strict",
+        action="store_true",
+        help="Fail the run if spreadsheet export errors (default: warn and continue).",
+    )
     return parser.parse_args()
 
 
@@ -500,6 +529,8 @@ def main() -> None:
         run_id=args.run_id,
         dry_run=args.dry_run,
         limit=args.limit,
+        spreadsheet=args.spreadsheet,
+        spreadsheet_strict=args.spreadsheet_strict,
     )
     print(output_dir)
 
