@@ -73,3 +73,43 @@ def test_build_condition_layout_grows_with_extractor_count():
         'single_D',
     )
     assert layout['condition_models']['extractor_D'] == 'model-d'
+
+
+def test_extractor_labels_from_keys_sorted():
+    from experiments.paper.runners.common import extractor_labels_from_keys
+
+    assert extractor_labels_from_keys(
+        ['extractor_C', 'consensus_D', 'extractor_A', 'single_B', 'extractor_B'],
+    ) == ['A', 'B', 'C']
+
+
+def test_extractor_labels_from_trial_and_observables():
+    from experiments.paper.runners.common import (
+        extractor_labels_from_observables,
+        extractor_labels_from_trial,
+    )
+
+    trial = {
+        'outputs': {
+            'extractor_A': {'function': 'x'},
+            'extractor_B': {'function': 'y'},
+            'extractor_C': {'function': 'z'},
+            'extractor_D': {'function': 'w'},
+            'consensus_D': {'function': 'x'},
+        },
+    }
+    assert extractor_labels_from_trial(trial) == ['A', 'B', 'C', 'D']
+    assert extractor_labels_from_observables([trial]) == ['A', 'B', 'C', 'D']
+    assert extractor_labels_from_observables(
+        [trial],
+        manifest={
+            'conditions': [
+                'extractor_A',
+                'extractor_B',
+                'consensus_D',
+                'single_A',
+                'single_B',
+            ],
+            'model_tags': {'extractors': ['a', 'b'], 'consensus': 'c'},
+        },
+    ) == ['A', 'B']

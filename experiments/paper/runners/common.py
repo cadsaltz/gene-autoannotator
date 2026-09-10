@@ -147,6 +147,58 @@ def extractor_slot_label(index: int) -> str:
     return str(index + 1)
 
 
+def _extractor_label_sort_key(label: str) -> tuple[int, int | str]:
+    if len(label) == 1 and label.isalpha():
+        return (0, ord(label.upper()))
+    if label.isdigit():
+        return (1, int(label))
+    return (2, label)
+
+
+def extractor_labels_from_keys(keys: Any) -> list[str]:
+    """Return sorted extractor slot labels (A, B, …) from condition / output keys."""
+    labels: list[str] = []
+    for key in keys or ():
+        text = str(key)
+        if text.startswith('extractor_'):
+            labels.append(text.removeprefix('extractor_'))
+    return sorted(set(labels), key=_extractor_label_sort_key)
+
+
+def extractor_labels_from_trial(trial: dict[str, Any]) -> list[str]:
+    outputs = trial.get('outputs') or {}
+    labels = extractor_labels_from_keys(outputs)
+    if labels:
+        return labels
+    metrics = trial.get('condition_metrics') or {}
+    labels = extractor_labels_from_keys(metrics)
+    if labels:
+        return labels
+    prompts = trial.get('prompts') or {}
+    return extractor_labels_from_keys(prompts)
+
+
+def extractor_labels_from_observables(
+    observables: list[dict[str, Any]],
+    *,
+    manifest: dict[str, Any] | None = None,
+) -> list[str]:
+    """Prefer manifest layout; otherwise discover labels from trial records."""
+    if manifest:
+        try:
+            layout = condition_layout_from_manifest(manifest)
+            labels = list(layout.get('labels') or ())
+            if labels:
+                return labels
+        except ValueError:
+            pass
+    for trial in observables:
+        labels = extractor_labels_from_trial(trial)
+        if labels:
+            return labels
+    return []
+
+
 def build_condition_layout(extractor_models: list[str]) -> dict[str, Any]:
     if len(extractor_models) < 2:
         raise ValueError(

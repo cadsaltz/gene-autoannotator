@@ -347,3 +347,89 @@ def test_build_run_spreadsheet_non_chunk_sheet_titles(tmp_path):
     assert "E. coli" in wb.sheetnames
     assert not any(name.startswith("Chunk |") for name in wb.sheetnames)
     assert wb["Summary"].cell(1, 1).value == "Bias team review — Summary"
+
+
+def test_build_run_spreadsheet_scales_extractor_blocks(tmp_path):
+    from openpyxl import load_workbook
+
+    from experiments.paper.scripts.build_chunking_team_review_spreadsheet import (
+        build_run_spreadsheet,
+    )
+
+    def _write_run(run_dir: Path, labels: list[str], models: list[str]) -> None:
+        run_dir.mkdir()
+        outputs = {f"extractor_{label}": {"function": label} for label in labels}
+        outputs["consensus_D"] = {"function": labels[0]}
+        metrics = {
+            f"extractor_{label}": {"model": model}
+            for label, model in zip(labels, models)
+        }
+        metrics["consensus_D"] = {"model": "consensus"}
+        conditions = [f"extractor_{label}" for label in labels] + ["consensus_D"] + [
+            f"single_{label}" for label in labels
+        ]
+        (run_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "experiment_id": "bias-1-vs-3-small",
+                    "run_id": run_dir.name,
+                    "conditions": conditions,
+                    "model_tags": {
+                        "extractors": models,
+                        "consensus": "consensus",
+                    },
+                    "n_fixture_trials": 1,
+                    "n_run_trials": 1,
+                }
+            )
+        )
+        (run_dir / "records.jsonl").write_text(
+            json.dumps(
+                {
+                    "record_type": "trial_observable",
+                    "trial_id": "t1",
+                    "fixture_trial_id": "t1",
+                    "trial_pool": "biology",
+                    "profile_id": "mtb-h37rv",
+                    "gene_id": "Rv0001",
+                    "gene_name": "dnaA",
+                    "pmc_id": "PMC1",
+                    "section": "results",
+                    "excerpt_text": "abc",
+                    "excerpt_preparation": {
+                        "tier": "pass",
+                        "part_index": 1,
+                        "part_count": 1,
+                        "chars": 3,
+                    },
+                    "outputs": outputs,
+                    "condition_metrics": metrics,
+                    "prompts": {},
+                }
+            )
+            + "\n"
+        )
+
+    two = tmp_path / "two"
+    _write_run(two, ["A", "B"], ["m1", "m2"])
+    four = tmp_path / "four"
+    _write_run(four, ["A", "B", "C", "D"], ["m1", "m2", "m3", "m4"])
+
+    wb2 = load_workbook(build_run_spreadsheet(two))
+    text2 = "\n".join(
+        str(cell.value or "")
+        for row in wb2[wb2.sheetnames[1]].iter_rows(values_only=False)
+        for cell in row
+    )
+    assert "EXTRACTOR A OUTPUT" in text2
+    assert "EXTRACTOR B OUTPUT" in text2
+    assert "EXTRACTOR C OUTPUT" not in text2
+
+    wb4 = load_workbook(build_run_spreadsheet(four))
+    text4 = "\n".join(
+        str(cell.value or "")
+        for row in wb4[wb4.sheetnames[1]].iter_rows(values_only=False)
+        for cell in row
+    )
+    assert "EXTRACTOR D OUTPUT" in text4
+    assert "EXTRACTOR E OUTPUT" not in text4

@@ -35,6 +35,11 @@ from experiments.paper.general_extraction import (  # noqa: E402
     GENERAL_EXTRACTION_FIELDS,
     build_general_extraction_prompt,
 )
+from experiments.paper.runners.common import (  # noqa: E402
+    CONSENSUS_CONDITION,
+    extractor_labels_from_observables,
+    extractor_labels_from_trial,
+)
 
 BIOLOGY_SHEETS = {
     'ecoli-k12-mg1655': 'E. coli',
@@ -63,8 +68,6 @@ BIOLOGY_KEYS = (
     'essential_in_vitro',
     'essential_in_vivo',
 )
-
-EXTRACTOR_LABELS = ('A', 'B', 'C', 'D')
 
 label_fill = PatternFill('solid', fgColor='D6E3F0')
 label_font = Font(bold=True)
@@ -129,8 +132,8 @@ def biology_extraction_prompt(trial: dict) -> str:
 
 def biology_consensus_prompt(trial: dict) -> str:
     candidates = []
-    for label in EXTRACTOR_LABELS:
-        cand = trial['outputs'][f'extractor_{label}']
+    for label in extractor_labels_from_trial(trial):
+        cand = (trial.get('outputs') or {}).get(f'extractor_{label}')
         if isinstance(cand, dict):
             candidates.append({key: cand.get(key) for key in BIOLOGY_KEYS})
         else:
@@ -150,8 +153,8 @@ def general_extraction_prompt(trial: dict) -> str:
 
 def general_consensus_prompt(trial: dict) -> str:
     candidates = []
-    for label in EXTRACTOR_LABELS:
-        cand = trial['outputs'][f'extractor_{label}']
+    for label in extractor_labels_from_trial(trial):
+        cand = (trial.get('outputs') or {}).get(f'extractor_{label}')
         if isinstance(cand, dict):
             candidates.append({key: cand.get(key) for key in GENERAL_EXTRACTION_FIELDS})
         else:
@@ -246,7 +249,7 @@ def write_trials(ws, trials: list[dict], *, pool: str) -> None:
                 ('SECTION TEXT (excerpt_text)', trial['excerpt_text'], False),
             ])
 
-        for label in EXTRACTOR_LABELS:
+        for label in extractor_labels_from_trial(trial):
             condition = f'extractor_{label}'
             model = models.get(condition, 'unknown')
             stored_prompt = _prompt_text(trial, condition)
@@ -270,33 +273,33 @@ def write_trials(ws, trials: list[dict], *, pool: str) -> None:
                 ))
             blocks.append((
                 f'EXTRACTOR {label} OUTPUT ({model})',
-                exact_json(trial['outputs'][condition]),
+                exact_json((trial.get('outputs') or {}).get(condition)),
                 False,
             ))
 
-        consensus_model = models.get('consensus_D', 'unknown')
-        stored_consensus_prompt = _prompt_text(trial, 'consensus_D')
+        consensus_model = models.get(CONSENSUS_CONDITION, 'unknown')
+        stored_consensus_prompt = _prompt_text(trial, CONSENSUS_CONDITION)
         if stored_consensus_prompt is not None:
             blocks.append((
-                f'CONSENSUS D PROMPT ({consensus_model})',
+                f'CONSENSUS PROMPT ({consensus_model})',
                 stored_consensus_prompt,
                 False,
             ))
         elif pool == 'biology':
             blocks.append((
-                'CONSENSUS D PROMPT (reconstructed)',
+                'CONSENSUS PROMPT (reconstructed)',
                 biology_consensus_prompt(trial),
                 False,
             ))
         else:
             blocks.append((
-                'CONSENSUS D PROMPT (reconstructed)',
+                'CONSENSUS PROMPT (reconstructed)',
                 general_consensus_prompt(trial),
                 False,
             ))
         blocks.append((
-            f'CONSENSUS D OUTPUT ({consensus_model})',
-            exact_json(trial['outputs']['consensus_D']),
+            f'CONSENSUS OUTPUT ({consensus_model})',
+            exact_json((trial.get('outputs') or {}).get(CONSENSUS_CONDITION)),
             False,
         ))
 
@@ -321,14 +324,15 @@ def group_trials(records_path: Path) -> tuple[dict[str, list[dict]], list[dict],
             by_profile[trial['profile_id']].append(enrich_biology_trial(trial, meta))
 
     models = model_map(observables[0])
+    labels = extractor_labels_from_observables(observables)
     summary = {
         'run_label': infer_run_label(records_path),
         'source': str(records_path),
         'extractors': [
             f'extractor_{label}: {models.get(f"extractor_{label}", "?")}'
-            for label in EXTRACTOR_LABELS
+            for label in labels
         ],
-        'consensus': models.get('consensus_D', '?'),
+        'consensus': models.get(CONSENSUS_CONDITION, '?'),
         'biology_trials': sum(len(v) for v in by_profile.values()),
         'general_trials': len(general),
     }

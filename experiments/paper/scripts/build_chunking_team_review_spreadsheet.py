@@ -5,8 +5,8 @@ Shows, per source section:
 - the reconstructed original excerpt (parts concatenated in order) or prompted
   grep/pass excerpt (never mislabeled as a full paper section for grep)
 - each chunk/part text that was actually prompted
-- the stored extraction prompt for extractor A (representative)
-- extractor + consensus outputs
+- the stored extraction prompt for the first extractor (representative)
+- extractor + consensus outputs (one column/block per extractor in the run)
 """
 
 from __future__ import annotations
@@ -24,12 +24,17 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
+from experiments.paper.runners.common import (  # noqa: E402
+    CONSENSUS_CONDITION,
+    extractor_labels_from_observables,
+    extractor_labels_from_trial,
+)
+
 BIOLOGY_SHEETS = {
     "ecoli-k12-mg1655": "E. coli",
     "mtb-h37rv": "M. tuberculosis",
     "tcruzi-clbrener": "T. cruzi",
 }
-EXTRACTOR_LABELS = ("A", "B", "C", "D")
 
 header_fill = PatternFill("solid", fgColor="1F4E79")
 header_font = Font(bold=True, color="FFFFFF")
@@ -239,7 +244,10 @@ def write_source_groups(ws, groups: list[list[dict]]) -> None:
             part_index = prep.get("part_index") or 1
             part_count = prep.get("part_count") or len(ordered)
             prompts = part.get("prompts") or {}
-            extractor_prompt = (prompts.get("extractor_A") or {}).get("prompt")
+            labels = extractor_labels_from_trial(part) or extractor_labels_from_trial(head)
+            first_label = labels[0] if labels else "A"
+            first_condition = f"extractor_{first_label}"
+            extractor_prompt = (prompts.get(first_condition) or {}).get("prompt")
             models_part = model_map(part)
             row = write_block(
                 ws,
@@ -262,10 +270,13 @@ def write_source_groups(ws, groups: list[list[dict]]) -> None:
             row = write_block(
                 ws,
                 row,
-                f"EXTRACTION PROMPT extractor_A ({models_part.get('extractor_A', models.get('extractor_A', '?'))})",
+                (
+                    f"EXTRACTION PROMPT {first_condition} "
+                    f"({models_part.get(first_condition, models.get(first_condition, '?'))})"
+                ),
                 extractor_prompt,
             )
-            for label in EXTRACTOR_LABELS:
+            for label in labels:
                 condition = f"extractor_{label}"
                 model = models_part.get(condition, models.get(condition, "?"))
                 row = write_block(
@@ -275,13 +286,13 @@ def write_source_groups(ws, groups: list[list[dict]]) -> None:
                     exact_json((part.get("outputs") or {}).get(condition)),
                 )
             consensus_model = models_part.get(
-                "consensus_D", models.get("consensus_D", "?")
+                CONSENSUS_CONDITION, models.get(CONSENSUS_CONDITION, "?")
             )
             row = write_block(
                 ws,
                 row,
-                f"CONSENSUS D OUTPUT ({consensus_model})",
-                exact_json((part.get("outputs") or {}).get("consensus_D")),
+                f"CONSENSUS OUTPUT ({consensus_model})",
+                exact_json((part.get("outputs") or {}).get(CONSENSUS_CONDITION)),
             )
         row += 1
 
