@@ -13,11 +13,15 @@ SLURM_JOB_NAME = "gene-autoannotator-run"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+DEFAULT_MAX_JOBS_PER_WORKER = 500
+
+
 @dataclass(frozen=True)
 class DispatcherConfig:
     backend_url: str
     worker_api_token: str
     max_inflight: int
+    max_jobs_per_worker: int
     sbatch_script: str
 
     @classmethod
@@ -48,17 +52,37 @@ class DispatcherConfig:
         if not sbatch_script:
             raise RuntimeError("DISPATCHER_SBATCH_SCRIPT is required")
 
+        raw_max_jobs_per_worker = os.getenv("DISPATCHER_MAX_JOBS_PER_WORKER", "")
+        if raw_max_jobs_per_worker:
+            try:
+                max_jobs_per_worker = int(raw_max_jobs_per_worker)
+            except ValueError as exc:
+                raise RuntimeError(
+                    "DISPATCHER_MAX_JOBS_PER_WORKER must be an integer"
+                ) from exc
+            if max_jobs_per_worker < 1:
+                raise RuntimeError(
+                    "DISPATCHER_MAX_JOBS_PER_WORKER must be positive"
+                )
+        else:
+            max_jobs_per_worker = DEFAULT_MAX_JOBS_PER_WORKER
+
         return cls(
             backend_url=backend_url,
             worker_api_token=worker_api_token,
             max_inflight=max_inflight,
+            max_jobs_per_worker=max_jobs_per_worker,
             sbatch_script=sbatch_script,
         )
 
 
-def plan_launches(queued: int, inflight: int, max_inflight: int) -> int:
-    """Return the number of workers that fit both queue depth and Slurm capacity."""
-    return max(0, min(queued, max_inflight - inflight))
+def plan_launches(queued: int, inflight: int) -> int:
+    """At most one HPC worker-run at a time."""
+    if inflight >= 1:
+        return 0
+    if queued <= 0:
+        return 0
+    return 1
 
 
 def _peek_queued(
@@ -114,14 +138,18 @@ def dispatch_once(
 
     queued = _peek_queued(config, http_get)
     inflight = _count_inflight(command_runner, user)
-    to_launch = plan_launches(queued, inflight, config.max_inflight)
+    to_launch = plan_launches(queued, inflight)
 
     script = str(Path(config.sbatch_script).expanduser())
+    export = (
+        f"ALL,GAA_REPO_ROOT={REPO_ROOT},"
+        f"WORKER_RUN_MAX_JOBS={config.max_jobs_per_worker}"
+    )
     for _ in range(to_launch):
         command_runner(
             [
                 "sbatch",
-                f"--export=ALL,GAA_REPO_ROOT={REPO_ROOT}",
+                f"--export={export}",
                 script,
             ],
             check=True,
