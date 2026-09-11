@@ -20,7 +20,9 @@ COPY shared/ shared/
 COPY goresolve/ goresolve/
 COPY data/profiles/ data/profiles/
 COPY deploy/docker/worker-bench-entrypoint.sh /usr/local/bin/worker-bench-entrypoint.sh
-RUN chmod +x /usr/local/bin/worker-bench-entrypoint.sh
+COPY deploy/docker/worker-run-entrypoint.sh /usr/local/bin/worker-run-entrypoint.sh
+RUN chmod +x /usr/local/bin/worker-bench-entrypoint.sh \
+      /usr/local/bin/worker-run-entrypoint.sh
 
 ENV AUTOANNOTATION_MODEL_MODE=performance \
     OLLAMA_MODELS=/models \

@@ -58,7 +58,7 @@ fleet:
 BACKEND_URL=https://api.example WORKER_API_TOKEN=… python -m worker serve
 
 # HPC scrontab
-*/5 * * * * cd /opt/gene-autoannotator && .venv/bin/python -m dispatcher once
+*/5 * * * * /opt/gene-autoannotator/deploy/scripts/dispatcher-once.sh >> /opt/gene-autoannotator/dispatcher.log 2>&1
 ```
 
 ```bash

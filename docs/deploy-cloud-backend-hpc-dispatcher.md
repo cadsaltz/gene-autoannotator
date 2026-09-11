@@ -121,19 +121,22 @@ search/review is unavailable. Confirm the `annotation_store` result in
 
 ## 3. SCRI installation
 
-The repository and virtual environment must be on a path visible from the SCRI
-login node and Slurm compute nodes. Compute nodes need outbound HTTPS access to
-the public backend and internet access required by the annotation pipeline.
-Install the project dependencies and Ollama as described in `worker/README.md`.
+The repository must be on a path visible from the SCRI login node and Slurm
+compute nodes. Compute nodes need outbound HTTPS access to the public backend
+and internet access required by the annotation pipeline. The login node needs a
+Python environment that can run `python -m dispatcher once` (peek + `sbatch`
+only). GPU annotation runs inside an Apptainer/Singularity image built from
+`deploy/docker/Dockerfile.worker` — the same packaging shape as the proven SCRI
+bench job, but with `worker run --claim-one`.
 
-Copy and customize `deploy/slurm/worker-run.sbatch`:
+Build or copy a worker SIF onto the shared path (example name below). Copy
+`deploy/docker/worker.run.env.example` to a private env file and fill in
+`BACKEND_URL` / `WORKER_API_TOKEN`.
 
-1. Replace `#SBATCH --partition=REPLACE_ME`.
-2. Adjust GPU, CPU, memory, wall time, account, and module directives for SCRI.
-3. Ensure `python` resolves to the project virtual environment on compute nodes,
-   or change the final command to its absolute path.
-4. Keep the job name `gene-autoannotator-run`; the dispatcher uses it to count
-   this user's in-flight Slurm jobs.
+The sample `deploy/slurm/worker-run.sbatch` already uses SCRI-style resources
+(`gpu-core`, `ma_lab_main`, 32 CPU, 480g, 1 GPU). Adjust only if your account
+or partition differs. Keep the job name `gene-autoannotator-run`; the
+dispatcher uses it to count this user's in-flight Slurm jobs.
 
 Create a private dispatcher environment file on the shared repository path:
 
@@ -143,38 +146,40 @@ WORKER_API_TOKEN=replace-with-the-cloud-worker-token
 DISPATCHER_MAX_INFLIGHT=4
 DISPATCHER_SBATCH_SCRIPT=/shared/gene-autoannotator/deploy/slurm/worker-run.sbatch
 
-# Worker/model settings inherited by sbatch:
-AUTOANNOTATION_MODEL_MODE=performance
-WORKER_MAX_SLOTS=1
-OLLAMA_FLEET_SERVERS=1
-OLLAMA_FLEET_PARALLEL=1
+# Inherited by sbatch (--export=ALL) for the Apptainer child:
+WORKER_IMAGE=/shared/gene-autoannotator/gene-autoannotator-worker_0.2.sif
+WORKER_RUN_ENV_FILE=/shared/gene-autoannotator/worker.run.env
+WORKER_MODELS_DIR=/shared/gene-autoannotator/models
+WORKER_CACHE_DIR=/shared/gene-autoannotator/.cache/worker-run
+WORKER_OUTPUT_DIR=/shared/gene-autoannotator/gen_json
 ```
 
 ```bash
 chmod 600 /shared/gene-autoannotator/dispatcher.env
+chmod 600 /shared/gene-autoannotator/worker.run.env
+chmod +x /shared/gene-autoannotator/deploy/scripts/dispatcher-once.sh
+chmod +x /shared/gene-autoannotator/deploy/scripts/run-worker-run.sh
 ```
 
 Run one manual dispatcher pass from the login node:
 
 ```bash
-cd /shared/gene-autoannotator
-set -a
-. ./dispatcher.env
-set +a
-.venv/bin/python -m dispatcher once
+/shared/gene-autoannotator/deploy/scripts/dispatcher-once.sh
 squeue --user "$USER" --name gene-autoannotator-run
 ```
 
-The dispatcher reads `GET /jobs/queue-summary`, counts matching Slurm jobs, and
-submits at most:
+`dispatcher-once.sh` sources `dispatcher.env` (or `DISPATCHER_ENV_FILE`) and runs
+`python -m dispatcher once`. The dispatcher reads `GET /jobs/queue-summary`,
+counts matching Slurm jobs, and submits at most:
 
 ```text
 min(queued jobs, DISPATCHER_MAX_INFLIGHT - matching Slurm jobs)
 ```
 
-Each allocation runs `python -m worker run --claim-one`. An empty queue is a
-successful no-op. Queue peeking never reserves work; the worker claim is the
-only `queued` to `running` transition, so SCRI and laptop workers can race
+Each allocation runs `deploy/scripts/run-worker-run.sh`, which Apptainer-execs
+`worker-run-entrypoint.sh` → `python -m worker run --claim-one`. An empty queue
+is a successful no-op. Queue peeking never reserves work; the worker claim is
+the only `queued` to `running` transition, so SCRI and laptop workers can race
 safely for the same queue.
 
 While the claimed job runs, the allocation heartbeats to the backend, which
@@ -185,10 +190,11 @@ allocation deregisters itself, so a finished Slurm job disappears from
 ### Install the SCRI scrontab entry
 
 Edit the SCRI scrontab with the site's `scrontab` command and add a periodic
-login-node invocation:
+login-node invocation (no nested Slurm parent — the tick runs on the login
+node and only `sbatch`s GPU children):
 
 ```cron
-*/5 * * * * cd /shared/gene-autoannotator && set -a && . ./dispatcher.env && set +a && .venv/bin/python -m dispatcher once >> dispatcher.log 2>&1
+*/5 * * * * /shared/gene-autoannotator/deploy/scripts/dispatcher-once.sh >> /shared/gene-autoannotator/dispatcher.log 2>&1
 ```
 
 Confirm the entry using the SCRI-supported scrontab listing command, then watch

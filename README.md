@@ -40,7 +40,7 @@ One backend owns the durable SQLite queue. It is a control plane only and never
 runs production annotation jobs in-process or opens connections to compute
 hosts. Persistent laptop workers use `python -m worker serve`; the SCRI
 dispatcher periodically peeks at queue depth and submits Slurm allocations that
-use `python -m worker run --claim-one`. Both worker types initiate outbound
+Apptainer-exec `python -m worker run --claim-one`. Both worker types initiate outbound
 connections and atomically claim from the same backend queue.
 
 The Next.js frontend proxies job and fleet requests to FastAPI. FastAPI writes

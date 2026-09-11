@@ -71,16 +71,17 @@ runs the script, then frees the node when the script exits.
 In this stack:
 
 1. A user (or the UI) submits a job → it sits **`queued`** on the public backend.
-2. Every few minutes, **`python -m dispatcher once`** runs on SCRI (via `scrontab`).
+2. Every few minutes, **`deploy/scripts/dispatcher-once.sh`** runs on the SCRI
+   login node (via `scrontab`) and calls `python -m dispatcher once`.
 3. The dispatcher asks the backend “how many queued?” (`GET /jobs/queue-summary`).
 4. It asks Slurm “how many of *my* `gene-autoannotator-run` jobs are already
    pending/running?” (`squeue`).
 5. It submits up to `min(queued, max_inflight - already_inflight)` new allocations
    with `sbatch deploy/slurm/worker-run.sbatch`.
-6. Each allocation starts, runs `python -m worker run --claim-one`, which
-   **atomically claims** one queued job (or exits 0 if the queue emptied),
-   provisions a local Ollama fleet, annotates, reports progress/complete to the
-   backend, deregisters, and exits.
+6. Each allocation runs Apptainer via `deploy/scripts/run-worker-run.sh` →
+   `worker run --claim-one`, which **atomically claims** one queued job (or
+   exits 0 if the queue emptied), provisions a local Ollama fleet, annotates,
+   reports progress/complete to the backend, deregisters, and exits.
 
 The dispatcher does **not** claim jobs and does **not** run annotations. It only
 launches workers. Claiming stays on the same API laptop `serve` uses, so both
@@ -486,7 +487,8 @@ Managed fleet sets each `ollama serve` child's `OLLAMA_CONTEXT_LENGTH` to **`OLL
 
 ### run (Slurm one-shot)
 
-Used by `deploy/slurm/worker-run.sbatch`. Typical flow inside an allocation:
+Used by `deploy/slurm/worker-run.sbatch` → `deploy/scripts/run-worker-run.sh`
+(Apptainer) → `worker-run-entrypoint.sh`. Typical flow inside an allocation:
 
 1. Register with an ephemeral name (`max_slots=1`).
 2. Claim one job (exit 0 if none left — avoids wasting GPU after a race).
@@ -500,10 +502,21 @@ python -m worker run --claim-one
 
 # Or execute a pre-materialized job file (no claim):
 python -m worker run --job-file /path/to/job.json
+
+# Apptainer dry-run (login/compute host with apptainer):
+deploy/scripts/run-worker-run.sh \
+  --image /path/to/gene-autoannotator-worker.sif \
+  --env-file deploy/docker/worker.run.env.example \
+  --models-dir ./models \
+  --output-dir ./gen_json \
+  --dry-run
 ```
 
-Requires `BACKEND_URL` (or `COORDINATOR_URL`) and usually `WORKER_API_TOKEN`.
-`GAA_REPO_ROOT` must be set when launched via the sample sbatch (dispatcher exports it).
+Requires `BACKEND_URL` (or `COORDINATOR_URL`) and usually `WORKER_API_TOKEN` in
+the worker env file (`WORKER_RUN_ENV_FILE` / `--env-file`).
+`GAA_REPO_ROOT` must be set when launched via the sample sbatch (dispatcher
+exports it). Also set `WORKER_IMAGE` and `WORKER_RUN_ENV_FILE` in
+`dispatcher.env` so the sbatch child can launch Apptainer.
 
 ### Bench options
 
@@ -613,17 +626,25 @@ Paper experiment runners (`experiments/paper/runners/run_bias_1_vs_3.py`, etc.) 
 
 ## Dispatcher + Slurm (HPC)
 
-The dispatcher is a **short-lived** program: peek → maybe `sbatch` → exit. It is
-**not** a second job queue and **not** a long-running coordinator.
+The dispatcher is a **short-lived** login-node program: peek → maybe `sbatch` →
+exit. It is **not** a second job queue, **not** a nested Slurm parent, and
+**not** a long-running coordinator.
 
 ```bash
 # One manual pass (login node / SCRI host with sbatch+squeue):
+# Prefer the wrapper (sources dispatcher.env automatically):
+./deploy/scripts/dispatcher-once.sh
+
+# Equivalent manual env + module:
 export BACKEND_URL=https://api.example.org
 export WORKER_API_TOKEN=…          # same token as cloud backend
 export DISPATCHER_MAX_INFLIGHT=4
 export DISPATCHER_SBATCH_SCRIPT=/path/to/gene-autoannotator/deploy/slurm/worker-run.sbatch
-# Also export worker/model env the sbatch job will inherit (--export=ALL):
-# AUTOANNOTATION_MODEL_MODE, OLLAMA_*, etc.
+# Inherited by sbatch (--export=ALL) for the Apptainer child:
+export WORKER_IMAGE=/path/to/gene-autoannotator-worker.sif
+export WORKER_RUN_ENV_FILE=/path/to/worker.run.env
+# Optional path overrides:
+# export WORKER_MODELS_DIR=... WORKER_CACHE_DIR=... WORKER_OUTPUT_DIR=...
 
 python -m dispatcher once
 # → prints: Submitted N worker job(s).
@@ -641,27 +662,28 @@ how the dispatcher counts in-flight work.
 
 ### Customize `deploy/slurm/worker-run.sbatch`
 
-Edit for your site before production:
-
-- `#SBATCH --partition=…` (required; sample has `REPLACE_ME`)
-- GPU / CPU / mem / time / account / QoS / modules
-- Ensure `python` is the project venv on compute nodes (module load, absolute
-  `.venv/bin/python`, or container wrapper)
-
-Body of the sample script (conceptually):
+The sample already mirrors the proven SCRI GPU job shape (`gpu-core`,
+`ma_lab_main`, 32 CPU, 480g, 1 GPU). Adjust account/partition only if needed.
+Body:
 
 ```bash
-cd "${GAA_REPO_ROOT:?GAA_REPO_ROOT must be set}"
-python -m worker run --claim-one
+"${GAA_REPO_ROOT}/deploy/scripts/run-worker-run.sh" \
+  --image "${WORKER_IMAGE}" \
+  --env-file "${WORKER_RUN_ENV_FILE}" \
+  --models-dir "${WORKER_MODELS_DIR}" \
+  --cache-dir "${WORKER_CACHE_DIR}" \
+  --output-dir "${WORKER_OUTPUT_DIR}"
 ```
 
 `GAA_REPO_ROOT` is required because Slurm often runs a **spooled copy** of the
 script, so `BASH_SOURCE` would point at the spool directory, not the repo.
+Copy `deploy/docker/worker.run.env.example` to your private `worker.run.env`
+and point `WORKER_RUN_ENV_FILE` at it.
 
 ### scrontab (periodic)
 
 ```cron
-*/5 * * * * cd /shared/gene-autoannotator && set -a && . ./dispatcher.env && set +a && .venv/bin/python -m dispatcher once >> dispatcher.log 2>&1
+*/5 * * * * /shared/gene-autoannotator/deploy/scripts/dispatcher-once.sh >> /shared/gene-autoannotator/dispatcher.log 2>&1
 ```
 
 Keep the interval longer than a typical dispatcher pass so runs do not overlap.
@@ -669,28 +691,21 @@ Confirm with your site’s `scrontab` list/edit commands.
 
 ### If your lead already has a working Slurm test script
 
-**Yes — use it as the site template.** Our dispatcher is generic (`sbatch` + env).
-What usually differs per cluster is the `#SBATCH` header and how Python/Ollama
-are activated on the compute node. Workflow:
-
-1. Keep his working `#SBATCH` lines / modules / container invocation.
-2. Replace the job body with `cd "$GAA_REPO_ROOT" && python -m worker run --claim-one`
-   (or his equivalent that ends in that command).
-3. Keep `#SBATCH --job-name=gene-autoannotator-run` (or change `SLURM_JOB_NAME` in
-   `dispatcher/loop.py` to match his name — they must agree).
-4. Point `DISPATCHER_SBATCH_SCRIPT` at that file and run `python -m dispatcher once`.
-
-If you paste his script into the repo (or a private path), we can adapt the
-sample sbatch and dispatcher env to match SCRI exactly.
+**Yes — use it as the site template for `#SBATCH` headers / Apptainer invocation.**
+Our dispatcher stays generic (`sbatch` + env). The sample child already follows
+the SCRI Apptainer job shape; keep `#SBATCH --job-name=gene-autoannotator-run`
+(or change `SLURM_JOB_NAME` in `dispatcher/loop.py` to match — they must agree).
 
 ### Dispatcher env checklist
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `BACKEND_URL` | yes | Public backend (legacy `COORDINATOR_URL` ok) |
-| `WORKER_API_TOKEN` | yes | Same token as backend |
+| `WORKER_API_TOKEN` | yes | Same token as backend (dispatcher peek auth) |
 | `DISPATCHER_MAX_INFLIGHT` | yes | Cap concurrent Slurm run jobs for this user |
 | `DISPATCHER_SBATCH_SCRIPT` | yes | Absolute path to the sbatch file |
+| `WORKER_IMAGE` | yes (for sample sbatch) | SIF path or image ref for Apptainer |
+| `WORKER_RUN_ENV_FILE` | yes (for sample sbatch) | Env file with backend URL/token + fleet knobs |
 
 More: `docs/deploy-cloud-backend-hpc-dispatcher.md` §3.
 
@@ -757,13 +772,15 @@ curl -s -X POST http://127.0.0.1:8000/jobs \
 
 1. **Cloud:** compose frontend+backend; set `WORKER_CAPACITY_REQUIRED=0`,
    `WORKER_API_TOKEN`, `BACKEND_PUBLIC_URL`, `MONGO_URI`, CORS to the public UI.
-2. **SCRI:** clone/checkout repo on shared FS; venv; customize
-   `deploy/slurm/worker-run.sbatch`; write `dispatcher.env`; run one
-   `python -m dispatcher once` by hand; then install `scrontab`.
+2. **SCRI:** clone/checkout repo on shared FS; login-node venv for the
+   dispatcher; build/copy worker SIF; copy `deploy/docker/worker.run.env.example`
+   → `worker.run.env`; write `dispatcher.env` (including `WORKER_IMAGE` and
+   `WORKER_RUN_ENV_FILE`); run one `deploy/scripts/dispatcher-once.sh` by hand;
+   then install `scrontab`.
 3. **Optional laptop:** `BACKEND_URL=https://… WORKER_API_TOKEN=… python -m worker serve`.
 
 Verify: job stays `queued` with no workers → next dispatcher pass submits ≤
-`DISPATCHER_MAX_INFLIGHT` → Slurm job claims/completes → UI shows progress.
+`DISPATCHER_MAX_INFLIGHT` → Slurm Apptainer job claims/completes → UI shows progress.
 
 ### C. Dispatcher dry-run without real Slurm
 
