@@ -7,6 +7,8 @@ __pycache__/**
 ./superpowers
 worker.env
 coordinator.env
+dispatcher.env
+worker.run.env
 .worktrees/
 **/*.pyc
 coordinator/*.sqlite3
