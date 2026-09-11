@@ -10,7 +10,7 @@
 #SBATCH --gpus=1
 #SBATCH --output=gene-autoannotator-run-%j.out
 
-# One-shot queue drain: Apptainer worker claims one backend job then exits.
+# Bounded queue drain: Apptainer worker run drains up to WORKER_RUN_MAX_JOBS.
 # Job name MUST stay gene-autoannotator-run — dispatcher counts it via squeue.
 # Heartbeats renew the backend lease while the allocation runs; requeue after a
 # killed allocation is delayed by LEASE_SECONDS on the backend.

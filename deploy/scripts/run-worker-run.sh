@@ -5,7 +5,7 @@ usage() {
   cat <<EOF
 Usage: $0 [OPTIONS]
 
-Run one queue-drain worker allocation in Apptainer (claim-one against the backend).
+Run one bounded queue-drain worker allocation in Apptainer (worker run).
 
 Required:
   --models-dir PATH     Ollama models directory
@@ -111,7 +111,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 # Same Apptainer shape as the lead's proven SCRI autoannotation job, but for
-# backend queue drain (claim-one) instead of local JSONL bench.
+# backend queue drain (worker run) instead of local JSONL bench.
 APPTAINER_CMD=(
   apptainer exec --no-home --writable-tmpfs --nv --cwd=/app
   --bind "$OUTPUT_DIR:/out/annotations"

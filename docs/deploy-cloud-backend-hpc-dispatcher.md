@@ -127,24 +127,30 @@ and internet access required by the annotation pipeline. The login node needs a
 Python environment that can run `python -m dispatcher once` (peek + `sbatch`
 only). GPU annotation runs inside an Apptainer/Singularity image built from
 `deploy/docker/Dockerfile.worker` — the same packaging shape as the proven SCRI
-bench job, but with `worker run --claim-one`.
+bench job, but with `worker run` (bounded queue drain via `WORKER_RUN_MAX_JOBS`).
 
 Build or copy a worker SIF onto the shared path (example name below). Copy
-`deploy/docker/worker.run.env.example` to a private env file and fill in
-`BACKEND_URL` / `WORKER_API_TOKEN`.
+`dispatcher.env.example` → `dispatcher.env` and
+`deploy/docker/worker.run.env.example` → `worker.run.env`; fill in
+`BACKEND_URL` / `WORKER_API_TOKEN` and fleet/concurrency knobs.
 
 The sample `deploy/slurm/worker-run.sbatch` already uses SCRI-style resources
 (`gpu-core`, `ma_lab_main`, 32 CPU, 480g, 1 GPU). Adjust only if your account
 or partition differs. Keep the job name `gene-autoannotator-run`; the
 dispatcher uses it to count this user's in-flight Slurm jobs.
 
-Create a private dispatcher environment file on the shared repository path:
+Create private env files on the shared repository path (see `dispatcher.env.example`):
 
 ```dotenv
 BACKEND_URL=https://api.example.org
 WORKER_API_TOKEN=replace-with-the-cloud-worker-token
-DISPATCHER_MAX_INFLIGHT=4
 DISPATCHER_SBATCH_SCRIPT=/shared/gene-autoannotator/deploy/slurm/worker-run.sbatch
+
+# Max jobs one Slurm allocation drains (exported as WORKER_RUN_MAX_JOBS):
+DISPATCHER_MAX_JOBS_PER_WORKER=500
+
+# Backward compat only — effective Slurm inflight cap is always 1:
+DISPATCHER_MAX_INFLIGHT=1
 
 # Inherited by sbatch (--export=ALL) for the Apptainer child:
 WORKER_IMAGE=/shared/gene-autoannotator/gene-autoannotator-worker_0.2.sif
@@ -153,6 +159,11 @@ WORKER_MODELS_DIR=/shared/gene-autoannotator/models
 WORKER_CACHE_DIR=/shared/gene-autoannotator/.cache/worker-run
 WORKER_OUTPUT_DIR=/shared/gene-autoannotator/gen_json
 ```
+
+In `worker.run.env`, set **`OLLAMA_FLEET_SERVERS`** to the GPU count on the
+allocated node (must match `#SBATCH --gpus` in `worker-run.sbatch`) and tune
+**`WORKER_MAX_SLOTS`** / **`OLLAMA_FLEET_PARALLEL`** for in-allocation
+concurrency — not multiple Slurm jobs.
 
 ```bash
 chmod 600 /shared/gene-autoannotator/dispatcher.env
@@ -170,22 +181,26 @@ squeue --user "$USER" --name gene-autoannotator-run
 
 `dispatcher-once.sh` sources `dispatcher.env` (or `DISPATCHER_ENV_FILE`) and runs
 `python -m dispatcher once`. The dispatcher reads `GET /jobs/queue-summary`,
-counts matching Slurm jobs, and submits at most:
-
-```text
-min(queued jobs, DISPATCHER_MAX_INFLIGHT - matching Slurm jobs)
-```
+counts matching Slurm jobs, and applies the **single-worker rule**: submit
+**at most one** new allocation when `queued > 0` and no
+`gene-autoannotator-run` job is already pending or running for this user.
+Otherwise it launches zero on this pass.
 
 Each allocation runs `deploy/scripts/run-worker-run.sh`, which Apptainer-execs
-`worker-run-entrypoint.sh` → `python -m worker run --claim-one`. An empty queue
-is a successful no-op. Queue peeking never reserves work; the worker claim is
-the only `queued` to `running` transition, so SCRI and laptop workers can race
-safely for the same queue.
+`worker-run-entrypoint.sh` → `python -m worker run`. The dispatcher exports
+`WORKER_RUN_MAX_JOBS` from `DISPATCHER_MAX_JOBS_PER_WORKER`; the worker
+registers once, provisions Ollama, and drains up to that many jobs (using
+`WORKER_MAX_SLOTS` concurrent subprocesses) before deregistering and exiting.
+An empty queue at claim time is a successful no-op. Queue peeking never
+reserves work; the worker claim is the only `queued` → `running` transition, so
+SCRI and laptop workers can race safely for the same queue.
 
-While the claimed job runs, the allocation heartbeats to the backend, which
-keeps the job's lease fresh and keeps the worker visible as online. On exit the
+While jobs run, the allocation heartbeats to the backend, which keeps each
+job's lease fresh and keeps the worker visible as online. On exit the
 allocation deregisters itself, so a finished Slurm job disappears from
-`GET /workers` instead of lingering as a stale entry.
+`GET /workers` instead of lingering as a stale entry. If the queue still has
+work after the chunk cap or drain completes, the **next** dispatcher tick may
+start another single allocation.
 
 ### Install the SCRI scrontab entry
 
@@ -223,10 +238,10 @@ Before exposing the service to users:
 1. `GET /health` reports the queue, profile store, and Mongo annotation store as
    healthy.
 2. The frontend can submit a job and poll it through the backend proxy.
-3. With no worker running, a job can be submitted and stays `queued`, and the
-   next dispatcher pass submits no more than `DISPATCHER_MAX_INFLIGHT`.
-4. A Slurm allocation registers, claims one job, reports progress, completes,
-   deregisters, and exits.
+3. With no Slurm run inflight, a job can be submitted and stays `queued`, and
+   the next dispatcher pass submits **at most one** `gene-autoannotator-run`.
+4. A Slurm allocation registers, drains up to `DISPATCHER_MAX_JOBS_PER_WORKER`
+   jobs (or until the queue empties), reports progress, deregisters, and exits.
 5. An optional laptop worker can claim from the same queue without duplicate
    execution, including a one-slot worker while a larger idle worker is
    registered.

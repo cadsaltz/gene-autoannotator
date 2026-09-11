@@ -10,7 +10,7 @@ Three modes share the same annotation runtime and subprocess execution path:
 | Mode | Command | Purpose |
 | --- | --- | --- |
 | **serve** | `python -m worker serve` | Connect to a coordinator, claim jobs continuously, report progress |
-| **run** | `python -m worker run --claim-one` | Claim at most one coordinator job, report its result, and exit |
+| **run** | `python -m worker run` | Bounded queue drain (default cap from `WORKER_RUN_MAX_JOBS`) and exit |
 | **bench** | `python -m worker bench` | Run a fixed JSONL batch locally, exit with a `jobs_per_hour` report |
 
 `python -m worker` with no subcommand defaults to **serve** (backward compatible).
@@ -146,30 +146,39 @@ status-based label/percent for jobs without structured fields.
 
 ## Run mode
 
-Run mode is the one-shot coordinator mode used by schedulers such as Slurm. It
-uses the same `WorkerRuntime` and annotation subprocess path as serve, but never
-enters a claim loop.
+Run mode is the bounded-drain coordinator mode used by schedulers such as Slurm.
+It uses the same `WorkerRuntime` and annotation subprocess path as serve, but
+exits after draining up to a job cap instead of looping forever.
 
-Register an ephemeral worker, attempt exactly one claim, then exit:
+Register an ephemeral worker, claim jobs until the queue empties or the cap is
+reached, then exit:
 
 ```bash
 BACKEND_URL=https://backend.example.org \
 WORKER_API_TOKEN=<token> \
-python -m worker run --claim-one
+WORKER_RUN_MAX_JOBS=500 \
+python -m worker run
 ```
 
-An empty queue returns exit code 0 before starting the local Ollama fleet. When
-a job is claimed, run mode probes the allocation, launches the supervised
-Ollama fleet, ensures required models, starts the localhost router, and exports
-`OLLAMA_ROUTER_URL` before annotation. The ephemeral registration advertises
-one slot and uses the Slurm job id (or process id) in its worker name so it
-cannot collide with a persistent serve worker on the same hostname.
+Slurm allocations receive `WORKER_RUN_MAX_JOBS` from the dispatcher
+(`DISPATCHER_MAX_JOBS_PER_WORKER`). For a single job only:
+`python -m worker run --claim-one`. For an explicit cap:
+`python -m worker run --claim-max N`.
 
-Run mode heartbeats for as long as the claimed job runs, so the backend keeps
-the job's lease fresh and does not requeue work that is still progressing. On
-exit — whether the job completed, failed, or the queue was empty — the
-ephemeral worker deregisters itself, leaving no stale entry in `GET /workers`.
-A deregistration failure is logged and never changes the exit code.
+An empty queue returns exit code 0 before starting the local Ollama fleet. When
+at least one job is claimed, run mode probes the allocation once, launches the
+supervised Ollama fleet, ensures required models, starts the localhost router,
+and exports `OLLAMA_ROUTER_URL` before annotation. The ephemeral registration
+uses the Slurm job id (or process id) in its worker name so it cannot collide
+with a persistent serve worker on the same hostname. Concurrent annotation
+inside the allocation is controlled by `WORKER_MAX_SLOTS` (and fleet keys in
+`worker.run.env`), not by launching multiple Slurm jobs.
+
+Run mode heartbeats for as long as jobs are active, so the backend keeps each
+job's lease fresh and does not requeue work that is still progressing. On exit
+— whether jobs completed, failed, or the queue was empty — the ephemeral worker
+deregisters itself, leaving no stale entry in `GET /workers`. A deregistration
+failure is logged and never changes the exit code.
 
 To execute a payload already materialized by a scheduler, skip registration and
 claiming:

@@ -26,7 +26,7 @@ Main generated fields are `gene_id`, `name`, `function`, `functional_category`, 
 - `backend/`: FastAPI control plane, SQLite job queue, local JSON organism profiles, optional MongoDB annotation history/search, and pull-based worker API.
 - `coordinator/`: deprecated compatibility shim for the former `coordinator.api` entrypoint.
 - `frontend/`: Next.js UI for job submission, profile management, queue monitoring, and direct MongoDB annotation search/review.
-- `dispatcher/`: SCRI/scrontab entry point that peeks at backend queue depth and submits capped one-shot Slurm workers.
+- `dispatcher/`: SCRI/scrontab entry point that peeks at backend queue depth and submits at most one Slurm worker-run at a time.
 - `worker/`: Pull-based annotation compute in persistent `serve`, one-shot `run`, and local `bench` modes.
 - `compareannotations/`: trusted-vs-generated scoring tools using exact matching, GO/category graph logic, embeddings/NLI, and an Ollama judge.
 - `tests/`: mostly deterministic unit/API tests; some model-style tests require local model dependencies.
@@ -39,9 +39,11 @@ Main generated fields are `gene_id`, `name`, `function`, `functional_category`, 
 One backend owns the durable SQLite queue. It is a control plane only and never
 runs production annotation jobs in-process or opens connections to compute
 hosts. Persistent laptop workers use `python -m worker serve`; the SCRI
-dispatcher periodically peeks at queue depth and submits Slurm allocations that
-Apptainer-exec `python -m worker run --claim-one`. Both worker types initiate outbound
-connections and atomically claim from the same backend queue.
+dispatcher periodically peeks at queue depth and submits **at most one** Slurm
+allocation at a time. That allocation Apptainer-execs `python -m worker run`,
+draining up to `DISPATCHER_MAX_JOBS_PER_WORKER` queued jobs (with concurrent
+slots tuned in `worker.run.env`) before exiting. Both worker types initiate
+outbound connections and atomically claim from the same backend queue.
 
 The Next.js frontend proxies job and fleet requests to FastAPI. FastAPI writes
 completed annotations to MongoDB, while Next.js server routes read MongoDB for
