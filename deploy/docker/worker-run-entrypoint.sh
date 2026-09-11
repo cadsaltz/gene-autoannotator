@@ -21,4 +21,4 @@ export WORKER_OUTPUT_DIR="$OUTPUT_DIR"
 if [[ "${1:-}" == "run" ]]; then
   exec python -m worker "$@"
 fi
-exec python -m worker run --claim-one "$@"
+exec python -m worker run "$@"

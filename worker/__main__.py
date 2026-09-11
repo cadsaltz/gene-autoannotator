@@ -4,6 +4,13 @@ import sys
 from worker import executor
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
 def _add_serve_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--coordinator-url", dest="coordinator_url")
     parser.add_argument("--token", dest="token")
@@ -62,12 +69,19 @@ def main():
         help="Write verbose logs to this file (default: alongside --report when dashboard is active)",
     )
 
-    run_parser = sub.add_parser("run", help="Run one coordinator job and exit")
-    run_source = run_parser.add_mutually_exclusive_group(required=True)
+    run_parser = sub.add_parser("run", help="Run a bounded coordinator queue drain and exit")
+    run_source = run_parser.add_mutually_exclusive_group()
     run_source.add_argument(
         "--claim-one",
         action="store_true",
         help="Register, claim at most one job, and exit",
+    )
+    run_source.add_argument(
+        "--claim-max",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="Register, claim at most N jobs, and exit (default: WORKER_RUN_MAX_JOBS or 500)",
     )
     run_source.add_argument(
         "--job-file",

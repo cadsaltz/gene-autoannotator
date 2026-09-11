@@ -31,6 +31,8 @@ from worker.runtime import execute_annotation_job as _execute_job
 
 log = logging.getLogger(__name__)
 
+DEFAULT_CLAIM_MAX = 500
+
 
 class _OneShotJobSource:
     def __init__(
@@ -62,6 +64,60 @@ class _OneShotJobSource:
 
     def is_exhausted(self) -> bool:
         return self._finished
+
+    def wait_or_sleep(self, timeout: float) -> None:
+        time.sleep(timeout)
+
+
+class _BoundedCoordinatorJobSource:
+    def __init__(
+        self,
+        client: CoordinatorClient,
+        initial_job: JobSpec,
+        reporter: ProgressReporter,
+        *,
+        claim_max: int,
+        free_slots_fn,
+    ) -> None:
+        self._client = client
+        self._initial_job = initial_job
+        self._reporter = reporter
+        self._claim_max = claim_max
+        self._free_slots = free_slots_fn
+        self._jobs_claimed = 1
+        self._queue_drained = False
+        self.failed = False
+
+    def claim_one(self) -> JobSpec | None:
+        if self._initial_job is not None:
+            job, self._initial_job = self._initial_job, None
+            return job
+        if self._jobs_claimed >= self._claim_max or self._queue_drained:
+            return None
+
+        free_slots = min(self._free_slots(), self._claim_max - self._jobs_claimed)
+        if free_slots <= 0:
+            return None
+        claim = self._client.claim(free_slots)
+        if claim is None:
+            self._queue_drained = True
+            return None
+        self._jobs_claimed += 1
+        return JobSpec(job_id=str(claim["job_id"]), request=dict(claim["request"]))
+
+    def on_complete(self, job_id: str, result: Any) -> None:
+        self._reporter.flush(job_id)
+        self._client.complete(job_id, result)
+
+    def on_fail(self, job_id: str, error: str, retryable: bool) -> None:
+        self._reporter.flush(job_id)
+        self._client.fail(job_id, error, retryable)
+        self.failed = True
+
+    def is_exhausted(self) -> bool:
+        return self._queue_drained or (
+            self._initial_job is None and self._jobs_claimed >= self._claim_max
+        )
 
     def wait_or_sleep(self, timeout: float) -> None:
         time.sleep(timeout)
@@ -160,7 +216,6 @@ def _bootstrap_local_fleet():
         )
         fleet = replace(
             fleet,
-            max_slots=1,
             model_count=len(required),
             keep_alive=os.environ["OLLAMA_FLEET_KEEP_ALIVE"],
         )
@@ -213,7 +268,11 @@ def _run_job(client, config, job: JobSpec, fleet, supervisor, router_thread, *, 
 
 
 def _run_claimed_job(client, config) -> int:
-    claim = client.claim(1)
+    return _run_claimed_jobs(client, config, claim_max=1)
+
+
+def _run_claimed_jobs(client, config, *, claim_max: int) -> int:
+    claim = client.claim(min(config.max_slots, claim_max))
     if claim is None:
         return 0
     job = JobSpec(job_id=str(claim["job_id"]), request=dict(claim["request"]))
@@ -222,31 +281,69 @@ def _run_claimed_job(client, config) -> int:
     except Exception as exc:  # noqa: BLE001 - never strand the job we just claimed.
         client.fail(job.job_id, str(exc), retryable=True)
         return 1
-    return _run_job(
-        client,
-        config,
-        job,
-        fleet,
-        supervisor,
-        router_thread,
-        heartbeat_fn=_heartbeat_fn(client),
+    try:
+        reporter = ProgressReporter(client)
+        runtime_holder: dict[str, WorkerRuntime] = {}
+
+        def free_slots() -> int:
+            runtime = runtime_holder.get("runtime")
+            return config.max_slots if runtime is None else runtime.free_slots()
+
+        source = _BoundedCoordinatorJobSource(
+            client,
+            job,
+            reporter,
+            claim_max=claim_max,
+            free_slots_fn=free_slots,
+        )
+        runtime = WorkerRuntime(
+            config=config,
+            fleet_config=fleet,
+            job_source=source,
+            execute_fn=_make_execute_fn(reporter),
+            heartbeat_fn=_heartbeat_fn(client),
+        )
+        runtime_holder["runtime"] = runtime
+        runtime.run()
+        return 1 if source.failed else 0
+    finally:
+        _shutdown_local_fleet(supervisor, router_thread)
+
+
+def _resolve_claim_max(args: argparse.Namespace) -> int:
+    if bool(getattr(args, "claim_one", False)):
+        return 1
+    cli_value = getattr(args, "claim_max", None)
+    raw_value = cli_value if cli_value is not None else os.getenv(
+        "WORKER_RUN_MAX_JOBS",
+        str(DEFAULT_CLAIM_MAX),
     )
+    try:
+        claim_max = int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"claim max must be a positive integer, got {raw_value!r}") from exc
+    if claim_max <= 0:
+        raise ValueError(f"claim max must be a positive integer, got {raw_value!r}")
+    return claim_max
 
 
 def main(args: argparse.Namespace) -> int:
     ensure_worker_env(interactive=False, skip_fleet_config=True)
     config = load_config()
 
-    if bool(getattr(args, "claim_one", False)):
+    if getattr(args, "job_file", None) is None:
         config = replace(
             config,
             worker_name=_ephemeral_worker_name(config),
-            max_slots=1,
         )
         client = CoordinatorClient(config)
         client.register()
         try:
-            return _run_claimed_job(client, config)
+            return _run_claimed_jobs(
+                client,
+                config,
+                claim_max=_resolve_claim_max(args),
+            )
         finally:
             # The allocation is ending, so drop the registration instead of
             # leaving a phantom worker until the offline window elapses.

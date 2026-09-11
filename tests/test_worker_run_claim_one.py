@@ -100,7 +100,7 @@ def test_run_claim_one_exits_clean_when_no_job(monkeypatch):
     assert calls == {"register": 1, "claim": [1], "execute": 0, "bootstrap": 0}
 
 
-def test_run_claim_one_registers_ephemeral_single_slot_worker(monkeypatch):
+def test_run_claim_one_registers_ephemeral_worker_with_configured_slots(monkeypatch):
     registered = []
 
     class FakeClient:
@@ -123,7 +123,7 @@ def test_run_claim_one_registers_ephemeral_single_slot_worker(monkeypatch):
     assert run.main(argparse.Namespace(claim_one=True, job_file=None)) == 0
     assert len(registered) == 1
     assert registered[0].worker_name == "node-a-slurm-98765"
-    assert registered[0].max_slots == 1
+    assert registered[0].max_slots == 4
 
 
 def test_run_claim_one_completes_claimed_job(monkeypatch):
@@ -397,6 +397,119 @@ def test_run_claim_one_fails_claimed_job_when_fleet_bootstrap_fails(monkeypatch)
     assert failed == [("job-1", "fleet startup failed", True)]
 
 
+def test_run_claim_max_stops_after_three_claimed_jobs(monkeypatch):
+    available = [
+        {
+            "job_id": f"job-{number}",
+            "request": {"profile": "mtb-h37rv", "locus": f"Rv{number:04d}"},
+        }
+        for number in range(1, 6)
+    ]
+    claim_slots = []
+    completed = []
+    bootstraps = []
+
+    class FakeClient:
+        def __init__(self, _config):
+            pass
+
+        def register(self):
+            return "worker-1"
+
+        def claim(self, free_slots):
+            claim_slots.append(free_slots)
+            return available.pop(0) if available else None
+
+        def heartbeat(self, **_fields):
+            return {}
+
+        def complete(self, job_id, _result):
+            completed.append(job_id)
+
+        def fail(self, job_id, error, retryable):
+            raise AssertionError(f"unexpected failure: {job_id} {error} {retryable}")
+
+        def deregister(self):
+            pass
+
+    monkeypatch.setattr(run, "load_config", lambda: _config(max_slots=2))
+    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(
+        run,
+        "_bootstrap_local_fleet",
+        lambda: bootstraps.append(True) or (argparse.Namespace(max_slots=2), None, None),
+    )
+    monkeypatch.setattr(run, "_execute_job", lambda request, **_kwargs: {"locus": request["locus"]})
+
+    rc = run.main(argparse.Namespace(claim_one=False, claim_max=3, job_file=None))
+
+    assert rc == 0
+    assert sorted(completed) == ["job-1", "job-2", "job-3"]
+    assert [job["job_id"] for job in available] == ["job-4", "job-5"]
+    assert len(claim_slots) == 3
+    assert bootstraps == [True]
+
+
+def test_run_claim_max_stops_when_queue_drains(monkeypatch):
+    available = [
+        {
+            "job_id": f"job-{number}",
+            "request": {"profile": "mtb-h37rv", "locus": f"Rv{number:04d}"},
+        }
+        for number in range(1, 3)
+    ]
+    claim_slots = []
+    completed = []
+
+    class FakeClient:
+        def __init__(self, _config):
+            pass
+
+        def register(self):
+            return "worker-1"
+
+        def claim(self, free_slots):
+            claim_slots.append(free_slots)
+            return available.pop(0) if available else None
+
+        def heartbeat(self, **_fields):
+            return {}
+
+        def complete(self, job_id, _result):
+            completed.append(job_id)
+
+        def fail(self, job_id, error, retryable):
+            raise AssertionError(f"unexpected failure: {job_id} {error} {retryable}")
+
+        def deregister(self):
+            pass
+
+    monkeypatch.setattr(run, "load_config", lambda: _config(max_slots=2))
+    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(
+        run,
+        "_bootstrap_local_fleet",
+        lambda: (argparse.Namespace(max_slots=2), None, None),
+    )
+    monkeypatch.setattr(run, "_execute_job", lambda request, **_kwargs: {"locus": request["locus"]})
+
+    rc = run.main(argparse.Namespace(claim_one=False, claim_max=5, job_file=None))
+
+    assert rc == 0
+    assert sorted(completed) == ["job-1", "job-2"]
+    assert len(claim_slots) == 3
+
+
+def test_run_claim_max_defaults_to_env_then_dispatcher_default(monkeypatch):
+    monkeypatch.setenv("WORKER_RUN_MAX_JOBS", "17")
+    assert run._resolve_claim_max(argparse.Namespace(claim_one=False, claim_max=None)) == 17
+
+    monkeypatch.delenv("WORKER_RUN_MAX_JOBS")
+    assert run._resolve_claim_max(argparse.Namespace(claim_one=False, claim_max=None)) == 500
+    assert run._resolve_claim_max(argparse.Namespace(claim_one=True, claim_max=99)) == 1
+    assert run._resolve_claim_max(argparse.Namespace(claim_one=False, claim_max=7)) == 7
+
+
 def test_run_job_file_skips_register_and_claim(monkeypatch, tmp_path):
     job_path = tmp_path / "job.json"
     job_path.write_text(
@@ -453,8 +566,10 @@ def test_run_job_file_skips_register_and_claim(monkeypatch, tmp_path):
 @pytest.mark.parametrize(
     ("cli_args", "expected"),
     [
-        (["--claim-one"], {"claim_one": True, "job_file": None}),
-        (["--job-file", "/tmp/job.json"], {"claim_one": False, "job_file": "/tmp/job.json"}),
+        ([], {"claim_one": False, "claim_max": None, "job_file": None}),
+        (["--claim-one"], {"claim_one": True, "claim_max": None, "job_file": None}),
+        (["--claim-max", "8"], {"claim_one": False, "claim_max": 8, "job_file": None}),
+        (["--job-file", "/tmp/job.json"], {"claim_one": False, "claim_max": None, "job_file": "/tmp/job.json"}),
     ],
 )
 def test_worker_run_cli_dispatches_one_shot_mode(monkeypatch, cli_args, expected):
@@ -472,4 +587,5 @@ def test_worker_run_cli_dispatches_one_shot_mode(monkeypatch, cli_args, expected
 
     assert exc_info.value.code == 7
     assert captured["claim_one"] is expected["claim_one"]
+    assert captured["claim_max"] == expected["claim_max"]
     assert captured["job_file"] == expected["job_file"]
