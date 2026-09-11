@@ -98,6 +98,9 @@ class _BoundedCoordinatorJobSource:
         free_slots = min(self._free_slots(), self._claim_max - self._jobs_claimed)
         if free_slots <= 0:
             return None
+        # A 204 is authoritative for this bounded drain and latches exhaustion.
+        # Claim errors intentionally propagate: retrying here every runtime tick
+        # would create an unbounded, tight retry loop during backend outages.
         claim = self._client.claim(free_slots)
         if claim is None:
             self._queue_drained = True

@@ -13,6 +13,7 @@ def test_plan_launches_at_most_one_worker():
     assert plan_launches(20000, 1) == 0
     assert plan_launches(0, 0) == 0
     assert plan_launches(3, 0) == 1
+    assert plan_launches(3, 0, max_inflight=0) == 0
 
 
 def test_dispatch_once_submits_one_sbatch_when_queue_has_work():

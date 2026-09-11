@@ -17,6 +17,16 @@ export OLLAMA_MODELS="$MODELS_DIR"
 export WORKER_CACHE_DIR="$CACHE_DIR"
 export WORKER_OUTPUT_DIR="$OUTPUT_DIR"
 
+# Apptainer mounts the operator env file read-only so it can still use that
+# file for --env-file injection. Bootstrap also persists detected fleet values,
+# so give Python an allocation-local writable copy.
+if [[ -n "${WORKER_ENV_FILE:-}" ]]; then
+  writable_env="$(mktemp "${TMPDIR:-/tmp}/worker.env.XXXXXX")"
+  cp -- "$WORKER_ENV_FILE" "$writable_env"
+  chmod u+rw "$writable_env"
+  export WORKER_ENV_FILE="$writable_env"
+fi
+
 # Full override when the first arg is the run subcommand.
 if [[ "${1:-}" == "run" ]]; then
   exec python -m worker "$@"

@@ -76,8 +76,10 @@ class DispatcherConfig:
         )
 
 
-def plan_launches(queued: int, inflight: int) -> int:
+def plan_launches(queued: int, inflight: int, max_inflight: int = 1) -> int:
     """At most one HPC worker-run at a time."""
+    if max_inflight == 0:
+        return 0
     if inflight >= 1:
         return 0
     if queued <= 0:
@@ -138,7 +140,7 @@ def dispatch_once(
 
     queued = _peek_queued(config, http_get)
     inflight = _count_inflight(command_runner, user)
-    to_launch = plan_launches(queued, inflight)
+    to_launch = plan_launches(queued, inflight, config.max_inflight)
 
     script = str(Path(config.sbatch_script).expanduser())
     export = (
