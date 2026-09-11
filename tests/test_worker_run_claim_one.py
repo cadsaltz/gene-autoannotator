@@ -6,6 +6,7 @@ import pytest
 from worker import run
 from worker import __main__ as worker_main
 from worker.config import WorkerConfig
+from worker.probe import SystemSpec
 
 
 def _config(*, worker_name="node-a", hostname="node-a", max_slots=4):
@@ -56,10 +57,86 @@ def test_run_loads_worker_env_before_config(monkeypatch):
     assert calls == [
         (
             "ensure_worker_env",
-            {"interactive": False, "skip_fleet_config": True},
+            {"interactive": False, "skip_fleet_config": False},
         ),
         ("load_config", {}),
     ]
+
+
+def test_run_registers_with_max_slots_from_worker_env_file(monkeypatch, tmp_path):
+    env_path = tmp_path / "worker.env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "COORDINATOR_URL=https://coordinator.example",
+                "WORKER_API_TOKEN=secret",
+                "WORKER_MODEL_MEMORY_BUDGET_GB=-1",
+                "AUTOANNOTATION_MODEL_MODE=nano",
+                "OLLAMA_FLEET_SERVERS=1",
+                "OLLAMA_FLEET_PARALLEL=2",
+                "WORKER_MAX_SLOTS=7",
+                "OLLAMA_FLEET_W_ALL_BYTES=1",
+                "OLLAMA_FLEET_W_PEAK_BYTES=1",
+                "OLLAMA_FLEET_C_SLOT_BYTES=1",
+                "OLLAMA_FLEET_MEMORY_TIER=vram_overflow",
+                "OLLAMA_FLEET_KEEP_ALIVE=0",
+                "OLLAMA_FLEET_SLOT_CTX=8192",
+                "OLLAMA_MAX_LOADED_MODELS=1",
+                "AUTOANNOTATION_SECTION_CHUNKING=true",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fleet_keys = (
+        "OLLAMA_FLEET_SERVERS",
+        "OLLAMA_FLEET_PARALLEL",
+        "WORKER_MAX_SLOTS",
+        "OLLAMA_FLEET_W_ALL_BYTES",
+        "OLLAMA_FLEET_W_PEAK_BYTES",
+        "OLLAMA_FLEET_C_SLOT_BYTES",
+        "OLLAMA_FLEET_MEMORY_TIER",
+        "OLLAMA_FLEET_KEEP_ALIVE",
+        "OLLAMA_FLEET_SLOT_CTX",
+        "OLLAMA_MAX_LOADED_MODELS",
+        "AUTOANNOTATION_SECTION_CHUNKING",
+    )
+    for key in fleet_keys:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("WORKER_ENV_FILE", str(env_path))
+
+    system_spec = SystemSpec(
+        gpu_count=0,
+        vram_bytes=(),
+        system_ram_bytes=1024**4,
+        cpu_physical=16,
+        cpu_logical=32,
+    )
+    monkeypatch.setattr("worker.bootstrap.probe_system", lambda: system_spec)
+    monkeypatch.setattr("worker.fleet.setup.probe_system", lambda: system_spec)
+    monkeypatch.setattr("worker.config.probe_system", lambda: system_spec)
+
+    registered = []
+
+    class FakeClient:
+        def __init__(self, config):
+            registered.append(config)
+
+        def register(self):
+            return "worker-1"
+
+        def claim(self, free_slots):
+            assert free_slots == 7
+            return None
+
+        def deregister(self):
+            pass
+
+    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+
+    assert run.main(argparse.Namespace(claim_one=False, claim_max=20, job_file=None)) == 0
+    assert len(registered) == 1
+    assert registered[0].max_slots == 7
 
 
 def test_run_claim_one_exits_clean_when_no_job(monkeypatch):

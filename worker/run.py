@@ -328,7 +328,7 @@ def _resolve_claim_max(args: argparse.Namespace) -> int:
 
 
 def main(args: argparse.Namespace) -> int:
-    ensure_worker_env(interactive=False, skip_fleet_config=True)
+    ensure_worker_env(interactive=False, skip_fleet_config=False)
     config = load_config()
 
     if getattr(args, "job_file", None) is None:

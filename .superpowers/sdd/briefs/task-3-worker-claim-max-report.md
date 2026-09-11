@@ -24,3 +24,28 @@ The chunk limit counts jobs when claimed, including jobs that later fail.
 ## Concerns
 
 None.
+
+## Important review fix
+
+- Changed worker run startup to materialize saved fleet settings before
+  `load_config()`, registration, and the initial claim. This makes
+  `WORKER_MAX_SLOTS` and its companion fleet keys from `worker.env` or
+  `WORKER_ENV_FILE` available when the registration payload is built.
+- This configuration load does not start Ollama. The supervised fleet/router
+  bootstrap remains deferred until after a non-empty first claim and still
+  occurs once for the bounded drain.
+- Added an integration-style regression test that points `WORKER_ENV_FILE` at
+  a temporary saved configuration and verifies registration and the initial
+  claim use its configured seven slots.
+
+## Important review fix tests
+
+- Red check before the implementation: the two focused tests failed because
+  fleet configuration was skipped and the initial claim used 20 rather than
+  the saved seven slots.
+- Focused regression check:
+  `.venv/bin/python -m pytest -q tests/test_worker_run_claim_one.py -k 'loads_worker_env_before_config or registers_with_max_slots_from_worker_env_file'`
+  — `2 passed, 17 deselected`.
+- Full claim-max worker-run test file:
+  `.venv/bin/python -m pytest -q tests/test_worker_run_claim_one.py`
+  — `19 passed in 1.89s`.
