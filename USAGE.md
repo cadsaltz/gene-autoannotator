@@ -13,11 +13,12 @@ Operator-facing how-to for tools in this repo. Package READMEs cover design deta
 7. [compareannotations](#compareannotations)
 8. [goresolve](#goresolve-go-term-resolution)
 9. [Backend (public job queue)](#backend-public-job-queue)
-10. [Worker (`serve` / `run` / `bench`)](#worker-serve--run--bench)
-11. [Dispatcher + Slurm (HPC)](#dispatcher--slurm-hpc)
-12. [Frontend](#frontend)
-13. [End-to-end setup recipes](#end-to-end-setup-recipes)
-14. [Advanced / scripts](#advanced--scripts)
+10. [Passwordless accounts](#passwordless-accounts)
+11. [Worker (`serve` / `run` / `bench`)](#worker-serve--run--bench)
+12. [Dispatcher + Slurm (HPC)](#dispatcher--slurm-hpc)
+13. [Frontend](#frontend)
+14. [End-to-end setup recipes](#end-to-end-setup-recipes)
+15. [Advanced / scripts](#advanced--scripts)
 
 ---
 
@@ -448,16 +449,54 @@ docker compose -f deploy/compose/docker-compose.coordinator.yml up -d --build
 | `WORKER_OFFLINE_SECONDS` | Heartbeat window for “offline” | `60` |
 | `MONGO_URI` | Annotation history writes | optional |
 | `PROFILES_DIR` | Local profile JSON | `data/profiles` |
+| `EMAIL_BACKEND` | OTP delivery: `console` (log) or `resend` | `console` |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Required when `EMAIL_BACKEND=resend` | — |
+| `SESSION_COOKIE_SECURE` | Set `1` when the UI is served over HTTPS | `0` |
+| `REQUIRE_WORKER_API_TOKEN` | Fail closed if `WORKER_API_TOKEN` is unset | `0` (dev); **`1` on public hosts** |
 
-API catalog: `backend/README.md`. User-facing auth for paper readers is **not**
-implemented yet — do not expose the backend widely without a reverse-proxy gate.
+API catalog: `backend/README.md`. Reader accounts use email OTP (see below).
+Workers and the dispatcher still use the Bearer token, not the session cookie.
 
-### Edge gate until accounts are live
+### Edge gate on public hosts
 
-If the frontend/API has a public hostname before passwordless accounts ship,
-restrict access at the reverse proxy (VPN, Cloudflare Access, IP allowlist).
-Do not rely on obscurity. Set `REQUIRE_WORKER_API_TOKEN=1` and a strong
-`WORKER_API_TOKEN` on any internet-facing API host.
+Set `REQUIRE_WORKER_API_TOKEN=1` and a strong `WORKER_API_TOKEN` on any
+internet-facing API host. Optionally add a reverse-proxy gate (VPN, Cloudflare
+Access, IP allowlist) for defense in depth.
+
+---
+
+## Passwordless accounts
+
+Paper readers sign in with a **6-digit email code** (not magic links).
+
+1. Set `EMAIL_BACKEND=console` for local dev — codes print in the uvicorn process
+   logs when someone requests signup/login.
+2. For real email: `EMAIL_BACKEND=resend`, `RESEND_API_KEY`, `EMAIL_FROM`, and a
+   verified sending domain in [Resend](https://resend.com).
+3. Open `/signup` (or `/login`), submit email, enter the code on `/auth/verify`.
+4. Workbench routes (`/jobs`, `/profiles`, `/annotations`, `/fleet`, and matching
+   API paths) require the `ga_session` HttpOnly cookie set by `POST /auth/verify`.
+
+Copy auth-related keys from `coordinator.env.example` into backend `.env`.
+
+### Manual smoke checklist
+
+Run automated API coverage first:
+
+```bash
+EMAIL_BACKEND=console pytest tests/test_coordinator_auth_api.py -v
+```
+
+| Check | Status |
+|-------|--------|
+| Signup → enter OTP → `GET /auth/me` returns user | ✅ covered by pytest |
+| Wrong OTP → 401 | ✅ covered by pytest |
+| 5 failed attempts invalidate code | ☐ manual (or add test later) |
+| Logout clears cookie / `GET /auth/me` → 401 | ✅ covered by pytest |
+| Unauthenticated `POST /jobs` → 401 | ✅ covered by pytest |
+| Unauthenticated `/jobs` page → redirect `/login` | ☐ **UI — human tester** |
+| Worker claim still needs Bearer token, not session cookie | ☐ manual (worker integration) |
+| `REQUIRE_WORKER_API_TOKEN=1` without token → 503 on `GET /jobs/queue-summary` | ☐ manual |
 
 ---
 
@@ -822,13 +861,8 @@ BACKEND_URL=http://127.0.0.1:8000 WORKER_API_TOKEN=dev-token \
 cd frontend && cp .env.example .env.local && npm run dev
 ```
 
-Submit a job from `/jobs` or:
-
-```bash
-curl -s -X POST http://127.0.0.1:8000/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{"profile":"mtb-h37rv","locus":"Rv0001","allow_online_name_lookup":false}'
-```
+Submit a job from `/jobs` after signing in (signup → OTP from backend logs → verify).
+Direct API calls need the `ga_session` cookie from `POST /auth/verify`.
 
 ### B. Cloud UI + SCRI dispatcher (production shape)
 
