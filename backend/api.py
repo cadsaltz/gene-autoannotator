@@ -670,6 +670,9 @@ def create_app(
         response.delete_cookie(
             key=SESSION_COOKIE_NAME,
             path="/",
+            httponly=True,
+            secure=_session_cookie_secure(),
+            samesite="lax",
         )
 
     def _issue_login_code(*, email: str, purpose: str):

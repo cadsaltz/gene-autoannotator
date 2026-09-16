@@ -47,3 +47,16 @@ def test_login_unknown_email_still_returns_ok(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.json()["ok"] is True
     assert email_sender._CONSOLE_OUTBOX == []
+
+
+def test_logout_clears_session(tmp_path, monkeypatch):
+    client = TestClient(_app(tmp_path, monkeypatch))
+    client.post("/auth/signup", json={"email": "a@example.com", "username": "alice"})
+    code = email_sender._CONSOLE_OUTBOX[-1]["code"]
+    client.post("/auth/verify", json={"email": "a@example.com", "code": code})
+
+    logout = client.post("/auth/logout")
+    assert logout.status_code == 204
+
+    me = client.get("/auth/me")
+    assert me.status_code == 401
