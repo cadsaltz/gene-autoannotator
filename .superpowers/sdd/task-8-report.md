@@ -6,7 +6,7 @@
 
 ## Commit
 
-- (filled after commit) — feat: require signed-in session for workbench API routes
+- `24663375b8e43fa733fc02db2768641996a9701b` — feat: require signed-in session for workbench API routes
 
 ## What changed
 
