@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   createBatch,
@@ -16,6 +19,12 @@ import {
   validateBatch,
   validateJob,
 } from "./api.js";
+
+test("apiFetch sends credentials for session cookies", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(path.join(here, "api.js"), "utf8");
+  assert.match(src, /credentials:\s*["']include["']/);
+});
 
 const originalFetch = globalThis.fetch;
 const originalBackendApiBaseUrl = process.env.BACKEND_API_BASE_URL;

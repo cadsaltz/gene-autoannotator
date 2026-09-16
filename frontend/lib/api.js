@@ -54,6 +54,7 @@ function formatErrorDetail(detail, fallback) {
 async function apiFetchFrom(baseUrl, path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     cache: "no-store",
+    credentials: "include",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -69,7 +70,7 @@ async function apiFetchFrom(baseUrl, path, options = {}) {
   return payload;
 }
 
-async function apiFetch(path, options = {}) {
+export async function apiFetch(path, options = {}) {
   return apiFetchFrom(getApiBaseUrl(), path, options);
 }
 
