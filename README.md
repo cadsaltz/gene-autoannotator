@@ -237,7 +237,7 @@ Some comparison/model tests may need HuggingFace model downloads and local Ollam
 Likely next improvements:
 
 - More precise job progress from the backend, ideally per paper/section/model step.
-- An accounts gate after the lead confirms the Task 9 authentication model.
+- Passwordless accounts (Task 9) in progress — until they ship, use the edge gate in [USAGE.md — Edge gate until accounts are live](USAGE.md#edge-gate-until-accounts-are-live) (VPN / Cloudflare Access / allowlist plus `REQUIRE_WORKER_API_TOKEN`).
 - Safer path handling and deployment guidance before exposing the API beyond trusted users.
 - Better separation of fast unit tests from model/integration tests.
 - Requirement-file cleanup once the runtime dependency set stabilizes.

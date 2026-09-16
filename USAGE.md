@@ -452,6 +452,13 @@ docker compose -f deploy/compose/docker-compose.coordinator.yml up -d --build
 API catalog: `backend/README.md`. User-facing auth for paper readers is **not**
 implemented yet — do not expose the backend widely without a reverse-proxy gate.
 
+### Edge gate until accounts are live
+
+If the frontend/API has a public hostname before passwordless accounts ship,
+restrict access at the reverse proxy (VPN, Cloudflare Access, IP allowlist).
+Do not rely on obscurity. Set `REQUIRE_WORKER_API_TOKEN=1` and a strong
+`WORKER_API_TOKEN` on any internet-facing API host.
+
 ---
 
 ## Worker (`serve` / `run` / `bench`)
