@@ -1526,3 +1526,32 @@ def test_create_job_stays_queued_without_inline_runner(tmp_path):
 
     assert response.status_code == 201
     assert response.json()["status"] == "queued"
+
+
+def test_worker_routes_fail_closed_when_token_required_but_unset(tmp_path, monkeypatch):
+    monkeypatch.setenv("REQUIRE_WORKER_API_TOKEN", "1")
+    monkeypatch.delenv("WORKER_API_TOKEN", raising=False)
+    app = create_app(
+        job_store=JobStore(tmp_path / "jobs.sqlite3"),
+        worker_api_token=None,
+    )
+    client = TestClient(app)
+
+    response = client.get("/jobs/queue-summary")
+
+    assert response.status_code == 503
+    assert "WORKER_API_TOKEN" in response.json()["detail"]
+
+
+def test_worker_routes_still_open_when_token_not_required_and_unset(tmp_path, monkeypatch):
+    monkeypatch.setenv("REQUIRE_WORKER_API_TOKEN", "0")
+    monkeypatch.delenv("WORKER_API_TOKEN", raising=False)
+    app = create_app(
+        job_store=JobStore(tmp_path / "jobs.sqlite3"),
+        worker_api_token=None,
+    )
+    client = TestClient(app)
+
+    response = client.get("/jobs/queue-summary")
+
+    assert response.status_code == 200

@@ -211,6 +211,12 @@ def create_app(
             drain_queue()
 
     def _require_worker_token(authorization):
+        require_token = _env_flag("REQUIRE_WORKER_API_TOKEN", False)
+        if require_token and not worker_token:
+            raise HTTPException(
+                status_code=503,
+                detail="WORKER_API_TOKEN is required but not configured.",
+            )
         if not worker_token:
             return
         expected = f"Bearer {worker_token}"
