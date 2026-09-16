@@ -5,9 +5,23 @@ from fastapi.testclient import TestClient
 
 from backend.annotation_store import InMemoryAnnotationStore
 from backend.api import create_app
+from backend import email_sender
 from backend.job_store import JobStore
 from backend.profile_store import LocalProfileStore
 from backend import regex_gen
+
+
+def _sign_in(client, email="tester@example.com"):
+    email_sender._CONSOLE_OUTBOX.clear()
+    client.post("/auth/signup", json={"email": email})
+    code = email_sender._CONSOLE_OUTBOX[-1]["code"]
+    verify = client.post("/auth/verify", json={"email": email, "code": code})
+    assert verify.status_code == 200
+    return client
+
+
+def _authed_client(app, **kwargs):
+    return _sign_in(TestClient(app, **kwargs))
 
 
 class FailingProfileStore:
@@ -30,7 +44,7 @@ def isolate_profile_and_mongo_env(tmp_path, monkeypatch):
 
 def test_health_endpoint(tmp_path):
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.get("/health")
 
@@ -53,7 +67,7 @@ def test_health_endpoint(tmp_path):
 
 def test_cors_allows_local_frontend_origin(tmp_path):
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.options(
         "/health",
@@ -69,7 +83,7 @@ def test_cors_allows_local_frontend_origin(tmp_path):
 
 def test_cors_allows_private_network_frontend_origin(tmp_path):
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.options(
         "/validate",
@@ -86,7 +100,7 @@ def test_cors_allows_private_network_frontend_origin(tmp_path):
 
 def test_profiles_endpoint_lists_configured_profiles(tmp_path):
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.get("/profiles")
 
@@ -108,7 +122,7 @@ def test_profiles_endpoint_includes_user_profiles(tmp_path):
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         profile_store=profile_store,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.get("/profiles")
 
@@ -125,7 +139,7 @@ def test_profiles_endpoint_reports_store_failures_as_unavailable(tmp_path):
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         profile_store=FailingProfileStore(),
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.get("/profiles")
 
@@ -138,7 +152,7 @@ def test_profile_detail_endpoint_reports_store_failures_as_unavailable(tmp_path)
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         profile_store=FailingProfileStore(),
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.get("/profiles/custom-profile")
 
@@ -151,7 +165,7 @@ def test_profile_crud_allows_builtin_update(tmp_path):
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         profile_store=LocalProfileStore(tmp_path / "profiles"),
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.put(
         "/profiles/mtb-h37rv",
@@ -171,7 +185,7 @@ def test_profile_crud_allows_builtin_update(tmp_path):
 def test_profile_creation_works_without_mongo(tmp_path, monkeypatch):
     monkeypatch.setenv("PROFILES_DIR", str(tmp_path / "env-profiles"))
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/profiles",
@@ -192,7 +206,7 @@ def test_profile_crud_creates_reads_updates_and_deletes_user_profile(tmp_path):
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         profile_store=LocalProfileStore(tmp_path / "profiles"),
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     create_response = client.post(
         "/profiles",
@@ -229,7 +243,7 @@ def test_profile_crud_creates_reads_updates_and_deletes_user_profile(tmp_path):
 
 def test_validate_endpoint_wraps_existing_locus_validation(tmp_path):
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/validate",
@@ -251,7 +265,7 @@ def test_validate_accepts_name_only_custom_organism(tmp_path):
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         profile_store=LocalProfileStore(tmp_path / "profiles"),
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/validate",
@@ -287,7 +301,7 @@ def test_target_requests_reject_saved_profile_locus_schema_mismatch(tmp_path, en
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         endpoint,
@@ -313,7 +327,7 @@ def test_target_requests_reject_whitespace_only_locus_and_name(tmp_path, endpoin
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app, raise_server_exceptions=False)
+    client = _authed_client(app, raise_server_exceptions=False)
 
     response = client.post(
         endpoint,
@@ -330,7 +344,7 @@ def test_target_requests_report_unknown_profile_as_not_found(tmp_path, endpoint)
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app, raise_server_exceptions=False)
+    client = _authed_client(app, raise_server_exceptions=False)
 
     response = client.post(
         endpoint,
@@ -349,7 +363,7 @@ def test_target_requests_report_profile_store_failures_as_unavailable(tmp_path, 
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app, raise_server_exceptions=False)
+    client = _authed_client(app, raise_server_exceptions=False)
 
     response = client.post(
         endpoint,
@@ -376,7 +390,7 @@ def test_job_submission_can_complete_inline_with_injected_runner(tmp_path):
         run_job=fake_runner,
         run_jobs_inline=True,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     create_response = client.post(
         "/jobs",
@@ -406,7 +420,7 @@ def test_job_submission_accepts_name_without_locus(tmp_path):
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/jobs",
@@ -424,7 +438,7 @@ def test_job_submission_stores_target_preflight_warnings(tmp_path):
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     created = client.post(
         "/jobs",
@@ -462,7 +476,7 @@ def test_job_create_preflight_honors_allow_online_name_lookup(tmp_path, monkeypa
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     created = client.post(
         "/jobs",
@@ -503,7 +517,7 @@ def test_validate_preflight_keeps_online_name_lookup_off(tmp_path, monkeypatch):
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/validate",
@@ -528,7 +542,7 @@ def test_job_submission_executes_inferred_builtin_profile(tmp_path):
         run_job=fake_runner,
         run_jobs_inline=True,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     created = client.post(
         "/jobs",
@@ -573,7 +587,7 @@ def test_job_submission_stores_profile_config_for_user_profile(tmp_path):
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     created = client.post(
         "/jobs",
@@ -650,7 +664,7 @@ def test_worker_marks_stale_invalid_saved_profile_locus_job_failed(tmp_path):
 
 def test_job_submission_rejects_missing_name_and_locus(tmp_path):
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post("/jobs", json={"organism": "Custom bacterium"})
 
@@ -664,7 +678,7 @@ def test_result_endpoint_rejects_unfinished_jobs(tmp_path):
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     create_response = client.post(
         "/jobs",
@@ -696,7 +710,7 @@ def test_startup_leaves_queued_jobs_for_workers(tmp_path):
 
 def test_job_submission_rejects_conflicting_profile_and_organism(tmp_path):
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/jobs",
@@ -712,7 +726,7 @@ def test_job_submission_rejects_conflicting_profile_and_organism(tmp_path):
 
 def test_job_submission_rejects_unresolvable_ortholog_override_profile(tmp_path):
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/jobs",
@@ -736,7 +750,7 @@ def test_job_submission_accepts_resolvable_ortholog_override_profile(tmp_path):
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/jobs",
@@ -763,7 +777,7 @@ def test_jobs_endpoint_lists_submitted_jobs_in_queue_order(tmp_path):
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     first = client.post(
         "/jobs",
@@ -794,7 +808,7 @@ def test_delete_jobs_history_clears_only_finished_jobs(tmp_path):
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
     completed = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0001"})
     failed = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0002"})
     queued = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0003"})
@@ -842,7 +856,7 @@ def test_completed_job_is_saved_to_annotation_store(tmp_path):
         run_job=fake_runner,
         run_jobs_inline=True,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/jobs",
@@ -869,7 +883,7 @@ def test_annotation_persistence_failure_is_visible_on_completed_job(tmp_path):
         run_job=lambda request: {"annotation": {"gene_id": request.locus}},
         run_jobs_inline=True,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     create_response = client.post(
         "/jobs",
@@ -931,7 +945,7 @@ def test_annotation_endpoints_use_annotation_store(tmp_path):
         annotation_store=FakeAnnotationStore(),
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     search_response = client.get("/annotations/search?query=dnaA")
     detail_response = client.get("/annotations/mtb-h37rv:Rv0001")
@@ -973,7 +987,7 @@ def test_annotation_endpoints_serialize_name_only_annotations(tmp_path):
         annotation_store=annotation_store,
         start_worker=False,
     )
-    client = TestClient(app, raise_server_exceptions=False)
+    client = _authed_client(app, raise_server_exceptions=False)
 
     search_response = client.get("/annotations/search?query=abc1")
     detail_response = client.get(f"/annotations/{annotation_id}")
@@ -998,7 +1012,7 @@ def test_annotation_search_rejects_unbounded_limit(tmp_path):
         annotation_store=FakeAnnotationStore(),
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.get("/annotations/search?query=dnaA&limit=1000")
 
@@ -1018,7 +1032,7 @@ def test_annotation_search_reports_store_runtime_errors_as_unavailable(tmp_path)
         annotation_store=FailingAnnotationStore(),
         start_worker=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.get("/annotations/search?query=dnaA")
 
@@ -1031,7 +1045,7 @@ def _regex_app(tmp_path):
 
 
 def test_regex_from_examples_endpoint_returns_pattern(tmp_path):
-    client = TestClient(_regex_app(tmp_path))
+    client = _authed_client(_regex_app(tmp_path))
 
     response = client.post(
         "/regex/from-examples",
@@ -1045,7 +1059,7 @@ def test_regex_from_examples_endpoint_returns_pattern(tmp_path):
 
 
 def test_regex_from_examples_endpoint_rejects_empty(tmp_path):
-    client = TestClient(_regex_app(tmp_path))
+    client = _authed_client(_regex_app(tmp_path))
 
     response = client.post("/regex/from-examples", json={"examples": ["  "]})
 
@@ -1062,7 +1076,7 @@ def test_regex_from_description_endpoint_returns_pattern(tmp_path, monkeypatch):
             "matched": [],
         },
     )
-    client = TestClient(_regex_app(tmp_path))
+    client = _authed_client(_regex_app(tmp_path))
 
     response = client.post(
         "/regex/from-description",
@@ -1078,7 +1092,7 @@ def test_regex_from_description_endpoint_reports_model_failure(tmp_path, monkeyp
         raise regex_gen.RegexGenerationError("regex model is unavailable")
 
     monkeypatch.setattr(regex_gen, "regex_from_description", _boom)
-    client = TestClient(_regex_app(tmp_path))
+    client = _authed_client(_regex_app(tmp_path))
 
     response = client.post("/regex/from-description", json={"description": "anything"})
 
@@ -1086,7 +1100,7 @@ def test_regex_from_description_endpoint_reports_model_failure(tmp_path, monkeyp
 
 
 def test_regex_from_description_endpoint_requires_description(tmp_path):
-    client = TestClient(_regex_app(tmp_path))
+    client = _authed_client(_regex_app(tmp_path))
 
     response = client.post("/regex/from-description", json={"description": "   "})
 
@@ -1134,7 +1148,7 @@ def _patch_mtb_dnaa_lookup(monkeypatch, *, locus="Rv0202"):
 
 def test_batches_validate_mtb_mixed_list(tmp_path, monkeypatch):
     _patch_mtb_dnaa_lookup(monkeypatch)
-    client = TestClient(_batch_app(tmp_path))
+    client = _authed_client(_batch_app(tmp_path))
 
     response = client.post(
         "/batches/validate",
@@ -1168,7 +1182,7 @@ def test_batches_validate_mtb_mixed_list(tmp_path, monkeypatch):
 
 def test_batches_create_queues_ready_jobs_only(tmp_path, monkeypatch):
     _patch_mtb_dnaa_lookup(monkeypatch, locus="Rv0001")
-    client = TestClient(_batch_app(tmp_path))
+    client = _authed_client(_batch_app(tmp_path))
 
     response = client.post(
         "/batches",
@@ -1216,7 +1230,7 @@ def test_batch_entry_request_inherits_fallback_flag():
 
 def test_create_batch_propagates_fallback_flag(tmp_path, monkeypatch):
     _patch_mtb_dnaa_lookup(monkeypatch, locus="Rv0001")
-    client = TestClient(_batch_app(tmp_path))
+    client = _authed_client(_batch_app(tmp_path))
 
     response = client.post(
         "/batches",
@@ -1257,7 +1271,7 @@ def test_batch_rejects_ortholog_gene_override():
 
 def test_create_batch_propagates_profile_only_ortholog_override(tmp_path, monkeypatch):
     _patch_mtb_dnaa_lookup(monkeypatch, locus="Rv0001")
-    client = TestClient(_batch_app(tmp_path))
+    client = _authed_client(_batch_app(tmp_path))
 
     response = client.post(
         "/batches",
@@ -1286,7 +1300,7 @@ def test_create_batch_propagates_profile_only_ortholog_override(tmp_path, monkey
 
 
 def test_batches_rejects_empty(tmp_path):
-    client = TestClient(_batch_app(tmp_path), raise_server_exceptions=False)
+    client = _authed_client(_batch_app(tmp_path), raise_server_exceptions=False)
 
     create_response = client.post(
         "/batches",
@@ -1312,7 +1326,7 @@ def test_batches_rejects_empty(tmp_path):
 
 def test_batches_rejects_over_max_size(tmp_path, monkeypatch):
     monkeypatch.setattr("backend.api.MAX_BATCH_SIZE", 2)
-    client = TestClient(_batch_app(tmp_path), raise_server_exceptions=False)
+    client = _authed_client(_batch_app(tmp_path), raise_server_exceptions=False)
 
     response = client.post(
         "/batches/validate",
@@ -1382,7 +1396,7 @@ def _make_worker_client():
         start_worker=False,
         worker_api_token="test-token",
     )
-    return TestClient(app), store
+    return _sign_in(TestClient(app)), store
 
 
 def _register_body():
@@ -1493,7 +1507,7 @@ def test_create_job_rejects_without_workers_when_capacity_required(tmp_path):
         start_worker=False,
         worker_capacity_required=True,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/jobs",
@@ -1510,7 +1524,7 @@ def test_create_job_ignores_client_filesystem_paths(tmp_path):
         worker_capacity_required=False,
         run_jobs_inline=False,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.post(
         "/jobs",
@@ -1542,7 +1556,7 @@ def test_create_job_stays_queued_without_inline_runner(tmp_path):
         worker_capacity_required=True,
         worker_api_token="test-token",
     )
-    client = TestClient(app)
+    client = _authed_client(app)
     headers = {"Authorization": "Bearer test-token"}
     client.post("/workers/register", json=_register_body(), headers=headers)
 
@@ -1562,7 +1576,7 @@ def test_worker_routes_fail_closed_when_token_required_but_unset(tmp_path, monke
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         worker_api_token=None,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.get("/jobs/queue-summary")
 
@@ -1577,7 +1591,7 @@ def test_worker_routes_still_open_when_token_not_required_and_unset(tmp_path, mo
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         worker_api_token=None,
     )
-    client = TestClient(app)
+    client = _authed_client(app)
 
     response = client.get("/jobs/queue-summary")
 

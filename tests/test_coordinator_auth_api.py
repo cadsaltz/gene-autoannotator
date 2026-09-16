@@ -60,3 +60,18 @@ def test_logout_clears_session(tmp_path, monkeypatch):
 
     me = client.get("/auth/me")
     assert me.status_code == 401
+
+
+def test_create_job_requires_session(tmp_path, monkeypatch):
+    client = TestClient(_app(tmp_path, monkeypatch))
+    response = client.post("/jobs", json={"profile": "mtb-h37rv", "locus": "Rv0001"})
+    assert response.status_code == 401
+
+
+def test_create_job_allowed_when_signed_in(tmp_path, monkeypatch):
+    client = TestClient(_app(tmp_path, monkeypatch))
+    client.post("/auth/signup", json={"email": "a@example.com"})
+    code = email_sender._CONSOLE_OUTBOX[-1]["code"]
+    client.post("/auth/verify", json={"email": "a@example.com", "code": code})
+    response = client.post("/jobs", json={"profile": "mtb-h37rv", "locus": "Rv0001"})
+    assert response.status_code == 201

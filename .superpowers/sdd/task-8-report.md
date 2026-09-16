@@ -1,51 +1,47 @@
-# Task 8 Report: Package rename coordinator to backend
+# Task 8 Report: Require session on expensive backend routes
 
-**Status:** Complete
+## Status
 
-## Implementation
-
-- Moved the canonical FastAPI package from `coordinator/` to `backend/`.
-- Updated Python imports, tests, uvicorn targets, Compose service wiring,
-  Docker image contents, and user/deployment documentation.
-- Added a one-release `coordinator` compatibility package that aliases backend
-  submodules, including `coordinator.api`.
-- Preserved `DEFAULT_DB_PATH = coordinator/jobs.sqlite3` and the
-  `/state/coordinator` Compose volume path so existing SQLite state remains
-  available.
-
-## Verification
-
-- Focused backend and compatibility suite: 146 passed.
-- Python package compilation and PyYAML Compose/import checks passed.
-- CI-equivalent suite: 743 passed, 10 skipped, 13 unrelated pre-existing
-  failures in fleet sizing, gene-name fixtures, GO configuration, Ollama
-  version expectations, and worker bench/serve mocks.
-- Docker Compose CLI validation was unavailable because Docker is not installed.
+**Complete.** Session gate wired with TDD; coordinator API tests updated to use a verified session; committed on `feat/passwordless-otp-accounts`.
 
 ## Commit
 
-- `refactor: rename coordinator package to backend`
+- (filled after commit) — feat: require signed-in session for workbench API routes
 
-## Concerns
+## What changed
 
-- The repository already tracks `backend/jobs.sqlite3`; this task leaves that
-  historical database file unchanged and adds backend SQLite patterns to
-  `.gitignore` for future generated files.
+### `backend/api.py`
 
-## Important Finding Follow-up
+- Strengthened `require_user`: missing/invalid session or unverified email → 401 `"Authentication required"`; slides session TTL via `touch_session`.
+- Wired `Depends(require_user)` onto workbench routes: `/profiles*`, `/validate`, `/regex/*`, `/batches*`, `/jobs` (list/create/get/result), `DELETE /jobs/history`, `/annotations*`, `GET /workers`.
+- Left public: `/health`, `/coordinator-info`, `/auth/*`.
+- Left worker Bearer-only: `/jobs/queue-summary`, `/workers/register|heartbeat|claim|drain`, `DELETE /workers/{id}`, `PATCH/POST` job progress/complete/fail.
 
-- Migrated all remaining test imports to `backend.*`, except the intentional
-  `coordinator.api` compatibility assertions in `test_backend_package.py`.
-- Reduced `coordinator/__init__.py` to a package marker so importing
-  `coordinator` no longer eagerly imports backend modules; `coordinator/api.py`
-  remains the thin legacy API shim.
-- Added a subprocess regression test proving the package import is lazy.
-- Focused backend and migrated-test suite: 87 passed.
-- Python compilation check for `backend` and `coordinator`: passed.
+### `tests/test_coordinator_auth_api.py`
 
-## Important Finding Follow-up (Docker Compose docs)
+- Added `test_create_job_requires_session` (401 without cookie).
+- Added `test_create_job_allowed_when_signed_in` (signup → OTP outbox → verify → POST `/jobs` → 201).
 
-- Updated `backend/README.md` Docker Compose section to match
-  `deploy/compose/docker-compose.coordinator.yml`: service name `backend`, volume
-  mount `/state/coordinator`, and frontend env
-  `BACKEND_API_BASE_URL=http://backend:8000`.
+### `tests/test_coordinator_api.py`
+
+- Shared helpers `_sign_in` / `_authed_client` (signup + verify console OTP, cookie jar).
+- Replaced workbench `TestClient(...)` usages with `_authed_client`; `_make_worker_client` also signs in so `GET /jobs` in fleet tests still works.
+
+## TDD evidence
+
+1. Gate test first: `test_create_job_requires_session` failed with `assert 201 == 401`.
+2. After `Depends(require_user)`: auth suite green; coordinator suite updated for session cookies.
+
+## Test results
+
+```text
+pytest tests/test_coordinator_auth_api.py tests/test_coordinator_api.py -v
+→ 75 passed
+```
+
+## Concerns / follow-ups
+
+- Allowed-job gate assertion uses **201** (create_job’s real status), not the brief’s 200.
+- CORS still `allow_credentials=False`; browser cookie auth from another origin needs a follow-up.
+- Health/CORS tests also sign in via `_authed_client` (harmless extra setup).
+- Per-user job ownership / scoping not in scope; any signed-in user can list all jobs.

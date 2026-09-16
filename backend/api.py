@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request, Response, status
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from autoannotation import batch_parse, batch_resolution, gene_names, organisms, targets
@@ -688,11 +688,11 @@ def create_app(
     def require_user(request: Request) -> dict:
         token = request.cookies.get(SESSION_COOKIE_NAME)
         if not token:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise HTTPException(status_code=401, detail="Authentication required")
         token_hash = hash_secret(token)
         user = auth.get_session_user(token_hash)
-        if user is None:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+        if user is None or not user["email_verified"]:
+            raise HTTPException(status_code=401, detail="Authentication required")
         auth.touch_session(token_hash, _auth_expires_at(SESSION_TTL_SECONDS))
         return user
 
@@ -736,13 +736,12 @@ def create_app(
         return AuthOkResponse()
 
     @app.get("/auth/me", response_model=AuthMeResponse)
-    def auth_me(request: Request):
-        user = require_user(request)
+    def auth_me(_user: dict = Depends(require_user)):
         return AuthMeResponse(
-            id=user["id"],
-            email=user["email"],
-            username=user["username"],
-            email_verified=user["email_verified"],
+            id=_user["id"],
+            email=_user["email"],
+            username=_user["username"],
+            email_verified=_user["email_verified"],
         )
 
     @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -753,7 +752,7 @@ def create_app(
         _clear_session_cookie(response)
 
     @app.get("/profiles", response_model=ProfilesResponse)
-    def profiles():
+    def profiles(_user: dict = Depends(require_user)):
         try:
             return {"profiles": profiles_store.list_profiles()}
         except Exception as exc:  # noqa: BLE001 - surface profile storage outages as 503s.
@@ -764,7 +763,7 @@ def create_app(
         response_model=ProfileDetailResponse,
         status_code=status.HTTP_201_CREATED,
     )
-    def create_profile(request: ProfilePayload):
+    def create_profile(request: ProfilePayload, _user: dict = Depends(require_user)):
         try:
             return profiles_store.create_user_profile(request.model_dump())
         except DuplicateProfileError as exc:
@@ -775,7 +774,7 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/profiles/{profile_id}", response_model=ProfileDetailResponse)
-    def get_profile(profile_id: str):
+    def get_profile(profile_id: str, _user: dict = Depends(require_user)):
         try:
             profile = profiles_store.get_profile(profile_id)
         except Exception as exc:  # noqa: BLE001 - surface profile storage outages as 503s.
@@ -785,7 +784,9 @@ def create_app(
         return profile
 
     @app.put("/profiles/{profile_id}", response_model=ProfileDetailResponse)
-    def update_profile(profile_id: str, request: ProfilePayload):
+    def update_profile(
+        profile_id: str, request: ProfilePayload, _user: dict = Depends(require_user)
+    ):
         try:
             profile = profiles_store.update_user_profile(profile_id, request.model_dump())
         except InvalidProfileError as exc:
@@ -797,7 +798,7 @@ def create_app(
         return profile
 
     @app.delete("/profiles/{profile_id}")
-    def delete_profile(profile_id: str):
+    def delete_profile(profile_id: str, _user: dict = Depends(require_user)):
         try:
             deleted = profiles_store.delete_user_profile(profile_id)
         except InvalidProfileError as exc:
@@ -809,19 +810,23 @@ def create_app(
         return {"deleted": True}
 
     @app.post("/validate")
-    def validate_locus(request: ValidationRequest):
+    def validate_locus(request: ValidationRequest, _user: dict = Depends(require_user)):
         target = _resolve_target_for_request(request)
         return target.to_preflight_dict()
 
     @app.post("/regex/from-examples")
-    def regex_from_examples_endpoint(request: RegexFromExamplesRequest):
+    def regex_from_examples_endpoint(
+        request: RegexFromExamplesRequest, _user: dict = Depends(require_user)
+    ):
         try:
             return regex_gen.regex_from_examples(request.examples)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/regex/from-description")
-    def regex_from_description_endpoint(request: RegexFromDescriptionRequest):
+    def regex_from_description_endpoint(
+        request: RegexFromDescriptionRequest, _user: dict = Depends(require_user)
+    ):
         try:
             return regex_gen.regex_from_description(request.description)
         except ValueError as exc:
@@ -830,7 +835,7 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.post("/batches/validate", response_model=BatchValidateResponse)
-    def validate_batch(request: BatchValidateRequest):
+    def validate_batch(request: BatchValidateRequest, _user: dict = Depends(require_user)):
         try:
             entries, summary = _preview_batch(request)
         except BatchParseError as exc:
@@ -842,7 +847,11 @@ def create_app(
         response_model=BatchCreateResponse,
         status_code=status.HTTP_201_CREATED,
     )
-    def create_batch(request: BatchCreateRequest, background_tasks: BackgroundTasks):
+    def create_batch(
+        request: BatchCreateRequest,
+        background_tasks: BackgroundTasks,
+        _user: dict = Depends(require_user),
+    ):
         request = request.model_copy(update=_SERVER_PATH_UPDATES)
         try:
             entries, summary = _preview_batch(request)
@@ -889,7 +898,7 @@ def create_app(
         }
 
     @app.get("/batches/{batch_id}", response_model=BatchDetailResponse)
-    def get_batch(batch_id: str):
+    def get_batch(batch_id: str, _user: dict = Depends(require_user)):
         batch = batches.get_batch(batch_id)
         if batch is None:
             raise HTTPException(status_code=404, detail="Batch not found")
@@ -909,7 +918,11 @@ def create_app(
         response_model=JobCreateResponse,
         status_code=status.HTTP_201_CREATED,
     )
-    def create_job(request: AnnotationJobRequest, background_tasks: BackgroundTasks):
+    def create_job(
+        request: AnnotationJobRequest,
+        background_tasks: BackgroundTasks,
+        _user: dict = Depends(require_user),
+    ):
         request = _server_owned_job_request(request)
         _reject_unresolvable_ortholog_override(request.ortholog_override)
         target = _resolve_target_for_request(request)
@@ -923,7 +936,11 @@ def create_app(
         return {"job_id": job["id"], "status": job["status"]}
 
     @app.get("/jobs", response_model=JobsListResponse)
-    def list_jobs(order: str = "newest", batch_id: str | None = None):
+    def list_jobs(
+        order: str = "newest",
+        batch_id: str | None = None,
+        _user: dict = Depends(require_user),
+    ):
         normalized_order = order if order in {"newest", "queue"} else "newest"
         return {
             "jobs": [
@@ -937,7 +954,7 @@ def create_app(
         }
 
     @app.delete("/jobs/history")
-    def clear_jobs_history():
+    def clear_jobs_history(_user: dict = Depends(require_user)):
         return {"deleted": store.clear_finished_jobs()}
 
     @app.get("/jobs/queue-summary")
@@ -947,14 +964,14 @@ def create_app(
         return {"queued": store.count_queued_jobs()}
 
     @app.get("/jobs/{job_id}", response_model=JobRecordResponse)
-    def get_job(job_id: str):
+    def get_job(job_id: str, _user: dict = Depends(require_user)):
         job = store.get_job(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Job not found")
         return _public_job_record(job)
 
     @app.get("/jobs/{job_id}/result")
-    def get_job_result(job_id: str):
+    def get_job_result(job_id: str, _user: dict = Depends(require_user)):
         job = store.get_job(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Job not found")
@@ -963,7 +980,11 @@ def create_app(
         return job["result"]
 
     @app.get("/annotations/search", response_model=AnnotationSearchResponse)
-    def search_annotations(query: str, limit: int = Query(default=20, ge=1, le=100)):
+    def search_annotations(
+        query: str,
+        limit: int = Query(default=20, ge=1, le=100),
+        _user: dict = Depends(require_user),
+    ):
         try:
             matches = annotations.search(query, limit=limit)
         except Exception as exc:  # noqa: BLE001 - surface storage outages as 503s.
@@ -971,7 +992,7 @@ def create_app(
         return {"query": query, "matches": matches}
 
     @app.get("/annotations/{annotation_id}", response_model=AnnotationDetailResponse)
-    def get_annotation(annotation_id: str):
+    def get_annotation(annotation_id: str, _user: dict = Depends(require_user)):
         try:
             annotation = annotations.get(annotation_id)
         except Exception as exc:  # noqa: BLE001 - surface storage outages as 503s.
@@ -984,7 +1005,7 @@ def create_app(
         "/annotations/{annotation_id}/versions",
         response_model=AnnotationVersionsResponse,
     )
-    def get_annotation_versions(annotation_id: str):
+    def get_annotation_versions(annotation_id: str, _user: dict = Depends(require_user)):
         try:
             versions = annotations.get_versions(annotation_id)
         except Exception as exc:  # noqa: BLE001 - surface storage outages as 503s.
@@ -1095,7 +1116,7 @@ def create_app(
         return Response(status_code=204)
 
     @app.get("/workers")
-    def list_workers():
+    def list_workers(_user: dict = Depends(require_user)):
         return {"workers": workers.list_workers(offline_after_seconds=offline_after_seconds)}
 
     @app.get("/coordinator-info")
