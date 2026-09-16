@@ -685,7 +685,7 @@ def create_app(
         )
         email_sender.send_login_code_email(to_email=email, code=code)
 
-    def require_user(request: Request) -> dict:
+    def require_user(request: Request, response: Response) -> dict:
         token = request.cookies.get(SESSION_COOKIE_NAME)
         if not token:
             raise HTTPException(status_code=401, detail="Authentication required")
@@ -694,6 +694,8 @@ def create_app(
         if user is None or not user["email_verified"]:
             raise HTTPException(status_code=401, detail="Authentication required")
         auth.touch_session(token_hash, _auth_expires_at(SESSION_TTL_SECONDS))
+        # Refresh browser Max-Age so sliding 90-day sessions stay in sync with SQLite.
+        _set_session_cookie(response, token)
         return user
 
     @app.post("/auth/signup", response_model=AuthOkResponse)
