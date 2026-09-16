@@ -9,6 +9,7 @@ from backend.annotation_store import InMemoryAnnotationStore
 from backend.api import DEFAULT_LEASE_SECONDS, create_app
 from backend.job_store import JobStore
 from backend.worker_registry import WorkerRegistry
+from tests.auth_helpers import sign_in
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +33,7 @@ def _make_app(tmp_path, **kwargs):
         worker_api_token="test-token",
         **kwargs,
     )
-    return TestClient(app), store, registry
+    return sign_in(TestClient(app)), store, registry
 
 
 def _register(client, *, worker_name="hpc", max_slots=1):

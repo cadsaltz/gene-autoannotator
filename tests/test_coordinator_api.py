@@ -5,23 +5,11 @@ from fastapi.testclient import TestClient
 
 from backend.annotation_store import InMemoryAnnotationStore
 from backend.api import create_app
-from backend import email_sender
 from backend.job_store import JobStore
 from backend.profile_store import LocalProfileStore
 from backend import regex_gen
-
-
-def _sign_in(client, email="tester@example.com"):
-    email_sender._CONSOLE_OUTBOX.clear()
-    client.post("/auth/signup", json={"email": email})
-    code = email_sender._CONSOLE_OUTBOX[-1]["code"]
-    verify = client.post("/auth/verify", json={"email": email, "code": code})
-    assert verify.status_code == 200
-    return client
-
-
-def _authed_client(app, **kwargs):
-    return _sign_in(TestClient(app, **kwargs))
+from tests.auth_helpers import authed_client as _authed_client
+from tests.auth_helpers import sign_in as _sign_in
 
 
 class FailingProfileStore:

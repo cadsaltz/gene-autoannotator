@@ -10,6 +10,7 @@ from backend.job_store import JobStore
 from backend.profile_store import LocalProfileStore
 from backend.schemas import ProfilePayload
 from fastapi.testclient import TestClient
+from tests.auth_helpers import sign_in
 
 
 def _minimal_profile_config(**overrides):
@@ -118,7 +119,7 @@ def test_job_submission_stores_kegg_and_field_ortholog_for_builtin_override(tmp_
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = TestClient(app)
+    client = sign_in(TestClient(app))
     created = client.post(
         "/jobs",
         json={
