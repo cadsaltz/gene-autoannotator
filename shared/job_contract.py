@@ -34,9 +34,8 @@ class OrthologOverride(BaseModel):
 
 
 class AnnotationJobRequest(BaseModel):
-    # cache/output fields are server filesystem paths passed through to the
-    # existing annotator. Add validation here before exposing this API beyond a
-    # trusted/local deployment.
+    # Ignored on public API; persisted jobs use server defaults. Workers still
+    # receive the server-owned paths from the coordinator.
     profile: str | None = None
     organism: str | None = None
     strain: str | None = None

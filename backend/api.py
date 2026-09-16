@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from autoannotation import batch_parse, batch_resolution, organisms, targets
+from autoannotation import batch_parse, batch_resolution, gene_names, organisms, targets
 from autoannotation.batch_parse import BatchParseError
 
 from .annotation_store import AnnotationStoreUnavailable, annotation_store_from_env
@@ -121,6 +121,14 @@ MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "2000"))
 # still recovering a job whose Slurm allocation died without failing it. Live
 # workers keep their leases fresh through progress reports and heartbeats.
 DEFAULT_LEASE_SECONDS = 21600
+SERVER_CACHE_DIR = "./.cache"
+SERVER_OUTPUT_DIR = "gen_json"
+SERVER_GENE_NAME_CACHE = gene_names.DEFAULT_GENE_NAME_CACHE_DIR
+_SERVER_PATH_UPDATES = {
+    "cache_dir": SERVER_CACHE_DIR,
+    "output_dir": SERVER_OUTPUT_DIR,
+    "gene_name_cache": SERVER_GENE_NAME_CACHE,
+}
 TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
 DEFAULT_CORS_ORIGINS = (
@@ -162,6 +170,10 @@ def _env_flag(name, default):
     if raw in FALSE_VALUES:
         return False
     return default
+
+
+def _server_owned_job_request(request: AnnotationJobRequest) -> AnnotationJobRequest:
+    return request.model_copy(update=_SERVER_PATH_UPDATES)
 
 
 def create_app(
@@ -709,6 +721,7 @@ def create_app(
         status_code=status.HTTP_201_CREATED,
     )
     def create_batch(request: BatchCreateRequest, background_tasks: BackgroundTasks):
+        request = request.model_copy(update=_SERVER_PATH_UPDATES)
         try:
             entries, summary = _preview_batch(request)
         except BatchParseError as exc:
@@ -775,6 +788,7 @@ def create_app(
         status_code=status.HTTP_201_CREATED,
     )
     def create_job(request: AnnotationJobRequest, background_tasks: BackgroundTasks):
+        request = _server_owned_job_request(request)
         _reject_unresolvable_ortholog_override(request.ortholog_override)
         target = _resolve_target_for_request(request)
         _reject_invalid_target(target)

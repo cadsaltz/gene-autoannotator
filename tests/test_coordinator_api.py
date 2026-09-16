@@ -1504,6 +1504,33 @@ def test_create_job_rejects_without_workers_when_capacity_required(tmp_path):
     assert response.json()["detail"] == "No workers connected with job capacity."
 
 
+def test_create_job_ignores_client_filesystem_paths(tmp_path):
+    app = create_app(
+        job_store=JobStore(tmp_path / "jobs.sqlite3"),
+        worker_capacity_required=False,
+        run_jobs_inline=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/jobs",
+        json={
+            "profile": "mtb-h37rv",
+            "locus": "Rv0001",
+            "cache_dir": "/etc/passwd",
+            "output_dir": "/tmp/pwn",
+            "gene_name_cache": "/etc",
+        },
+    )
+
+    assert response.status_code == 201
+    job_id = response.json()["job_id"]
+    job = client.get(f"/jobs/{job_id}").json()
+    assert job["request"]["cache_dir"] == "./.cache"
+    assert job["request"]["output_dir"] == "gen_json"
+    assert "/etc" not in job["request"]["gene_name_cache"]
+
+
 def test_create_job_stays_queued_without_inline_runner(tmp_path):
     def fail_if_called(_request):
         raise AssertionError("coordinator must not run annotation in-process")

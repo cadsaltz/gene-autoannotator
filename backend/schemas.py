@@ -141,6 +141,7 @@ class BatchJobOptions(BaseModel):
     profile: str | None = None
     organism: str | None = None
     strain: str | None = None
+    # Ignored on public API; batch jobs use server defaults for path fields.
     cache_dir: str = "./.cache"
     output_dir: str = "gen_json"
     gene_name_cache: str = gene_names.DEFAULT_GENE_NAME_CACHE_DIR
