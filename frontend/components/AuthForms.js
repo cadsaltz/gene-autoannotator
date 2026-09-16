@@ -33,8 +33,17 @@ function ErrorText({ message }) {
   );
 }
 
+function verifyPageUrl(email, nextRaw) {
+  const params = new URLSearchParams({
+    email: email.trim(),
+    next: sanitizeNextPath(nextRaw),
+  });
+  return `/auth/verify?${params.toString()}`;
+}
+
 export function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [error, setError] = useState("");
@@ -46,7 +55,7 @@ export function SignupForm() {
     setSubmitting(true);
     try {
       await signup(email.trim(), username.trim() || null);
-      router.push(`/auth/verify?email=${encodeURIComponent(email.trim())}`);
+      router.push(verifyPageUrl(email, searchParams.get("next")));
     } catch (err) {
       setError(err.message || "Signup failed");
     } finally {
@@ -104,6 +113,7 @@ export function SignupForm() {
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -114,7 +124,7 @@ export function LoginForm() {
     setSubmitting(true);
     try {
       await login(email.trim());
-      router.push(`/auth/verify?email=${encodeURIComponent(email.trim())}`);
+      router.push(verifyPageUrl(email, searchParams.get("next")));
     } catch (err) {
       setError(err.message || "Login failed");
     } finally {

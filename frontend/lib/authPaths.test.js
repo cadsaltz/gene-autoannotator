@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { isPublicPath, isProtectedPath, sanitizeNextPath } from "./authPaths.js";
@@ -23,4 +25,14 @@ test("sanitizeNextPath allows same-origin paths and blocks open redirects", () =
   assert.equal(sanitizeNextPath("https://evil.example"), "/jobs");
   assert.equal(sanitizeNextPath(""), "/jobs");
   assert.equal(sanitizeNextPath(null), "/jobs");
+});
+
+test("login and signup forward sanitized next to verify", async () => {
+  const authForms = await readFile(
+    path.join(process.cwd(), "components/AuthForms.js"),
+    "utf8",
+  );
+  assert.match(authForms, /function verifyPageUrl\(email, nextRaw\)/);
+  assert.match(authForms, /sanitizeNextPath\(nextRaw\)/);
+  assert.match(authForms, /verifyPageUrl\(email, searchParams\.get\("next"\)\)/);
 });
