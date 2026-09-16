@@ -66,4 +66,4 @@ pytest tests/test_coordinator_auth_api.py -v → 3 passed
 .venv/bin/pytest tests/test_coordinator_auth_api.py -v → 4 passed
 ```
 
-**Commit:** `a67f0bb8ce0086e48b84a6f350e7c591e74f23ac` — fix: mirror session cookie flags on logout clear
+**Commit:** `20ff43d7746f99e03a8581179d4c8d70d6bd4505` — fix: mirror session cookie flags on logout clear
