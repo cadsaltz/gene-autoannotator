@@ -6,3 +6,4 @@ python-dotenv
 psutil
 grex==1.0.2
 resend
+email-validator

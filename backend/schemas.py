@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from autoannotation import field_defs
 from autoannotation import gene_names
@@ -372,3 +372,28 @@ class AnnotationDetailResponse(AnnotationSearchResult):
 class AnnotationVersionsResponse(BaseModel):
     annotation_id: str
     versions: list[dict[str, Any]]
+
+
+class AuthSignupRequest(BaseModel):
+    email: EmailStr
+    username: str | None = None
+
+
+class AuthLoginRequest(BaseModel):
+    email: EmailStr
+
+
+class AuthVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class AuthOkResponse(BaseModel):
+    ok: bool = True
+
+
+class AuthMeResponse(BaseModel):
+    id: str
+    email: str
+    username: str | None
+    email_verified: bool

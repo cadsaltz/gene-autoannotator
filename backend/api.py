@@ -2,16 +2,27 @@ import logging
 import os
 import threading
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Response, status
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from autoannotation import batch_parse, batch_resolution, gene_names, organisms, targets
 from autoannotation.batch_parse import BatchParseError
 
 from .annotation_store import AnnotationStoreUnavailable, annotation_store_from_env
+from .auth import (
+    OTP_TTL_SECONDS,
+    SESSION_COOKIE_NAME,
+    SESSION_TTL_SECONDS,
+    hash_secret,
+    new_otp_code,
+    new_session_token,
+)
+from .auth_store import AuthStore
 from .batch_store import BatchStore
+from . import email_sender
 from .job_store import JobStore
 from .profile_store import (
     DuplicateProfileError,
@@ -37,6 +48,11 @@ from .schemas import (
     AnnotationJobRequest,
     AnnotationSearchResponse,
     AnnotationVersionsResponse,
+    AuthLoginRequest,
+    AuthMeResponse,
+    AuthOkResponse,
+    AuthSignupRequest,
+    AuthVerifyRequest,
     BatchCreateRequest,
     BatchCreateResponse,
     BatchDetailResponse,
@@ -176,9 +192,14 @@ def _server_owned_job_request(request: AnnotationJobRequest) -> AnnotationJobReq
     return request.model_copy(update=_SERVER_PATH_UPDATES)
 
 
+def _auth_expires_at(ttl_seconds: int) -> str:
+    return (datetime.now(UTC) + timedelta(seconds=ttl_seconds)).isoformat()
+
+
 def create_app(
     *,
     job_store=None,
+    auth_store=None,
     batch_store=None,
     annotation_store=None,
     profile_store=None,
@@ -190,6 +211,7 @@ def create_app(
     worker_capacity_required=False,
 ):
     store = job_store or JobStore(DEFAULT_DB_PATH)
+    auth = auth_store or AuthStore(store.db_path)
     batches = batch_store or BatchStore(store.db_path)
     workers = worker_registry or WorkerRegistry(store.db_path)
     worker_token = worker_api_token if worker_api_token is not None else os.getenv("WORKER_API_TOKEN")
@@ -629,6 +651,103 @@ def create_app(
             "resources": resource_snapshot(),
             "regex_model": _regex_model_health(),
         }
+
+    def _session_cookie_secure():
+        return _env_flag("SESSION_COOKIE_SECURE", False)
+
+    def _set_session_cookie(response: Response, token: str):
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=token,
+            httponly=True,
+            samesite="lax",
+            secure=_session_cookie_secure(),
+            max_age=SESSION_TTL_SECONDS,
+            path="/",
+        )
+
+    def _clear_session_cookie(response: Response):
+        response.delete_cookie(
+            key=SESSION_COOKIE_NAME,
+            path="/",
+        )
+
+    def _issue_login_code(*, email: str, purpose: str):
+        code = new_otp_code()
+        auth.create_login_code(
+            email=email,
+            purpose=purpose,
+            code_hash=hash_secret(code),
+            expires_at=_auth_expires_at(OTP_TTL_SECONDS),
+        )
+        email_sender.send_login_code_email(to_email=email, code=code)
+
+    def require_user(request: Request) -> dict:
+        token = request.cookies.get(SESSION_COOKIE_NAME)
+        if not token:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        token_hash = hash_secret(token)
+        user = auth.get_session_user(token_hash)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        auth.touch_session(token_hash, _auth_expires_at(SESSION_TTL_SECONDS))
+        return user
+
+    @app.post("/auth/signup", response_model=AuthOkResponse)
+    def auth_signup(body: AuthSignupRequest):
+        email = str(body.email)
+        if auth.get_user_by_email(email) is None:
+            auth.create_user(email=email, username=body.username)
+        _issue_login_code(email=email, purpose="signup")
+        return AuthOkResponse()
+
+    @app.post("/auth/login", response_model=AuthOkResponse)
+    def auth_login(body: AuthLoginRequest):
+        email = str(body.email)
+        if auth.get_user_by_email(email) is None:
+            return AuthOkResponse()
+        _issue_login_code(email=email, purpose="login")
+        return AuthOkResponse()
+
+    @app.post("/auth/verify", response_model=AuthOkResponse)
+    def auth_verify(body: AuthVerifyRequest, request: Request, response: Response):
+        email = str(body.email)
+        code_hash = hash_secret(body.code)
+        consumed = auth.consume_login_code(email=email, code_hash=code_hash)
+        if consumed is None:
+            auth.register_failed_code_attempt(email=email, code_hash=code_hash)
+            raise HTTPException(status_code=401, detail="Invalid or expired code")
+        user = auth.get_user_by_email(email)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Invalid or expired code")
+        auth.mark_email_verified(user["id"])
+        token = new_session_token()
+        client_ip = request.client.host if request.client else None
+        auth.create_session(
+            user_id=user["id"],
+            token_hash=hash_secret(token),
+            expires_at=_auth_expires_at(SESSION_TTL_SECONDS),
+            ip=client_ip,
+        )
+        _set_session_cookie(response, token)
+        return AuthOkResponse()
+
+    @app.get("/auth/me", response_model=AuthMeResponse)
+    def auth_me(request: Request):
+        user = require_user(request)
+        return AuthMeResponse(
+            id=user["id"],
+            email=user["email"],
+            username=user["username"],
+            email_verified=user["email_verified"],
+        )
+
+    @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+    def auth_logout(request: Request, response: Response):
+        token = request.cookies.get(SESSION_COOKIE_NAME)
+        if token:
+            auth.delete_session(hash_secret(token))
+        _clear_session_cookie(response)
 
     @app.get("/profiles", response_model=ProfilesResponse)
     def profiles():
