@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { login, signup, verifyCode } from "../lib/authApi";
+import { sanitizeNextPath } from "../lib/authPaths";
 
 function AuthCard({ title, kicker, children, footer }) {
   return (
@@ -163,7 +164,7 @@ export function VerifyForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialEmail = searchParams.get("email") || "";
-  const nextPath = searchParams.get("next") || "/jobs";
+  const nextPath = sanitizeNextPath(searchParams.get("next"));
   const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -175,7 +176,7 @@ export function VerifyForm() {
     setSubmitting(true);
     try {
       await verifyCode(email.trim(), code.trim());
-      router.push(nextPath.startsWith("/") ? nextPath : "/jobs");
+      router.push(nextPath);
       router.refresh();
     } catch (err) {
       setError(err.message || "Verification failed");
