@@ -6,7 +6,7 @@
 
 ## Commit
 
-- (filled after commit)
+- `45e5a435c3d2a41de4900e1f0dcc48e6e82cb1ba` — feat: add OTP email sender and auth secret helpers
 
 ## What changed
 
