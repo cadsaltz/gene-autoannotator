@@ -48,6 +48,10 @@ pytest tests/test_coordinator_auth_api.py tests/test_coordinator_api.py -v
 
 ## Follow-up: remaining 401s after session gate
 
+### Commit
+
+- `af17e9493f36b68abd5fddc2dbc65251027d5f8a` — fix: sign in via OTP in remaining session-gated API tests
+
 ### Problem
 
 `tests/test_backend_hpc_dispatch.py` and `tests/test_profile_config_roundtrip.py` still called session-gated `POST /jobs` / `GET /workers` without OTP sign-in, failing with 401.
