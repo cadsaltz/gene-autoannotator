@@ -21,3 +21,4 @@ Task 11: complete (commits 9de60313eb6db64698dd2dad7c6652cff25f1cc0..d12786b)
 Task 11: complete (commits 9de6031..426dc18, next param fix)
 Task 12: complete (commit d9243d0)
 Final-review fix: require_user re-sets ga_session Max-Age on every auth'd request (sliding 90-day cookie + SQLite)
+Final: sliding cookie fix cefe4fe

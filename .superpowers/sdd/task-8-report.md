@@ -73,3 +73,16 @@ Other `POST /jobs` / `GET /workers` call sites in `tests/` are already session-a
   tests/test_backend_hpc_dispatch.py tests/test_profile_config_roundtrip.py -v
 → 88 passed
 ```
+
+## Re-review (auth_helpers follow-up)
+
+**Task quality: Approved**
+
+Reviewed fix diff `5dab7d9..af17e94` (packaged as `.superpowers/sdd/review-5dab7d9..b4bc25a.diff`; `review-5dab7d9..af17e94.diff` not present).
+
+- **HPC dispatch:** `_make_app` wraps `TestClient` with `sign_in` before any `POST /jobs` — confirmed; 8/8 HPC tests pass.
+- **Profile roundtrip:** `test_job_submission_stores_kegg_and_field_ortholog_for_builtin_override` uses `sign_in(TestClient(app))` before `POST /jobs` — confirmed; 5/5 profile roundtrip tests pass.
+- **Shared helpers:** `tests/auth_helpers.py` dedupes coordinator suite; no remaining unauthenticated workbench `POST /jobs` outside intentional 401 gate test.
+- **Brief:** Session dependency on listed workbench routes; public `/health`, `/coordinator-info`, `/auth/*`; worker Bearer routes unchanged; TDD gate tests present.
+
+Re-run: **88 passed** (same four modules as follow-up).

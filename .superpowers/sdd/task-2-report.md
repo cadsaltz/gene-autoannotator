@@ -1,92 +1,56 @@
-# Task 2 Report: Harden atomic claim for multi-claimer fleets
+# Task 2 Report: Phase B — fail-closed worker token
 
-## Status: DONE
+## Status
 
-## Summary
+**Complete.** Implemented, tested, and committed on `feat/passwordless-otp-accounts`.
 
-Proved that two concurrent fleet claimers cannot double-assign one queued job.
-The existing `BEGIN IMMEDIATE` transaction serializes selection and transition,
-and the update now additionally requires the selected row to remain queued.
-Added a read-only queued-job count and exposed it through
-`GET /jobs/queue-summary` without changing job status.
+## Commit
 
-## Changes
+- `f99d32e19c14cbae446f69376930439896999567` — fix: fail closed when worker API token required but unset
 
-### Atomic fleet claim
+## What changed
 
-- Kept `JobStore.assign_job_to_worker(worker_id, *, lease_seconds)` as the only
-  API fleet claim path.
-- Documented why `BEGIN IMMEDIATE` prevents concurrent claimers from selecting
-  the same queued job.
-- Added `AND status = 'queued'` to the assignment update as a defensive
-  transition guard.
+### `backend/api.py`
 
-### Read-only queue peek
+Extended `_require_worker_token` inside `create_app` to read `REQUIRE_WORKER_API_TOKEN` via existing `_env_flag` (default `False`). When the flag is true and `worker_token` is unset/empty, worker-protected routes now return **503** with detail `WORKER_API_TOKEN is required but not configured.` instead of allowing unauthenticated access. When the flag is false and no token is configured, behavior is unchanged (routes remain open). When a token is configured, Bearer validation still returns **401** on mismatch.
 
-- Added `JobStore.count_queued_jobs() -> int`.
-- The helper performs only `SELECT COUNT(*)` for `status = 'queued'`.
-- Added pull-only `GET /jobs/queue-summary`, returning `{"queued": <count>}`.
-- Documented that peek endpoints do not transition status.
+### `coordinator.env.example`
 
-### Tests
+Documented `REQUIRE_WORKER_API_TOKEN=0` with a comment to set `1` on internet-facing deploys.
 
-- Added `tests/test_job_claim_race.py`.
-- Concurrent test starts two claimers against one SQLite database and asserts
-  exactly one receives the job.
-- Store-level peek test verifies the count and both involved statuses.
-- API-level peek test verifies the response and that the queued job stays
-  queued.
+### `tests/test_coordinator_api.py`
 
-## TDD Evidence
+Added two tests per the plan:
 
-1. Added all three focused tests first.
-2. Initial run: the concurrency test passed against the existing serialized
-   transaction; the helper test failed with missing `count_queued_jobs`, and
-   the endpoint test failed with HTTP 404.
-3. Added the minimal helper, endpoint, claim documentation, and defensive
-   status predicate.
-4. Focused rerun passed: 3 tests.
+- `test_worker_routes_fail_closed_when_token_required_but_unset` — `REQUIRE_WORKER_API_TOKEN=1`, no token → 503 on `GET /jobs/queue-summary`
+- `test_worker_routes_still_open_when_token_not_required_and_unset` — `REQUIRE_WORKER_API_TOKEN=0`, no token → 200
 
-## Verification
+## TDD evidence
 
-- `.venv/bin/pytest tests/test_job_claim_race.py -v`: 3 passed.
-- `.venv/bin/pytest tests/test_job_claim_race.py tests/test_coordinator_job_store.py tests/test_coordinator_claim_bias.py tests/test_worker_integration.py tests/test_coordinator_api.py -q`:
-  90 passed.
-- IDE diagnostics for all modified Python files: no errors.
+1. Added tests first; `test_worker_routes_fail_closed_when_token_required_but_unset` failed (200 vs expected 503) before implementation.
+2. After implementation, targeted and `-k worker` runs passed.
 
-## Self-Review
+## Test results
 
-- Confirmed the race test waits on both futures and examines both results.
-- Confirmed every fleet API assignment still calls
-  `assign_job_to_worker`; no alternate claim path was added.
-- Confirmed the queue-summary route is declared before `/jobs/{job_id}`.
-- Confirmed both peek tests verify status preservation.
-- Confirmed no dispatcher or later-task functionality was implemented.
-- Confirmed unrelated changes in `.superpowers/sdd/task-3-report.md` and
-  `experiments/` remain untouched.
+```text
+pytest tests/test_coordinator_api.py::test_worker_routes_fail_closed_when_token_required_but_unset \
+       tests/test_coordinator_api.py::test_worker_routes_still_open_when_token_not_required_and_unset \
+       tests/test_coordinator_api.py -k worker -v
+→ 7 passed, 61 deselected
+```
 
-## Concerns
+Includes existing worker-related tests (`test_worker_endpoints_require_token`, etc.).
 
-None.
+## Self-review
 
-## Important Review Fixes
+**Correctness:** Logic matches the brief: fail-closed only when both `REQUIRE_WORKER_API_TOKEN` is enabled and `worker_token` is falsy. Empty string token from env would also trigger fail-closed when required, which is desirable.
 
-- Added a two-party barrier to the concurrent claim test so both worker threads
-  reach the claim call before either proceeds.
-- Added a regression test that forces the guarded assignment update to affect
-  zero rows and verifies the store returns `None` while leaving the job queued.
-- `assign_job_to_worker` now checks that the guarded update changed exactly one
-  row before returning the selected job.
+**Scope:** Minimal diff; reuses `_env_flag` and closure `worker_token` like `WORKER_CAPACITY_REQUIRED`. No change to production default module-level `app = create_app(...)` unless deploy sets the new env var.
 
-### Fix Evidence
+**Gaps / follow-ups:**
 
-1. RED:
-   `.venv/bin/pytest tests/test_job_claim_race.py::test_assign_job_returns_none_when_guarded_update_loses_race -v`
-   failed because `assign_job_to_worker` returned the still-queued job after the
-   trigger forced the guarded update to affect zero rows.
-2. GREEN:
-   `.venv/bin/pytest tests/test_job_claim_race.py -v` passed all 4 tests.
-3. RELATED:
-   `.venv/bin/pytest tests/test_job_claim_race.py tests/test_coordinator_job_store.py tests/test_coordinator_claim_bias.py tests/test_worker_integration.py tests/test_coordinator_api.py -q`
-   passed all 91 tests.
-4. IDE diagnostics reported no errors in the modified Python files.
+- Production compose/deploy templates were not updated to set `REQUIRE_WORKER_API_TOKEN=1`; operators must opt in via env (as documented in `coordinator.env.example`). A later task may wire this into Docker/compose for public deploys.
+- `USAGE.md` still describes unset token as “unauthenticated” without mentioning `REQUIRE_WORKER_API_TOKEN`; optional doc sync in a docs pass.
+- Tests use explicit `worker_api_token=None` plus cleared `WORKER_API_TOKEN` env; this matches how tests construct apps and avoids leaking host env.
+
+**Risk:** Low. Default remains backward-compatible (`REQUIRE_WORKER_API_TOKEN` defaults off). Misconfiguration surfaces as 503 (service unavailable) rather than silent open worker API.

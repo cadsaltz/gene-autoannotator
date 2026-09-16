@@ -6,7 +6,7 @@
 
 ## Commit
 
-- `6f0286c24a2bba49997fc7ad0c8c4b7621794e02` — fix: ignore client cache/output paths on public job APIs
+- `a8cbbe11380c9a74b520c9a963368e3bdacea42c` — fix: ignore client cache/output paths on public job APIs
 
 ## What changed
 
