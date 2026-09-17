@@ -79,11 +79,21 @@ try:
 except ImportError:  # pragma: no cover - dependency is optional at import time.
     load_dotenv = None
 
+# Repo-root `.env` only (never `*.example` / `backend.env.example`). Path is
+# anchored to this file so starting uvicorn from another cwd still works.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_ENV_FILE = _REPO_ROOT / ".env"
 if load_dotenv is not None:
-    load_dotenv()
+    load_dotenv(_ENV_FILE)
 
 
 log = logging.getLogger(__name__)
+log.info(
+    "Loaded env from %s (exists=%s); EMAIL_BACKEND=%s",
+    _ENV_FILE,
+    _ENV_FILE.is_file(),
+    os.getenv("EMAIL_BACKEND", "console"),
+)
 
 
 def _detect_lan_ip():
@@ -702,7 +712,13 @@ def create_app(
             code_hash=hash_secret(code),
             expires_at=_auth_expires_at(OTP_TTL_SECONDS),
         )
-        email_sender.send_login_code_email(to_email=email, code=code)
+        try:
+            email_sender.send_login_code_email(to_email=email, code=code)
+        except Exception as exc:  # noqa: BLE001 - surface delivery failures to the client
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Could not send login code: {exc}",
+            ) from exc
 
     def require_user(request: Request, response: Response) -> dict:
         token = request.cookies.get(SESSION_COOKIE_NAME)

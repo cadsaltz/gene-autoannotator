@@ -76,7 +76,12 @@ export function SignupForm() {
         </>
       }
     >
-      <form className="grid gap-4" onSubmit={handleSubmit}>
+      <form
+        className="grid gap-4"
+        method="post"
+        action="/signup"
+        onSubmit={handleSubmit}
+      >
         <label className="grid gap-2 text-sm font-medium">
           Email
           <input
@@ -145,7 +150,12 @@ export function LoginForm() {
         </>
       }
     >
-      <form className="grid gap-4" onSubmit={handleSubmit}>
+      <form
+        className="grid gap-4"
+        method="post"
+        action="/login"
+        onSubmit={handleSubmit}
+      >
         <label className="grid gap-2 text-sm font-medium">
           Email
           <input
@@ -208,7 +218,12 @@ export function VerifyForm() {
         . Check your inbox, or the backend logs when{" "}
         <code className="font-mono text-xs">EMAIL_BACKEND=console</code>.
       </p>
-      <form className="grid gap-4" onSubmit={handleSubmit}>
+      <form
+        className="grid gap-4"
+        method="post"
+        action="/auth/verify"
+        onSubmit={handleSubmit}
+      >
         <label className="grid gap-2 text-sm font-medium">
           Email
           <input

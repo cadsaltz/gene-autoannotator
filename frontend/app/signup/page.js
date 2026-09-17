@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import AppShell from "../../components/AppShell";
 import { SignupForm } from "../../components/AuthForms";
 
@@ -8,7 +10,9 @@ export const metadata = {
 export default function SignupPage() {
   return (
     <AppShell>
-      <SignupForm />
+      <Suspense fallback={<p className="workbench-muted text-sm">Loading…</p>}>
+        <SignupForm />
+      </Suspense>
     </AppShell>
   );
 }
