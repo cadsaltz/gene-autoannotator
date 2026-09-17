@@ -27,11 +27,11 @@ class DispatcherConfig:
     @classmethod
     def from_env(cls) -> "DispatcherConfig":
         backend_url = (
-            os.getenv("BACKEND_URL") or os.getenv("COORDINATOR_URL") or ""
+            os.getenv("BACKEND_URL") or ""
         ).rstrip("/")
         if not backend_url:
             raise RuntimeError(
-                "BACKEND_URL (or legacy COORDINATOR_URL) is required"
+                "BACKEND_URL is required"
             )
 
         worker_api_token = os.getenv("WORKER_API_TOKEN", "")

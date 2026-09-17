@@ -12,7 +12,7 @@ from typing import Any
 import ollama
 
 from worker.bootstrap import ensure_worker_env
-from worker.client import CoordinatorClient
+from worker.client import BackendClient
 from worker.config import load_config
 from worker.fleet.models import required_model_names
 from worker.fleet.setup import (
@@ -37,7 +37,7 @@ DEFAULT_CLAIM_MAX = 500
 class _OneShotJobSource:
     def __init__(
         self,
-        client: CoordinatorClient,
+        client: BackendClient,
         job: JobSpec,
         reporter: ProgressReporter,
     ) -> None:
@@ -69,10 +69,10 @@ class _OneShotJobSource:
         time.sleep(timeout)
 
 
-class _BoundedCoordinatorJobSource:
+class _BoundedBackendJobSource:
     def __init__(
         self,
-        client: CoordinatorClient,
+        client: BackendClient,
         initial_job: JobSpec,
         reporter: ProgressReporter,
         *,
@@ -161,7 +161,7 @@ def _cpu_percent() -> float:
         return 0.0
 
 
-def _heartbeat_fn(client: CoordinatorClient):
+def _heartbeat_fn(client: BackendClient):
     """Keep the backend's view of this allocation fresh.
 
     Without heartbeats the backend cannot tell a long-running Slurm job from a
@@ -181,7 +181,7 @@ def _heartbeat_fn(client: CoordinatorClient):
     return heartbeat
 
 
-def _deregister_quietly(client: CoordinatorClient) -> None:
+def _deregister_quietly(client: BackendClient) -> None:
     try:
         client.deregister()
     except Exception as exc:  # noqa: BLE001 - exit cleanup must never fail the run.
@@ -292,7 +292,7 @@ def _run_claimed_jobs(client, config, *, claim_max: int) -> int:
             runtime = runtime_holder.get("runtime")
             return config.max_slots if runtime is None else runtime.free_slots()
 
-        source = _BoundedCoordinatorJobSource(
+        source = _BoundedBackendJobSource(
             client,
             job,
             reporter,
@@ -339,7 +339,7 @@ def main(args: argparse.Namespace) -> int:
             config,
             worker_name=_ephemeral_worker_name(config),
         )
-        client = CoordinatorClient(config)
+        client = BackendClient(config)
         client.register()
         try:
             return _run_claimed_jobs(
@@ -352,7 +352,7 @@ def main(args: argparse.Namespace) -> int:
             # leaving a phantom worker until the offline window elapses.
             _deregister_quietly(client)
 
-    client = CoordinatorClient(config)
+    client = BackendClient(config)
     job = _job_from_file(args.job_file)
     fleet, supervisor, router_thread = _bootstrap_local_fleet()
     return _run_job(

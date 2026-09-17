@@ -83,10 +83,10 @@ def test_ortholog_override_rejects_name_without_locus():
         OrthologOverride(profile_id="mory", name="dnaA")
 
 
-def test_coordinator_schemas_reexports_job_request():
-    from backend.schemas import AnnotationJobRequest as CoordJobRequest
+def test_backend_schemas_reexports_job_request():
+    from backend.schemas import AnnotationJobRequest as BackendJobRequest
 
-    assert CoordJobRequest is AnnotationJobRequest
+    assert BackendJobRequest is AnnotationJobRequest
 
 
 def test_worker_contract_models_validate():

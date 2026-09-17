@@ -60,7 +60,7 @@ function mockErrorFetch(payload, status = 422) {
   });
 }
 
-test("getWorkers fetches worker list from coordinator", async () => {
+test("getWorkers fetches worker list from backend", async () => {
   process.env.BACKEND_API_BASE_URL = "http://backend.test";
   mockFetch(() => ({
     workers: [{ id: "w1", worker_name: "host", state: "ready", max_slots: 1, active_jobs: 0 }],
@@ -282,16 +282,12 @@ test("getApiBaseUrl uses the private backend API URL on the server", () => {
   });
 });
 
-test("getApiBaseUrl prefers BACKEND_API_BASE_URL over COORDINATOR_API_BASE_URL on the server", () => {
-  const originalCoord = process.env.COORDINATOR_API_BASE_URL;
+test("getApiBaseUrl uses BACKEND_API_BASE_URL on the server", () => {
   const originalBackend = process.env.BACKEND_API_BASE_URL;
   try {
-    process.env.COORDINATOR_API_BASE_URL = "http://coordinator.test";
     process.env.BACKEND_API_BASE_URL = "http://backend.test";
     assert.equal(getApiBaseUrl(), "http://backend.test");
   } finally {
-    if (originalCoord === undefined) delete process.env.COORDINATOR_API_BASE_URL;
-    else process.env.COORDINATOR_API_BASE_URL = originalCoord;
     if (originalBackend === undefined) delete process.env.BACKEND_API_BASE_URL;
     else process.env.BACKEND_API_BASE_URL = originalBackend;
   }

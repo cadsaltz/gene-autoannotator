@@ -11,7 +11,6 @@ This deployment keeps one public control plane and one durable job queue:
   allocations. A Slurm worker performs the atomic claim after it starts.
 
 The canonical Python package and Compose service are named `backend`.
-`coordinator.api` remains available temporarily as a compatibility entrypoint.
 
 ## 1. Cloud frontend and backend
 
@@ -86,11 +85,9 @@ not above total walltime: 4–6 hours (`14400`–`21600`, the default) suits the
 
 ### Start
 
-The current Compose filename retains the old role name:
-
 ```bash
-docker compose -f deploy/compose/docker-compose.coordinator.yml up -d --build
-docker compose -f deploy/compose/docker-compose.coordinator.yml ps
+docker compose -f deploy/compose/docker-compose.backend.yml up -d --build
+docker compose -f deploy/compose/docker-compose.backend.yml ps
 curl -fsS https://api.example.org/health
 ```
 
@@ -98,7 +95,7 @@ Compose starts the `frontend` and `backend` services. The frontend receives
 `BACKEND_API_BASE_URL=http://backend:8000`; both services receive `.env`.
 The backend runs from `/app` with `/state` as its working directory. Its
 relative SQLite path therefore resolves to
-`/state/coordinator/jobs.sqlite3`, persisted in the `coordinator-data` volume,
+`/state/backend/jobs.sqlite3`, persisted in the `backend-data` volume,
 without mounting over the packaged Python source. Profiles are persisted in
 `profiles-data`. Back up both volumes before host replacement or rollback.
 
@@ -271,7 +268,7 @@ then deploy an image built from the rollback tag. For a source checkout:
 
 ```bash
 git switch --detach pre-cloud-hpc-redesign-2026-08-24
-docker compose -f deploy/compose/docker-compose.coordinator.yml up -d --build
+docker compose -f deploy/compose/docker-compose.backend.yml up -d --build
 ```
 
 The tag predates the cloud/HPC redesign. Its runtime and environment contract

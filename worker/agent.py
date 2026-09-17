@@ -119,7 +119,7 @@ def run_once(client, config, *, active_jobs, execute, heartbeat_interval=None):
         result = execute(claim["request"])
         client.complete(job_id, result)
         log.info("Completed job %s", job_id)
-    except Exception as exc:  # noqa: BLE001 - report every failure to the coordinator.
+    except Exception as exc:  # noqa: BLE001 - report every failure to the backend.
         message = str(exc)
         client.fail(job_id, message, _is_retryable(message))
         log.warning("Job %s failed: %s", job_id, message)

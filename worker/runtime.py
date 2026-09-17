@@ -27,7 +27,7 @@ def execute_annotation_job(
     job_id: str | None = None,
     on_progress=None,
 ) -> dict[str, Any]:
-    """Validate a coordinator payload and execute it through the worker backend."""
+    """Validate a backend payload and execute it through the worker backend."""
     request = AnnotationJobRequest(**request_dict)
     return executor.run_annotation_job(request, job_id=job_id, on_progress=on_progress)
 

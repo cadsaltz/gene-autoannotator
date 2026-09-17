@@ -17,7 +17,7 @@ from worker import capacity, executor
 from worker.bench import configure_bench_logging
 from worker.bench_dashboard import BenchDashboard
 from worker.bootstrap import ensure_worker_env
-from worker.client import CoordinatorClient
+from worker.client import BackendClient
 from worker.config import load_config
 from worker.fleet import sizing
 from worker.fleet.models import required_model_names
@@ -36,7 +36,7 @@ from worker.router.ollama_ps import residency_snapshot_from_ps
 from worker.router.server import start_router_server
 from worker.runtime import WorkerRuntime
 from worker.runtime import execute_annotation_job as _execute_job
-from worker.sources.coordinator import CoordinatorJobSource
+from worker.sources.backend import BackendJobSource
 
 DEFAULT_LOG_FILENAME = "worker-serve.log"
 
@@ -123,7 +123,7 @@ def _should_drain(heartbeat_response: dict[str, Any], config) -> bool:
 
 def _make_execute_fn(reporter: ProgressReporter):
     """Wrap `_execute_job` so every progress event is both reported to the
-    coordinator (debounced) and forwarded to the runtime's own on_progress
+    backend (debounced) and forwarded to the runtime's own on_progress
     hook (used for in-memory job snapshots), regardless of which caller
     passes `on_progress` down through `WorkerRuntime`.
     """
@@ -144,7 +144,7 @@ class _DrainSignal:
     draining: bool = False
 
 
-class _DrainAwareCoordinatorSource(CoordinatorJobSource):
+class _DrainAwareBackendSource(BackendJobSource):
     def __init__(
         self,
         *args,
@@ -177,10 +177,10 @@ class _DrainAwareCoordinatorSource(CoordinatorJobSource):
         super().on_fail(job_id, error, retryable)
 
 
-def _coordinator_overrides_from_args(parsed_args: argparse.Namespace) -> dict[str, Any]:
+def _backend_overrides_from_args(parsed_args: argparse.Namespace) -> dict[str, Any]:
     overrides: dict[str, Any] = {}
-    if getattr(parsed_args, "coordinator_url", None):
-        overrides["COORDINATOR_URL"] = parsed_args.coordinator_url
+    if getattr(parsed_args, "backend_url", None):
+        overrides["BACKEND_URL"] = parsed_args.backend_url
     if getattr(parsed_args, "token", None):
         overrides["WORKER_API_TOKEN"] = parsed_args.token
     if getattr(parsed_args, "memory_gb", None) is not None:
@@ -206,7 +206,7 @@ def main(args=None):
 
         set_ollama_log_dir(log_file.parent)
 
-    cli_overrides = _coordinator_overrides_from_args(parsed_args)
+    cli_overrides = _backend_overrides_from_args(parsed_args)
     bootstrap_env = bool(getattr(parsed_args, "bootstrap_env", True))
     interactive = bool(getattr(parsed_args, "interactive", sys.stdin.isatty()))
     discover_only = bool(getattr(parsed_args, "discover_only", False))
@@ -276,7 +276,7 @@ def main(args=None):
     os.environ["OLLAMA_ROUTER_URL"] = f"http://{router_host}:{router_thread._port}"
 
     config = load_config()
-    client = CoordinatorClient(config)
+    client = BackendClient(config)
     worker_id = client.register()
     log.info(
         "Registered worker %s (id=%s, max_slots=%s)",
@@ -301,7 +301,7 @@ def main(args=None):
             return 0
         return len(runtime.active_jobs)
 
-    source = _DrainAwareCoordinatorSource(
+    source = _DrainAwareBackendSource(
         client,
         free_slots_fn=free_slots,
         drain_signal=drain_signal,

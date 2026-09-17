@@ -1,10 +1,10 @@
 import httpx
 
 
-class CoordinatorClient:
+class BackendClient:
     def __init__(self, config, http_client=None):
         self._config = config
-        self._http = http_client or httpx.Client(base_url=config.coordinator_url, timeout=60.0)
+        self._http = http_client or httpx.Client(base_url=config.backend_url, timeout=60.0)
         self._auth = {"Authorization": f"Bearer {config.worker_api_token}"}
         self.worker_id = None
 

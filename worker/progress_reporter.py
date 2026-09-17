@@ -1,5 +1,5 @@
 """Debounced progress reporter that forwards `JobProgressEvent` updates to the
-coordinator via `CoordinatorClient.progress(...)`.
+backend via `BackendClient.progress(...)`.
 
 Debounce policy
 ----------------
@@ -97,7 +97,7 @@ class ProgressReporter:
             self.flush(job_id)
 
     def _send(self, job_id: str, state: _JobState, event: JobProgressEvent) -> None:
-        """Send `event` to the coordinator outside `self._lock` so a slow or
+        """Send `event` to the backend outside `self._lock` so a slow or
         failing HTTP round-trip for one job never blocks progress reporting
         for other jobs. Best-effort: failures are logged and swallowed so a
         broken PATCH never propagates into job completion/failure handling or

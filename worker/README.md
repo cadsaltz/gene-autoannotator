@@ -9,7 +9,7 @@ Three modes share the same annotation runtime and subprocess execution path:
 
 | Mode | Command | Purpose |
 | --- | --- | --- |
-| **serve** | `python -m worker serve` | Connect to a coordinator, claim jobs continuously, report progress |
+| **serve** | `python -m worker serve` | Connect to a backend, claim jobs continuously, report progress |
 | **run** | `python -m worker run` | Bounded queue drain (default cap from `WORKER_RUN_MAX_JOBS`) and exit |
 | **bench** | `python -m worker bench` | Run a fixed JSONL batch locally, exit with a `jobs_per_hour` report |
 
@@ -24,7 +24,7 @@ flowchart LR
         Router["Model router sidecar<br/>OLLAMA_ROUTER_URL"]
         Runtime["WorkerRuntime<br/>up to WORKER_MAX_SLOTS"]
     end
-    Coord["Coordinator"] -->|"serve / run mode"| Runtime
+    Backend["Backend"] -->|"serve / run mode"| Runtime
     JobFile["Single job JSON"] -->|"run --job-file"| Runtime
     JSONL["JSONL job file"] -->|"bench mode"| Runtime
     Runtime -->|"subprocess per job"| Job1["job subprocess"]
@@ -46,7 +46,7 @@ flowchart LR
 
 ## Serve mode
 
-Serve mode registers with the coordinator, heartbeats aggregate slot state, and
+Serve mode registers with the backend, heartbeats aggregate slot state, and
 claims jobs until drained or interrupted.
 
 Serve and scheduler-launched workers can consume the same backend queue. Both
@@ -62,7 +62,7 @@ BACKEND_URL=https://api.example WORKER_API_TOKEN=… python -m worker serve
 ```
 
 ```bash
-COORDINATOR_URL=http://<coord-host>:8000 \
+BACKEND_URL=http://<backend-host>:8000 \
 WORKER_API_TOKEN=<token> \
 python -m worker serve
 ```
@@ -71,20 +71,20 @@ Or with explicit CLI overrides:
 
 ```bash
 python -m worker serve \
-  --coordinator-url http://192.168.1.10:8000 \
+  --backend-url http://192.168.1.10:8000 \
   --token dev-token \
   --memory-gb 48   # sets WORKER_MODEL_MEMORY_BUDGET_GB (model/Ollama cap; not job slots)
 ```
 
 On startup the worker logs `Registered worker <name> (<slots> slots)`. The
-coordinator biases claims toward workers reporting the most `free_slots`.
+backend biases claims toward workers reporting the most `free_slots`.
 
 Serve mode does **not** collect router metrics. Heartbeats report a single
 aggregate `active_jobs` / `free_slots` pair for the whole runtime.
 
 ### Drain and version checks
 
-Heartbeats include `state="ready"` until the coordinator signals drain (or a
+Heartbeats include `state="ready"` until the backend signals drain (or a
 version mismatch). Active subprocesses finish; no new jobs are claimed; state
 switches to `"draining"`.
 
@@ -118,7 +118,7 @@ systemd deployments that want the live dashboard must allocate a TTY** — pass
 correct, expected behavior for a background service — logs go to stdout/the
 unit journal instead).
 
-### Progress reporting to the coordinator
+### Progress reporting to the backend
 
 Per-job progress (phase, `sections_done`/`sections_total`, ortholog
 `pass_name`) is **not** carried on heartbeats. Heartbeats stay scoped to
@@ -126,7 +126,7 @@ worker-level health: `state`/slots/drain signaling only.
 
 Structured progress is sent on its own path: each `WorkerRuntime` progress
 event for a job is debounced per-job by `ProgressReporter` and forwarded via
-`PATCH /jobs/{id}/progress` (`CoordinatorClient.progress`), which also renews
+`PATCH /jobs/{id}/progress` (`BackendClient.progress`), which also renews
 the job's lease. The first event for a job and every phase change are sent
 immediately; same-phase section updates are coalesced to at most one send per
 debounce window; job completion/failure always flushes the latest pending
@@ -136,7 +136,7 @@ update.
 | --- | --- | --- |
 | `WORKER_PROGRESS_DEBOUNCE_SEC` | `1.5` | Minimum seconds between progress PATCHes for the same job while its phase is unchanged. |
 
-The coordinator persists these fields on the job record and exposes them via
+The backend persists these fields on the job record and exposes them via
 `GET /jobs`; the frontend Jobs page renders them on each job tile as
 `<phase> · <done>/<total> sections` with an ortholog-aware progress bar
 (fetching holds at ~5%, then target extraction fills the rest of the bar
@@ -146,7 +146,7 @@ status-based label/percent for jobs without structured fields.
 
 ## Run mode
 
-Run mode is the bounded-drain coordinator mode used by schedulers such as Slurm.
+Run mode is the bounded-drain backend mode used by schedulers such as Slurm.
 It uses the same `WorkerRuntime` and annotation subprocess path as serve, but
 exits after draining up to a job cap instead of looping forever.
 
@@ -246,7 +246,7 @@ to stdout at INFO as before.
 Job subprocesses emit structured `JobProgressEvent` updates (phase, section
 counts, optional ortholog pass) on stderr as NDJSON; the dashboard consumes
 these for per-job lines. The same contract extends `JobProgress` for future
-coordinator/API wiring.
+backend/API wiring.
 
 ## Fleet setup
 
@@ -360,7 +360,7 @@ This isolates memory and keeps the parent process stable under concurrent load.
 | `WORKER_MAX_SLOTS` | from fleet config | Maximum concurrent job subprocesses. |
 
 The parent `WorkerRuntime` maintains a thread pool of up to `WORKER_MAX_SLOTS`
-workers. Each slot runs one annotation subprocess at a time. The coordinator
+workers. Each slot runs one annotation subprocess at a time. The backend
 sees one worker with `max_slots` equal to this value.
 
 ### Memory admission
@@ -388,14 +388,14 @@ fleet configuration flow and `WORKER_MODEL_MEMORY_BUDGET_GB`.
 
 ## Environment variables
 
-### Coordinator (serve mode)
+### Backend (serve mode)
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `COORDINATOR_URL` | **yes** (serve) | — | Base URL of the coordinator, e.g. `http://coord-host:8000`. |
+| `BACKEND_URL` | **yes** (serve) | — | Base URL of the backend, e.g. `http://backend-host:8000`. |
 | `WORKER_API_TOKEN` | recommended | `""` | Shared secret sent as `Authorization: Bearer <token>`. |
 | `WORKER_NAME` | no | hostname | Human-readable name reported at registration. |
-| `APP_VERSION` | no | `dev` | Agent version (checked against coordinator `REQUIRED_WORKER_VERSION`). |
+| `APP_VERSION` | no | `dev` | Agent version (checked against backend `REQUIRED_WORKER_VERSION`). |
 | `HEARTBEAT_SECONDS` | no | `15` | Heartbeat interval. |
 
 ### Fleet and concurrency
@@ -433,7 +433,7 @@ fleet configuration flow and `WORKER_MODEL_MEMORY_BUDGET_GB`.
 | --- | --- | --- |
 | `WORKER_CACHE_DIR` | `./.cache` | Annotation cache root (bench cold purge targets `llm_cache` / `llm_responses` here). |
 | `WORKER_OUTPUT_DIR` | `gen_json` | Annotation JSON output directory. |
-| `WORKER_ENV_FILE` | `<repo>/worker.env` | Persisted env file for coordinator URL, token, fleet config. Absolute repo-root path by default (not cwd, not output-dir). |
+| `WORKER_ENV_FILE` | `<repo>/worker.env` | Persisted env file for backend URL, token, fleet config. Absolute repo-root path by default (not cwd, not output-dir). |
 | `ANNOTATION_MEMORY_BUDGET_GB` | — | **Legacy alias** for `WORKER_MODEL_MEMORY_BUDGET_GB`; read once and migrated on persist. Fallback slot math when fleet keys absent. |
 | `JOB_MEMORY_ESTIMATE_GB` | `20.0` | Legacy per-job estimate (fallback only). |
 | `WORKER_MEMORY_HEADROOM_GB` | `4.0` | Legacy headroom (fallback only). |
@@ -461,7 +461,7 @@ WORKER_API_TOKEN=dev-token uvicorn backend.api:app --host 0.0.0.0 --port 8000
 **Terminal 2 — worker:**
 
 ```bash
-COORDINATOR_URL=http://127.0.0.1:8000 \
+BACKEND_URL=http://127.0.0.1:8000 \
 WORKER_API_TOKEN=dev-token \
 python -m worker serve
 ```
@@ -506,7 +506,7 @@ Scripts live under `deploy/scripts/`:
 | Script | Purpose |
 | --- | --- |
 | `generate-worker-token.sh` | Emit a random hex token for `WORKER_API_TOKEN`. |
-| `test-coordinator-reachability.sh` | Verify LAN connectivity to the coordinator (`curl` `/health`). |
+| `test-backend-reachability.sh` | Verify LAN connectivity to the backend (`curl` `/health`). |
 | `install-worker.sh` | Create `.venv`, install dependencies, write `worker.env`. |
 | `update-worker.sh` | Drain active jobs, `git pull`, restart the worker. |
 
@@ -522,22 +522,22 @@ Non-interactive:
 deploy/scripts/install-worker.sh http://192.168.1.10:8000 "$(deploy/scripts/generate-worker-token.sh)"
 ```
 
-First run prompts for coordinator URL, token, model memory budget
+First run prompts for backend URL, token, model memory budget
 (`WORKER_MODEL_MEMORY_BUDGET_GB`), and fleet sizing (servers, parallel, slots).
 Values are saved to `worker.env`.
 
 ### Two-machine LAN setup
 
-**Coordinator machine**
+**Backend machine**
 
 1. Generate token: `deploy/scripts/generate-worker-token.sh`
-2. Set `WORKER_API_TOKEN` and `COORDINATOR_PUBLIC_URL=http://<lan-ip>:8000`
+2. Set `WORKER_API_TOKEN` and `BACKEND_PUBLIC_URL=http://<lan-ip>:8000`
 3. Start: `uvicorn backend.api:app --host 0.0.0.0 --port 8000`
 
 **Worker machine(s)**
 
 1. `deploy/scripts/install-worker.sh` (or configure `worker.env` manually)
-2. `deploy/scripts/test-coordinator-reachability.sh http://<lan-ip>:8000`
+2. `deploy/scripts/test-backend-reachability.sh http://<lan-ip>:8000`
 3. `python -m worker serve` (or systemd below)
 
 Each worker launches its own Ollama fleet sized to local hardware.

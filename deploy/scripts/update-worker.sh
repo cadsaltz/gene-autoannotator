@@ -24,18 +24,18 @@ load_worker_env() {
 }
 
 if [[ -n "$ARG_URL" ]]; then
-  COORDINATOR_URL="$ARG_URL"
+  BACKEND_URL="$ARG_URL"
 elif ! load_worker_env; then
-  echo "Error: pass COORDINATOR_URL or create worker.env" >&2
+  echo "Error: pass BACKEND_URL or create worker.env" >&2
   exit 1
 fi
 
-if [[ -z "${COORDINATOR_URL:-}" ]]; then
-  echo "Error: COORDINATOR_URL is not set" >&2
+if [[ -z "${BACKEND_URL:-}" ]]; then
+  echo "Error: BACKEND_URL is not set" >&2
   exit 1
 fi
 
-BASE="${COORDINATOR_URL%/}"
+BASE="${BACKEND_URL%/}"
 HOST="$(hostname)"
 WORKER_LABEL="${WORKER_NAME:-$HOST}"
 export HOST WORKER_LABEL
@@ -66,7 +66,7 @@ for w in data.get('workers', []):
 print('', file=sys.stderr)
 sys.exit(1)
 " 2>/dev/null)" || {
-  echo "Warning: this host ($HOST) is not registered with the coordinator; skipping drain wait."
+  echo "Warning: this host ($HOST) is not registered with the backend; skipping drain wait."
   worker_info=""
 }
 

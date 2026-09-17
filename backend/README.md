@@ -27,14 +27,14 @@ python -m pip install -r requirements.txt
 python -m pip install -r requirements-web.txt
 ```
 
-Copy the coordinator environment template to the project root `.env` (loaded
+Copy the backend environment template to the project root `.env` (loaded
 automatically on startup):
 
 ```bash
-cp coordinator.env.example .env
+cp backend.env.example .env
 ```
 
-Edit `.env` as needed — for example set `COORDINATOR_PUBLIC_URL` to your LAN IP
+Edit `.env` as needed — for example set `BACKEND_PUBLIC_URL` to your LAN IP
 and configure `WORKER_API_TOKEN` before connecting external workers.
 
 Run the API server:
@@ -43,8 +43,8 @@ Run the API server:
 uvicorn backend.api:app --host 0.0.0.0 --port 8000
 ```
 
-On startup the coordinator logs its listen address, suggested worker
-`COORDINATOR_URL`, token status, and whether the embedded in-process worker is
+On startup the backend logs its listen address, suggested worker
+`BACKEND_URL`, token status, and whether the embedded in-process worker is
 enabled.
 
 Check that it is reachable:
@@ -62,7 +62,7 @@ MONGO_URI=mongodb://localhost:27017/gene_autoannotator
 
 Organism profiles are stored as local JSON files under `data/profiles/` (or
 `PROFILES_DIR`). MongoDB is not used for profile storage. On first start the
-coordinator seeds that directory from the code catalog in
+backend seeds that directory from the code catalog in
 `autoannotation.organisms.PROFILES`.
 
 The API will still start if MongoDB is unavailable, but `/health` will report
@@ -103,7 +103,7 @@ but name-only and locus-only submissions are accepted.
 
 ## Running with workers
 
-The coordinator is a **control plane only** — it queues jobs and hands them to
+The backend is a **control plane only** — it queues jobs and hands them to
 external workers (see `worker/README.md`). It never runs annotation jobs
 in-process.
 
@@ -138,10 +138,10 @@ Environment variables:
   window is reported as offline in `/health` and `/workers`.
 - `REQUIRED_WORKER_VERSION` (optional): if set, returned to workers on heartbeat
   so out-of-date agents can be told to update.
-- `COORDINATOR_PUBLIC_URL` / `APP_VERSION`: surfaced by `GET /coordinator-info`
-  so workers can discover the coordinator URL and version.
+- `BACKEND_PUBLIC_URL` / `APP_VERSION`: surfaced by `GET /backend-info`
+  so workers can discover the backend URL and version.
 
-Start the coordinator:
+Start the backend:
 
 ```bash
 WORKER_API_TOKEN=dev-token uvicorn backend.api:app --host 0.0.0.0 --port 8000
@@ -248,16 +248,16 @@ with both identifiers supplied.
 
 ## Docker Compose
 
-From the project root, copy `coordinator.env.example` to `.env`, then start the
+From the project root, copy `backend.env.example` to `.env`, then start the
 backend API and Next.js frontend:
 
 ```bash
-cp coordinator.env.example .env
-docker compose -f deploy/compose/docker-compose.coordinator.yml up --build
+cp backend.env.example .env
+docker compose -f deploy/compose/docker-compose.backend.yml up --build
 ```
 
 The `backend` service listens on port 8000 and the frontend on port 3000. Job
-queue state is persisted in a Docker volume mounted at `/state/coordinator`
+queue state is persisted in a Docker volume mounted at `/state/backend`
 (SQLite). Set `MONGO_URI` in `.env` for annotation history; organism profiles
 are stored locally under `data/profiles` (mount or set `PROFILES_DIR` if
 needed). The frontend proxy uses `BACKEND_API_BASE_URL=http://backend:8000`

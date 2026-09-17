@@ -313,7 +313,7 @@ export default function ProfileWorkspace() {
             Manage reusable annotation targets
           </h1>
           <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
-            Profiles are stored locally on the coordinator as JSON files. Create,
+            Profiles are stored locally on the backend as JSON files. Create,
             edit, and delete them here; annotation jobs receive a snapshot of the
             selected profile and the full local catalog for ortholog selection.
           </p>
@@ -325,7 +325,7 @@ export default function ProfileWorkspace() {
           </h2>
           <p className="mt-3 text-sm leading-6 text-[#5f4b2e]">
             Profiles live under <code>data/profiles</code> (or{" "}
-            <code>PROFILES_DIR</code>) on the coordinator host. MongoDB is not
+            <code>PROFILES_DIR</code>) on the API host. MongoDB is not
             used for organism profiles.
           </p>
         </div>

@@ -5,13 +5,13 @@ from backend.api import create_app
 from backend.job_store import JobStore
 from backend.worker_registry import WorkerRegistry
 from worker import agent
-from worker.client import CoordinatorClient
+from worker.client import BackendClient
 from worker.config import WorkerConfig
 
 
 def _config():
     return WorkerConfig(
-        coordinator_url="http://testserver",
+        backend_url="http://testserver",
         worker_api_token="tok",
         worker_name="itest",
         hostname="itest",
@@ -38,8 +38,8 @@ def _client_and_store(tmp_path):
 
 def test_worker_registers_and_appears_in_health(tmp_path):
     http, _ = _client_and_store(tmp_path)
-    coordinator = CoordinatorClient(_config(), http_client=http)
-    coordinator.register()
+    client = BackendClient(_config(), http_client=http)
+    client.register()
     health = http.get("/health").json()
     assert health["workers"]["total"] == 1
     assert health["workers"]["connected"] == 1
@@ -49,8 +49,8 @@ def test_worker_agent_completes_job_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "_memory_available_bytes", lambda: 1 << 62)
     monkeypatch.setattr(agent, "_models_ready", lambda: True)
     http, store = _client_and_store(tmp_path)
-    coordinator = CoordinatorClient(_config(), http_client=http)
-    worker_id = coordinator.register()
+    client = BackendClient(_config(), http_client=http)
+    worker_id = client.register()
     assert worker_id
 
     job = store.create_job(
@@ -69,7 +69,7 @@ def test_worker_agent_completes_job_end_to_end(tmp_path, monkeypatch):
         executed.update(request)
         return {"annotation": {"gene_id": "Rv0001"}, "output_path": "gen_json/gen_Rv0001.json"}
 
-    did_work = agent.run_once(coordinator, _config(), active_jobs=0, execute=fake_execute)
+    did_work = agent.run_once(client, _config(), active_jobs=0, execute=fake_execute)
     assert did_work is True
     # profile_config must survive the claim round-trip into the worker.
     assert executed["profile_config"] == {"profile_id": "mtb-h37rv", "source": "user"}
@@ -81,4 +81,4 @@ def test_worker_agent_completes_job_end_to_end(tmp_path, monkeypatch):
     assert completed["worker_id"] == worker_id
 
     # Queue now empty: a second pass does no work.
-    assert agent.run_once(coordinator, _config(), active_jobs=0, execute=fake_execute) is False
+    assert agent.run_once(client, _config(), active_jobs=0, execute=fake_execute) is False

@@ -122,9 +122,21 @@ def test_dispatch_once_submits_no_sbatch_when_worker_inflight():
     assert commands[0][0][0] == "squeue"
 
 
-def test_dispatcher_config_accepts_legacy_coordinator_url(monkeypatch):
+def test_dispatcher_config_requires_backend_url(monkeypatch):
     monkeypatch.delenv("BACKEND_URL", raising=False)
-    monkeypatch.setenv("COORDINATOR_URL", "https://legacy.example/")
+    monkeypatch.setenv("WORKER_API_TOKEN", "secret")
+    monkeypatch.setenv("DISPATCHER_MAX_INFLIGHT", "3")
+    monkeypatch.setenv("DISPATCHER_SBATCH_SCRIPT", "/tmp/worker-run.sbatch")
+
+    try:
+        DispatcherConfig.from_env()
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as exc:
+        assert "BACKEND_URL" in str(exc)
+
+
+def test_dispatcher_config_reads_backend_url(monkeypatch):
+    monkeypatch.setenv("BACKEND_URL", "https://api.example/")
     monkeypatch.setenv("WORKER_API_TOKEN", "secret")
     monkeypatch.setenv("DISPATCHER_MAX_INFLIGHT", "3")
     monkeypatch.setenv("DISPATCHER_SBATCH_SCRIPT", "/tmp/worker-run.sbatch")
@@ -132,7 +144,7 @@ def test_dispatcher_config_accepts_legacy_coordinator_url(monkeypatch):
     config = DispatcherConfig.from_env()
 
     assert config == DispatcherConfig(
-        backend_url="https://legacy.example",
+        backend_url="https://api.example",
         worker_api_token="secret",
         max_inflight=3,
         max_jobs_per_worker=500,

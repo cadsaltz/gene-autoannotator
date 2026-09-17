@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Observe host memory while a real coordinator annotation job runs."""
+"""Observe host memory while a real backend annotation job runs."""
 
 from __future__ import annotations
 
@@ -124,12 +124,12 @@ def recommend_job_memory_gb(peak_incremental_bytes: int, *, safety_factor: float
     return int(-(-raw_gb // 1))  # ceil to whole GB
 
 
-def preflight(coordinator_url: str, token: str) -> dict:
+def preflight(backend_url: str, token: str) -> dict:
     headers = {"Authorization": f"Bearer {token}"} if token else {}
-    with httpx.Client(base_url=coordinator_url, headers=headers, timeout=30.0) as client:
+    with httpx.Client(base_url=backend_url, headers=headers, timeout=30.0) as client:
         health = client.get("/health").json()
         if health.get("status") != "ok":
-            raise RuntimeError(f"Coordinator unhealthy: {health}")
+            raise RuntimeError(f"Backend unhealthy: {health}")
         workers = health.get("workers", {})
         if workers.get("connected", 0) < 1:
             raise RuntimeError("No workers connected; start a worker before profiling.")
@@ -138,7 +138,7 @@ def preflight(coordinator_url: str, token: str) -> dict:
         annotations = health.get("stores", {}).get("annotations", {})
         if annotations.get("status") not in ("ok", "available"):
             raise RuntimeError(
-                "Mongo annotation store unavailable; set MONGO_URI on the coordinator."
+                "Mongo annotation store unavailable; set MONGO_URI on the backend."
             )
         return health
 
@@ -294,7 +294,7 @@ def recover_report(
     safety_factor: float,
     profile: str,
     locus: str,
-    coordinator_url: str,
+    backend_url: str,
     token: str,
     job_id: str | None,
 ) -> tuple[Path, dict[str, Any], int]:
@@ -305,7 +305,7 @@ def recover_report(
     job: dict[str, Any] = {"id": job_id, "status": "unknown"}
     if job_id:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
-        with httpx.Client(base_url=coordinator_url, headers=headers, timeout=30.0) as client:
+        with httpx.Client(base_url=backend_url, headers=headers, timeout=30.0) as client:
             resp = client.get(f"/jobs/{job_id}")
             if resp.status_code == 200:
                 job = resp.json()
@@ -330,7 +330,7 @@ def recover_report(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--coordinator-url", default="http://127.0.0.1:8000")
+    parser.add_argument("--backend-url", default="http://127.0.0.1:8000")
     parser.add_argument("--token", default=os.getenv("WORKER_API_TOKEN", ""))
     parser.add_argument("--profile", default="mtb-h37rv")
     parser.add_argument(
@@ -368,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
             safety_factor=args.safety_factor,
             profile=args.profile,
             locus=args.locus,
-            coordinator_url=args.coordinator_url,
+            backend_url=args.backend_url,
             token=args.token,
             job_id=args.job_id,
         )
@@ -380,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.output_dir) / run_id
     log_path = out_dir / "memory.log"
 
-    preflight(args.coordinator_url, args.token)
+    preflight(args.backend_url, args.token)
 
     job: dict = {}
     saved: dict | None = None
@@ -393,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
         time.sleep(args.baseline_sec)
 
         headers = {"Authorization": f"Bearer {args.token}"} if args.token else {}
-        with httpx.Client(base_url=args.coordinator_url, headers=headers, timeout=30.0) as client:
+        with httpx.Client(base_url=args.backend_url, headers=headers, timeout=30.0) as client:
             job_id = submit_job(client, profile=args.profile, locus=args.locus)
             print(f"Submitted job {job_id}; sampling memory...", flush=True)
             job = poll_job(client, job_id)

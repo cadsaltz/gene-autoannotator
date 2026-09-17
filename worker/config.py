@@ -11,7 +11,7 @@ from worker.probe import probe_system
 
 @dataclass
 class WorkerConfig:
-    coordinator_url: str
+    backend_url: str
     worker_api_token: str
     worker_name: str
     hostname: str
@@ -32,7 +32,7 @@ def _total_memory_bytes():
 
 
 def load_config():
-    coordinator_url = resolve_backend_url()
+    backend_url = resolve_backend_url()
     token = os.environ.get("WORKER_API_TOKEN", "")
     hostname = socket.gethostname()
     worker_name = os.getenv("WORKER_NAME", hostname)
@@ -56,7 +56,7 @@ def load_config():
     else:
         slots = capacity.compute_slots(dedicated_bytes / (1024**3)) if dedicated_bytes else 0
     return WorkerConfig(
-        coordinator_url=coordinator_url,
+        backend_url=backend_url,
         worker_api_token=token,
         worker_name=worker_name,
         hostname=hostname,

@@ -2,13 +2,13 @@ import json
 
 import httpx
 
-from worker.client import CoordinatorClient
+from worker.client import BackendClient
 from worker.config import WorkerConfig
 
 
 def _config():
     return WorkerConfig(
-        coordinator_url="http://coordinator.test",
+        backend_url="http://backend.test",
         worker_api_token="tok",
         worker_name="w1",
         hostname="w1",
@@ -28,10 +28,10 @@ def test_progress_sends_structured_fields():
         return httpx.Response(204)
 
     http = httpx.Client(
-        base_url="http://coordinator.test",
+        base_url="http://backend.test",
         transport=httpx.MockTransport(handler),
     )
-    client = CoordinatorClient(_config(), http_client=http)
+    client = BackendClient(_config(), http_client=http)
 
     client.progress(
         "job-1",
@@ -62,10 +62,10 @@ def test_deregister_deletes_the_registered_worker():
         return httpx.Response(204)
 
     http = httpx.Client(
-        base_url="http://coordinator.test",
+        base_url="http://backend.test",
         transport=httpx.MockTransport(handler),
     )
-    client = CoordinatorClient(_config(), http_client=http)
+    client = BackendClient(_config(), http_client=http)
     client.worker_id = "worker-1"
 
     client.deregister()
@@ -80,11 +80,11 @@ def test_deregister_is_a_noop_before_registration():
         raise AssertionError(f"unexpected request: {request.url}")
 
     http = httpx.Client(
-        base_url="http://coordinator.test",
+        base_url="http://backend.test",
         transport=httpx.MockTransport(handler),
     )
 
-    CoordinatorClient(_config(), http_client=http).deregister()
+    BackendClient(_config(), http_client=http).deregister()
 
 
 def test_progress_minimal_payload_omits_optional_fields():
@@ -95,10 +95,10 @@ def test_progress_minimal_payload_omits_optional_fields():
         return httpx.Response(204)
 
     http = httpx.Client(
-        base_url="http://coordinator.test",
+        base_url="http://backend.test",
         transport=httpx.MockTransport(handler),
     )
-    client = CoordinatorClient(_config(), http_client=http)
+    client = BackendClient(_config(), http_client=http)
 
     client.progress("job-1", "running")
 

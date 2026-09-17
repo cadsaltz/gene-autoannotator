@@ -7,7 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt -r requirements-web.txt
 
 COPY autoannotation/ autoannotation/
 COPY backend/ backend/
-COPY coordinator/ coordinator/
 COPY shared/ shared/
 
 EXPOSE 8000

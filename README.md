@@ -24,7 +24,6 @@ Main generated fields are `gene_id`, `name`, `function`, `functional_category`, 
 
 - `autoannotation/`: core Python pipeline, organism profiles, PMC retrieval, LLM prompts, metadata, and CLI.
 - `backend/`: FastAPI control plane, SQLite job queue, local JSON organism profiles, optional MongoDB annotation history/search, and pull-based worker API.
-- `coordinator/`: deprecated compatibility shim for the former `coordinator.api` entrypoint.
 - `frontend/`: Next.js UI for job submission, profile management, queue monitoring, and direct MongoDB annotation search/review.
 - `dispatcher/`: SCRI/scrontab entry point that peeks at backend queue depth and submits at most one Slurm worker-run at a time.
 - `worker/`: Pull-based annotation compute in persistent `serve`, one-shot `run`, and local `bench` modes.
@@ -116,8 +115,8 @@ Useful environment variables:
 - `OLLAMA_HOST=http://host:11434` when Ollama is not local.
 - `MONGO_URI` or `MONGODB_URI` to enable annotation history/search. Set it for the FastAPI backend so completed jobs can be saved, and set it in `frontend/.env.local` so Next.js can read stored annotations directly.
 - `PROFILES_DIR=data/profiles` for local organism profile JSON storage (default).
-- `BACKEND_URL=https://api.example.org` for workers and the dispatcher (`COORDINATOR_URL` remains a legacy fallback).
-- `BACKEND_API_BASE_URL=http://127.0.0.1:8000` for Next.js proxy/server calls (`COORDINATOR_API_BASE_URL` remains a legacy fallback).
+- `BACKEND_URL=https://api.example.org` for workers and the dispatcher.
+- `BACKEND_API_BASE_URL=http://127.0.0.1:8000` for Next.js proxy/server calls.
 - `CORS_ORIGINS` and `CORS_ORIGIN_REGEX` for FastAPI browser access.
 - `GO_BASIC_OBO_PATH=data/go-basic.obo` for richer functional-category comparison.
 
@@ -125,7 +124,7 @@ Local/generated assets:
 
 - `.cache/` stores PMC text, parsed sections, LLM responses, and gene-name cache records.
 - `gen_json/` stores generated annotation JSON.
-- `coordinator/jobs.sqlite3` stores queued/completed web jobs and is ignored by git.
+- `backend/jobs.sqlite3` stores queued/completed web jobs and is ignored by git.
 - `frontend/.env.local` stores Next.js server configuration such as `MONGO_URI` for annotation reads and is ignored by git.
 - `Mycobacterium_tuberculosis_H37Rv_txt_v5.txt` is referenced for MTB annotation-table gene names but is not committed.
 - `pipeline_scores.jsonl`, `completed_genes.txt`, and `error_log.txt` are local `run_pipeline.py` run artifacts (gitignored).
@@ -167,11 +166,11 @@ python -m autoannotation --profile mtb-h37rv --locus Rv0001
 python -m autoannotation --profile tcruzi-clbrener --locus TcCLB.503799.4 --name TcUBP1
 ```
 
-Run the backend (copy `coordinator.env.example` to `.env` first if you need
-worker tokens, MongoDB, or other coordinator settings):
+Run the backend (copy `backend.env.example` to `.env` first if you need
+worker tokens, MongoDB, or other backend settings):
 
 ```bash
-cp coordinator.env.example .env   # optional; edit as needed
+cp backend.env.example .env   # optional; edit as needed
 uvicorn backend.api:app --host 0.0.0.0 --port 8000
 ```
 

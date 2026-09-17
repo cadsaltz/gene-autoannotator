@@ -72,7 +72,7 @@ def terminate_active_jobs() -> None:
 
 def _run_inprocess(request: AnnotationJobRequest, annotation_main=None, progress_cb=None):
     main = annotation_main or _load_annotation_main()
-    # Override paths from worker env, ignoring coordinator-sent paths for security.
+    # Override paths from worker env, ignoring backend-sent paths for security.
     cache_dir = os.getenv("WORKER_CACHE_DIR", "./.cache")
     output_dir = os.getenv("WORKER_OUTPUT_DIR", "gen_json")
     return main(

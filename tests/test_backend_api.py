@@ -1535,7 +1535,7 @@ def test_create_job_ignores_client_filesystem_paths(tmp_path):
 
 def test_create_job_stays_queued_without_inline_runner(tmp_path):
     def fail_if_called(_request):
-        raise AssertionError("coordinator must not run annotation in-process")
+        raise AssertionError("backend must not run annotation in-process")
 
     app = create_app(
         job_store=JobStore(tmp_path / "jobs.sqlite3"),

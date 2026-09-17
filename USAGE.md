@@ -423,10 +423,8 @@ FastAPI control plane: job queue, local profiles, worker claim/progress APIs.
 It does **not** run annotations in-process; workers do.
 
 ```bash
-cp coordinator.env.example .env   # edit token / public URL / Mongo as needed
+cp backend.env.example .env   # edit token / public URL / Mongo as needed
 uvicorn backend.api:app --host 0.0.0.0 --port 8000
-# Legacy entrypoint still works for one release:
-# uvicorn coordinator.api:app --host 0.0.0.0 --port 8000
 ```
 
 Health check: `curl http://127.0.0.1:8000/health`
@@ -434,15 +432,15 @@ Health check: `curl http://127.0.0.1:8000/health`
 Compose (frontend + backend):
 
 ```bash
-docker compose -f deploy/compose/docker-compose.coordinator.yml up -d --build
+docker compose -f deploy/compose/docker-compose.backend.yml up -d --build
 ```
 
-### Key env vars (`coordinator.env.example` → `.env`)
+### Key env vars (`backend.env.example` → `.env`)
 
 | Variable | Purpose | Default / notes |
 |----------|---------|-----------------|
 | `WORKER_API_TOKEN` | Bearer token for worker routes + `GET /jobs/queue-summary` | **If unset, those routes are unauthenticated** |
-| `BACKEND_PUBLIC_URL` | Advertised public URL (`/coordinator-info` still exists) | prefer over legacy `COORDINATOR_PUBLIC_URL` |
+| `BACKEND_PUBLIC_URL` | Advertised public URL (`GET /backend-info`) | set on public hosts |
 | `WORKER_CAPACITY_REQUIRED` | Reject `POST /jobs` while no worker has a free slot | default **on** for `backend.api:app`; set **`0` for HPC-only** (otherwise dispatcher never starts because nothing can queue) |
 | `LEASE_SECONDS` | Claim lease before reaper may requeue; renewed by progress **and** heartbeats | `21600` (6h) |
 | `MAX_ATTEMPTS` | Retries before permanent fail | `3` |
@@ -477,14 +475,14 @@ Paper readers sign in with a **6-digit email code** (not magic links).
 4. Workbench routes (`/jobs`, `/profiles`, `/annotations`, `/fleet`, and matching
    API paths) require the `ga_session` HttpOnly cookie set by `POST /auth/verify`.
 
-Copy auth-related keys from `coordinator.env.example` into backend `.env`.
+Copy auth-related keys from `backend.env.example` into backend `.env`.
 
 ### Manual smoke checklist
 
 Run automated API coverage first:
 
 ```bash
-EMAIL_BACKEND=console pytest tests/test_coordinator_auth_api.py -v
+EMAIL_BACKEND=console pytest tests/test_backend_auth_api.py -v
 ```
 
 | Check | Status |
@@ -511,8 +509,8 @@ python -m worker bench …              # local JSONL batch; no backend
 ```
 
 `python -m worker` with no subcommand defaults to **serve**. First run may prompt
-and write `worker.env` (see `worker.env.example`). Prefer `BACKEND_URL`; legacy
-`COORDINATOR_URL` still works.
+and write `worker.env` (see `worker.env.example`). Set `BACKEND_URL` and
+`WORKER_API_TOKEN`.
 
 ### serve (spare laptop / always-on)
 
@@ -523,14 +521,14 @@ python -m worker serve
 
 # or CLI overrides (also persist into worker.env):
 python -m worker serve \
-  --coordinator-url http://127.0.0.1:8000 \
+  --backend-url http://127.0.0.1:8000 \
   --token dev-token \
   --memory-gb 24
 ```
 
 | Flag | Purpose | Notes |
 |------|---------|-------|
-| `--coordinator-url` | Backend base URL | Else `BACKEND_URL` / `COORDINATOR_URL` / `worker.env` |
+| `--backend-url` | Backend base URL | Else `BACKEND_URL` / `worker.env` |
 | `--token` | `WORKER_API_TOKEN` | Else env / `worker.env` |
 | `--memory-gb` | Model memory budget (GB) for Ollama weights/KV | Sets `WORKER_MODEL_MEMORY_BUDGET_GB`; does **not** set job slots |
 | `--no-dashboard` | Disable live TTY dashboard | Dashboard is on when stdout is a TTY |
@@ -579,7 +577,7 @@ deploy/scripts/run-worker-run.sh \
   --dry-run
 ```
 
-Requires `BACKEND_URL` (or `COORDINATOR_URL`) and `WORKER_API_TOKEN` in the
+Requires `BACKEND_URL` and `WORKER_API_TOKEN` in the
 worker env file (`WORKER_RUN_ENV_FILE` / `--env-file`). Tune parallel annotation
 **inside one allocation** with `WORKER_MAX_SLOTS`, `OLLAMA_FLEET_SERVERS`, and
 `OLLAMA_FLEET_PARALLEL` in `worker.run.env` — not by launching multiple Slurm
@@ -625,8 +623,7 @@ HPC bench (Docker + Slurm, not the dispatcher path): `docs/deploy-worker-bench-h
 
 | Variable | Purpose |
 |----------|---------|
-| `BACKEND_URL` | Preferred backend base URL |
-| `COORDINATOR_URL` | Legacy alias (still accepted) |
+| `BACKEND_URL` | Backend base URL |
 | `WORKER_API_TOKEN` | Auth token |
 | `WORKER_MODEL_MEMORY_BUDGET_GB` | Cap for model weights / KV (GB). `-1` / omit = machine max |
 | `WORKER_MAX_SLOTS` | Concurrent annotation subprocess cap (`serve` / `bench`) |
@@ -699,7 +696,7 @@ Paper experiment runners (`experiments/paper/runners/run_bias_1_vs_3.py`, etc.) 
 
 The dispatcher is a **short-lived** login-node program: peek → maybe `sbatch`
 **one** worker-run → exit. It is **not** a second job queue, **not** a nested
-Slurm parent, and **not** a long-running coordinator. Operators should **not**
+Slurm parent, and **not** a second job queue on the backend. Operators should **not**
 hand-start parallel `worker run` or extra `sbatch` allocations — the dispatcher
 owns Slurm launches.
 
@@ -800,7 +797,7 @@ See `dispatcher.env.example`. Required keys:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `BACKEND_URL` | yes | Public backend (legacy `COORDINATOR_URL` ok) |
+| `BACKEND_URL` | yes | Public backend base URL |
 | `WORKER_API_TOKEN` | yes | Same token as backend (dispatcher peek auth) |
 | `DISPATCHER_SBATCH_SCRIPT` | yes | Absolute path to the sbatch file |
 | `DISPATCHER_MAX_JOBS_PER_WORKER` | recommended | Chunk size per allocation (→ `WORKER_RUN_MAX_JOBS`) |
@@ -823,8 +820,8 @@ npm install
 npm run dev                  # http://localhost:3000 (binds 0.0.0.0)
 ```
 
-Browser calls go through same-origin `/api/backend` → FastAPI. Prefer
-`BACKEND_API_BASE_URL` (legacy `COORDINATOR_API_BASE_URL` still works). Set
+Browser calls go through same-origin `/api/backend` → FastAPI. Set
+`BACKEND_API_BASE_URL` in `.env.local`. Set
 `MONGO_URI` in `.env.local` for annotation search/review (server-side only).
 
 ### npm scripts
@@ -849,7 +846,7 @@ search/review. Fleet tiles: backend health + connected workers. More:
 
 ```bash
 # Terminal 1 — backend
-cp coordinator.env.example .env
+cp backend.env.example .env
 # set WORKER_API_TOKEN=dev-token ; WORKER_CAPACITY_REQUIRED can stay default
 uvicorn backend.api:app --host 0.0.0.0 --port 8000
 
@@ -938,7 +935,7 @@ Samples host memory while a real backend job runs (sizing aid).
 
 ```bash
 python scripts/profile_job_memory.py \
-  --coordinator-url http://127.0.0.1:8000 \
+  --backend-url http://127.0.0.1:8000 \
   --token "$WORKER_API_TOKEN" \
   --profile mtb-h37rv \
   --locus Rv1734c
@@ -946,7 +943,7 @@ python scripts/profile_job_memory.py \
 
 | Flag | Purpose | Default |
 |------|---------|---------|
-| `--coordinator-url` | Backend URL (legacy flag name) | `http://127.0.0.1:8000` |
+| `--backend-url` | Backend URL | `http://127.0.0.1:8000` |
 | `--token` | Worker API token | `$WORKER_API_TOKEN` |
 | `--profile` | Profile id | `mtb-h37rv` |
 | `--locus` | Gene locus | `Rv1734c` |

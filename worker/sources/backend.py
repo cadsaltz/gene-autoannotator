@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from worker.client import CoordinatorClient
+from worker.client import BackendClient
 from worker.runtime import JobSpec, JobSource
 
 log = logging.getLogger(__name__)
@@ -23,10 +23,10 @@ def _claim_poll_seconds() -> float:
     return max(0.25, value)
 
 
-class CoordinatorJobSource(JobSource):
+class BackendJobSource(JobSource):
     def __init__(
         self,
-        client: CoordinatorClient,
+        client: BackendClient,
         free_slots_fn: Callable[[], int],
         *,
         poll_seconds: float | None = None,
@@ -46,7 +46,7 @@ class CoordinatorJobSource(JobSource):
         if claim is None:
             self._maybe_log_empty_claim(free_slots)
             return None
-        log.info("Claimed job %s from coordinator", claim["job_id"])
+        log.info("Claimed job %s from backend", claim["job_id"])
         return JobSpec(job_id=claim["job_id"], request=dict(claim["request"]))
 
     def _maybe_log_empty_claim(self, free_slots: int) -> None:
@@ -59,7 +59,7 @@ class CoordinatorJobSource(JobSource):
             return
         self._last_empty_claim_log_at = now
         log.info(
-            "Idle: no job in coordinator queue (local free_slots=%s). "
+            "Idle: no job in backend queue (local free_slots=%s). "
             "Submit jobs via POST /jobs or check GET /workers for stale workers.",
             free_slots,
         )
@@ -71,9 +71,9 @@ class CoordinatorJobSource(JobSource):
         self._client.fail(job_id, error, retryable)
 
     def is_exhausted(self) -> bool:
-        # Coordinator-backed workers serve continuously until externally drained.
+        # Backend-backed workers serve continuously until externally drained.
         return False
 
     def wait_or_sleep(self, timeout: float) -> None:
-        del timeout  # Coordinator polling uses its own interval.
+        del timeout  # Backend polling uses its own interval.
         time.sleep(self._poll_seconds)

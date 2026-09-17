@@ -6,14 +6,10 @@ __pycache__/**
 .env.local
 ./superpowers
 worker.env
-coordinator.env
 dispatcher.env
 worker.run.env
 .worktrees/
 **/*.pyc
-coordinator/*.sqlite3
-coordinator/*.sqlite3-shm
-coordinator/*.sqlite3-wal
 backend/*.sqlite3
 backend/*.sqlite3-shm
 backend/*.sqlite3-wal

@@ -11,7 +11,7 @@ from worker.probe import SystemSpec
 
 def _config(*, worker_name="node-a", hostname="node-a", max_slots=4):
     return WorkerConfig(
-        coordinator_url="https://coordinator.example",
+        backend_url="https://backend.example",
         worker_api_token="secret",
         worker_name=worker_name,
         hostname=hostname,
@@ -51,7 +51,7 @@ def test_run_loads_worker_env_before_config(monkeypatch):
     monkeypatch.delenv("WORKER_API_TOKEN", raising=False)
     monkeypatch.setattr(run, "ensure_worker_env", fake_ensure_worker_env)
     monkeypatch.setattr(run, "load_config", fake_load_config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
 
     assert run.main(argparse.Namespace(claim_one=True, job_file=None)) == 0
     assert calls == [
@@ -68,7 +68,7 @@ def test_run_registers_with_max_slots_from_worker_env_file(monkeypatch, tmp_path
     env_path.write_text(
         "\n".join(
             [
-                "COORDINATOR_URL=https://coordinator.example",
+                "BACKEND_URL=https://backend.example",
                 "WORKER_API_TOKEN=secret",
                 "WORKER_MODEL_MEMORY_BUDGET_GB=-1",
                 "AUTOANNOTATION_MODEL_MODE=nano",
@@ -132,7 +132,7 @@ def test_run_registers_with_max_slots_from_worker_env_file(monkeypatch, tmp_path
         def deregister(self):
             pass
 
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
 
     assert run.main(argparse.Namespace(claim_one=False, claim_max=20, job_file=None)) == 0
     assert len(registered) == 1
@@ -158,7 +158,7 @@ def test_run_claim_one_exits_clean_when_no_job(monkeypatch):
             pass
 
     monkeypatch.setattr(run, "load_config", _config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
     monkeypatch.setattr(
         run,
         "_bootstrap_local_fleet",
@@ -195,7 +195,7 @@ def test_run_claim_one_registers_ephemeral_worker_with_configured_slots(monkeypa
 
     monkeypatch.setenv("SLURM_JOB_ID", "98765")
     monkeypatch.setattr(run, "load_config", _config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
 
     assert run.main(argparse.Namespace(claim_one=True, job_file=None)) == 0
     assert len(registered) == 1
@@ -234,7 +234,7 @@ def test_run_claim_one_completes_claimed_job(monkeypatch):
             raise AssertionError(f"unexpected failure: {job_id} {error} {retryable}")
 
     monkeypatch.setattr(run, "load_config", _config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
     monkeypatch.setattr(
         run,
         "_bootstrap_local_fleet",
@@ -287,7 +287,7 @@ def test_run_claim_one_heartbeats_while_the_job_runs(monkeypatch):
             raise AssertionError(f"unexpected failure: {job_id} {error} {retryable}")
 
     monkeypatch.setattr(run, "load_config", _config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
     monkeypatch.setattr(
         run,
         "_bootstrap_local_fleet",
@@ -333,7 +333,7 @@ def test_run_claim_one_deregisters_on_exit(monkeypatch):
             raise AssertionError(f"unexpected failure: {job_id} {error} {retryable}")
 
     monkeypatch.setattr(run, "load_config", _config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
     monkeypatch.setattr(
         run,
         "_bootstrap_local_fleet",
@@ -364,7 +364,7 @@ def test_run_claim_one_deregisters_when_no_job_is_available(monkeypatch):
             events.append("deregister")
 
     monkeypatch.setattr(run, "load_config", _config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
 
     assert run.main(argparse.Namespace(claim_one=True, job_file=None)) == 0
     assert events == ["register", "deregister"]
@@ -385,7 +385,7 @@ def test_run_claim_one_survives_a_failing_deregister(monkeypatch):
             raise RuntimeError("backend unreachable")
 
     monkeypatch.setattr(run, "load_config", _config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
 
     assert run.main(argparse.Namespace(claim_one=True, job_file=None)) == 0
 
@@ -419,7 +419,7 @@ def test_run_claim_one_fails_claimed_job_and_exits_nonzero(monkeypatch):
             failed.append((job_id, error, retryable))
 
     monkeypatch.setattr(run, "load_config", _config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
     monkeypatch.setattr(
         run,
         "_bootstrap_local_fleet",
@@ -461,7 +461,7 @@ def test_run_claim_one_fails_claimed_job_when_fleet_bootstrap_fails(monkeypatch)
             failed.append((job_id, error, retryable))
 
     monkeypatch.setattr(run, "load_config", _config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
     monkeypatch.setattr(
         run,
         "_bootstrap_local_fleet",
@@ -510,7 +510,7 @@ def test_run_claim_max_stops_after_three_claimed_jobs(monkeypatch):
             pass
 
     monkeypatch.setattr(run, "load_config", lambda: _config(max_slots=2))
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
     monkeypatch.setattr(
         run,
         "_bootstrap_local_fleet",
@@ -562,7 +562,7 @@ def test_run_claim_max_stops_when_queue_drains(monkeypatch):
             pass
 
     monkeypatch.setattr(run, "load_config", lambda: _config(max_slots=2))
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
     monkeypatch.setattr(
         run,
         "_bootstrap_local_fleet",
@@ -617,7 +617,7 @@ def test_run_job_file_skips_register_and_claim(monkeypatch, tmp_path):
             raise AssertionError(f"unexpected failure: {job_id} {error} {retryable}")
 
     monkeypatch.setattr(run, "load_config", _config)
-    monkeypatch.setattr(run, "CoordinatorClient", FakeClient)
+    monkeypatch.setattr(run, "BackendClient", FakeClient)
     monkeypatch.setattr(
         run,
         "_bootstrap_local_fleet",

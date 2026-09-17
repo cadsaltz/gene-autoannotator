@@ -275,7 +275,7 @@ def main(argv=None):
     ensure_worker_env(
         interactive=False,
         skip_fleet_config=configure_fleet,
-        require_coordinator=False,
+        require_backend=False,
     )
     if getattr(args, "keep_alive", None):
         _persist_keep_alive_override(args.keep_alive)

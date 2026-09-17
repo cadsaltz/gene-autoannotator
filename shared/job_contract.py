@@ -35,7 +35,7 @@ class OrthologOverride(BaseModel):
 
 class AnnotationJobRequest(BaseModel):
     # Ignored on public API; persisted jobs use server defaults. Workers still
-    # receive the server-owned paths from the coordinator.
+    # receive the server-owned paths from the backend.
     profile: str | None = None
     organism: str | None = None
     strain: str | None = None

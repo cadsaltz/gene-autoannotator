@@ -1,6 +1,6 @@
 # goresolve
 
-Isolated prototype for resolving free-text gene **function** and **functional_category** fields to Gene Ontology (GO) terms. The package lives outside the main annotation pipeline so retrieval, LLM ranking, and consensus can be iterated without touching coordinator, worker, or frontend code.
+Isolated prototype for resolving free-text gene **function** and **functional_category** fields to Gene Ontology (GO) terms. The package lives outside the main annotation pipeline so retrieval, LLM ranking, and consensus can be iterated without touching backend, worker, or frontend code.
 
 ## Install
 

@@ -12,7 +12,7 @@ def _positive_int(value: str) -> int:
 
 
 def _add_serve_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--coordinator-url", dest="coordinator_url")
+    parser.add_argument("--backend-url", dest="backend_url")
     parser.add_argument("--token", dest="token")
     parser.add_argument("--memory-gb", dest="memory_gb", type=float)
     parser.add_argument(
@@ -27,7 +27,7 @@ def main():
     _add_serve_args(parser)
     sub = parser.add_subparsers(dest="command")
 
-    serve_parser = sub.add_parser("serve", help="Run worker in coordinator serve mode")
+    serve_parser = sub.add_parser("serve", help="Run worker in backend serve mode")
     _add_serve_args(serve_parser)
 
     bench_parser = sub.add_parser("bench", help="Run a local batch benchmark")
@@ -69,7 +69,7 @@ def main():
         help="Write verbose logs to this file (default: alongside --report when dashboard is active)",
     )
 
-    run_parser = sub.add_parser("run", help="Run a bounded coordinator queue drain and exit")
+    run_parser = sub.add_parser("run", help="Run a bounded backend queue drain and exit")
     run_source = run_parser.add_mutually_exclusive_group()
     run_source.add_argument(
         "--claim-one",

@@ -74,17 +74,17 @@ def resolve_model_memory_budget_gb(*, env_path: Path) -> tuple[str, float | None
     return raw, budget_gb
 
 
-def _prompt_coordinator_url() -> str:
+def _prompt_backend_url() -> str:
     print(
-        "Enter the coordinator's LAN URL (the machine running the coordinator service).",
+        "Enter the backend's LAN URL (the machine running the backend service).",
         flush=True,
     )
-    return _read_line("Coordinator URL (e.g. http://192.168.1.10:8000): ").strip()
+    return _read_line("Backend URL (e.g. http://192.168.1.10:8000): ").strip()
 
 
 def _prompt_token() -> str:
     return _read_line(
-        "Worker API token (must match coordinator WORKER_API_TOKEN): "
+        "Worker API token (must match backend WORKER_API_TOKEN): "
     ).strip()
 
 
@@ -137,33 +137,33 @@ def ensure_worker_env(
     cli_overrides: dict | None = None,
     interactive: bool | None = None,
     skip_fleet_config: bool = False,
-    require_coordinator: bool = True,
+    require_backend: bool = True,
 ) -> None:
     cli_overrides = cli_overrides or {}
     path = default_env_path()
     is_interactive = sys.stdin.isatty() if interactive is None else interactive
 
-    coord_default = None if require_coordinator else "http://127.0.0.1:9"
-    token_default = None if require_coordinator else "unused"
-    mem_default = None if require_coordinator else "64"
+    backend_default = None if require_backend else "http://127.0.0.1:9"
+    token_default = None if require_backend else "unused"
+    mem_default = None if require_backend else "64"
 
-    explicit_coordinator_url = cli_overrides.get("COORDINATOR_URL")
+    explicit_backend_url = cli_overrides.get("BACKEND_URL")
     backend_url = os.getenv("BACKEND_URL")
-    if not backend_url and not os.getenv("COORDINATOR_URL"):
+    if not backend_url:
         backend_url = load_env_file(path).get("BACKEND_URL")
-    coordinator_override = explicit_coordinator_url or backend_url
+    backend_override = explicit_backend_url or backend_url
     url, _ = resolve_value(
-        "COORDINATOR_URL",
+        "BACKEND_URL",
         env_file=path,
-        cli_value=coordinator_override,
-        prompt_fn=(lambda _k, _d: _prompt_coordinator_url()) if is_interactive and require_coordinator else None,
-        default=coord_default,
+        cli_value=backend_override,
+        prompt_fn=(lambda _k, _d: _prompt_backend_url()) if is_interactive and require_backend else None,
+        default=backend_default,
     )
     token, _ = resolve_value(
         "WORKER_API_TOKEN",
         env_file=path,
         cli_value=cli_overrides.get("WORKER_API_TOKEN"),
-        prompt_fn=(lambda _k, _d: _prompt_token()) if is_interactive and require_coordinator else None,
+        prompt_fn=(lambda _k, _d: _prompt_token()) if is_interactive and require_backend else None,
         default=token_default,
     )
 
@@ -185,7 +185,7 @@ def ensure_worker_env(
                 return "-1" if budget_gb is None else _format_memory_gb(budget_gb)
 
             prompt_fn = (
-                _prompt_budget if is_interactive and require_coordinator else None
+                _prompt_budget if is_interactive and require_backend else None
             )
             mem_str, _ = resolve_value(
                 BUDGET_ENV_KEY,
@@ -195,15 +195,13 @@ def ensure_worker_env(
                 default=mem_default,
             )
 
-    if explicit_coordinator_url:
+    if explicit_backend_url:
         saved = load_env_file(path)
         saved["BACKEND_URL"] = url
-        saved["COORDINATOR_URL"] = url
         save_env_file(path, saved)
         os.environ["BACKEND_URL"] = url
-        os.environ["COORDINATOR_URL"] = url
     else:
-        os.environ.setdefault("COORDINATOR_URL", url)
+        os.environ.setdefault("BACKEND_URL", url)
     os.environ.setdefault("WORKER_API_TOKEN", token)
     os.environ[BUDGET_ENV_KEY] = mem_str
 

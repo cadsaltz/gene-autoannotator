@@ -2,7 +2,7 @@ services:
   backend:
     build:
       context: ../..
-      dockerfile: deploy/docker/Dockerfile.coordinator
+      dockerfile: deploy/docker/Dockerfile.backend
     working_dir: /state
     command:
       - uvicorn
@@ -21,8 +21,7 @@ services:
       # sees a queued job. See docs/deploy-cloud-backend-hpc-dispatcher.md.
       - ../../.env
     volumes:
-      # Keep the legacy state path so existing coordinator-data volumes remain valid.
-      - coordinator-data:/state/coordinator
+      - backend-data:/state/backend
       - profiles-data:/app/data/profiles
     environment:
       PROFILES_DIR: /app/data/profiles
@@ -41,5 +40,5 @@ services:
       - backend
 
 volumes:
-  coordinator-data:
+  backend-data:
   profiles-data:

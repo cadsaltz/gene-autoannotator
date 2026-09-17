@@ -112,7 +112,7 @@ def _emit_progress(progress_cb, evidence_mode, phase_key, **fields):
 
 def _profile_lookup_from_config(profile_config):
     # Any attached profile_config is the job-time snapshot of the profile the
-    # coordinator resolved from the local profile store. Always use it when
+    # backend resolved from the local profile store. Always use it when
     # present — do not fall back to code catalog defaults.
     if not profile_config:
         return None

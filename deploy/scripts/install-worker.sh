@@ -7,7 +7,7 @@ cd "$REPO_ROOT"
 
 usage() {
   cat <<EOF
-Usage: $0 [COORDINATOR_URL] [WORKER_API_TOKEN] [WORKER_MODEL_MEMORY_BUDGET_GB]
+Usage: $0 [BACKEND_URL] [WORKER_API_TOKEN] [WORKER_MODEL_MEMORY_BUDGET_GB]
 
 Install the worker agent in this repo clone (dev/lab). Creates .venv, installs
 dependencies, and writes worker.env when URL and token are provided.
@@ -25,7 +25,7 @@ if [[ ! -f worker/__main__.py ]]; then
   exit 1
 fi
 
-COORDINATOR_URL="${1:-}"
+BACKEND_URL="${1:-}"
 WORKER_API_TOKEN="${2:-}"
 MEMORY_GB="${3:-}"
 
@@ -50,7 +50,7 @@ python -m pip install -U pip
 python -m pip install -r requirements.txt -r requirements-web.txt
 
 run_bootstrap() {
-  export INSTALL_COORDINATOR_URL="${COORDINATOR_URL:-}"
+  export INSTALL_BACKEND_URL="${BACKEND_URL:-}"
   export INSTALL_WORKER_TOKEN="${WORKER_API_TOKEN:-}"
   export INSTALL_MEMORY_GB="${MEMORY_GB:-}"
   python <<'PY'
@@ -58,8 +58,8 @@ import os
 from worker.bootstrap import ensure_worker_env
 
 overrides = {}
-if os.environ.get("INSTALL_COORDINATOR_URL"):
-    overrides["COORDINATOR_URL"] = os.environ["INSTALL_COORDINATOR_URL"]
+if os.environ.get("INSTALL_BACKEND_URL"):
+    overrides["BACKEND_URL"] = os.environ["INSTALL_BACKEND_URL"]
 if os.environ.get("INSTALL_WORKER_TOKEN"):
     overrides["WORKER_API_TOKEN"] = os.environ["INSTALL_WORKER_TOKEN"]
 if os.environ.get("INSTALL_MEMORY_GB"):
@@ -72,22 +72,22 @@ PY
 if [[ -f worker.env ]]; then
   echo "Found worker.env — running bootstrap non-interactively ..."
   run_bootstrap
-elif [[ -n "$COORDINATOR_URL" && -n "$WORKER_API_TOKEN" ]]; then
+elif [[ -n "$BACKEND_URL" && -n "$WORKER_API_TOKEN" ]]; then
   echo "Creating worker.env from script arguments ..."
   run_bootstrap
 else
   cat <<EOF
 
-No worker.env found and COORDINATOR_URL / WORKER_API_TOKEN were not provided.
+No worker.env found and BACKEND_URL / WORKER_API_TOKEN were not provided.
 
 Option A — interactive first run (prompts for URL, token, memory budget):
   source .venv/bin/activate
   python -m worker
 
 Option B — pass credentials to this script:
-  $0 http://coordinator-host:8000 <token> [memory_gb]
+  $0 http://backend-host:8000 <token> [memory_gb]
 
-Generate a token on the coordinator host:
+Generate a token on the backend host:
   deploy/scripts/generate-worker-token.sh
 
 EOF

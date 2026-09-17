@@ -11,7 +11,7 @@ from worker.probe import SystemSpec
 
 def test_ensure_operator_env_writes_defaults_once(tmp_path, monkeypatch):
     env_path = tmp_path / "worker.env"
-    env_path.write_text("COORDINATOR_URL=http://x\n", encoding="utf-8")
+    env_path.write_text("BACKEND_URL=http://x\n", encoding="utf-8")
     monkeypatch.delenv("OLLAMA_FLEET_SLOT_CTX", raising=False)
     monkeypatch.delenv("OLLAMA_FLEET_KEEP_ALIVE", raising=False)
     monkeypatch.delenv("OLLAMA_MAX_LOADED_MODELS", raising=False)
@@ -30,7 +30,7 @@ def test_ensure_operator_env_writes_defaults_once(tmp_path, monkeypatch):
     env_path.write_text(
         "\n".join(
             [
-                "COORDINATOR_URL=http://x",
+                "BACKEND_URL=http://x",
                 "OLLAMA_FLEET_SLOT_CTX=2048",
                 "OLLAMA_FLEET_KEEP_ALIVE=-1",
                 "OLLAMA_MAX_LOADED_MODELS=3",

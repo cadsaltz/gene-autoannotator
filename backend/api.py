@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import threading
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -131,7 +132,27 @@ def _regex_model_health():
         return {"status": "unavailable", "model": model, "message": str(exc)}
 
 
-DEFAULT_DB_PATH = Path("coordinator/jobs.sqlite3")
+DEFAULT_DB_PATH = Path("backend/jobs.sqlite3")
+LEGACY_DB_PATH = Path("coordinator/jobs.sqlite3")
+
+
+def _migrate_legacy_db_if_needed(dest: Path = DEFAULT_DB_PATH) -> Path:
+    """One-time copy of coordinator SQLite into backend/ if only the old path exists."""
+    dest = Path(dest)
+    if dest.exists():
+        return dest
+    legacy = LEGACY_DB_PATH
+    if not legacy.exists():
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(legacy, dest)
+    for suffix in ("-wal", "-shm"):
+        side = Path(str(legacy) + suffix)
+        if side.exists():
+            shutil.copy2(side, Path(str(dest) + suffix))
+    return dest
+
+
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "2000"))
 # Six hours is long enough for an HPC allocation to finish one annotation while
 # still recovering a job whose Slurm allocation died without failing it. Live
@@ -210,7 +231,7 @@ def create_app(
     worker_api_token=None,
     worker_capacity_required=False,
 ):
-    store = job_store or JobStore(DEFAULT_DB_PATH)
+    store = job_store or JobStore(_migrate_legacy_db_if_needed(DEFAULT_DB_PATH))
     auth = auth_store or AuthStore(store.db_path)
     batches = batch_store or BatchStore(store.db_path)
     workers = worker_registry or WorkerRegistry(store.db_path)
@@ -240,7 +261,7 @@ def create_app(
             )
 
     def _maybe_run_jobs_inline():
-        # Unit tests only. Production coordinators never execute annotation jobs.
+        # Unit tests only. Production backends never execute annotation jobs.
         if run_jobs_inline:
             drain_queue()
 
@@ -295,9 +316,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app):
-        public_url = os.getenv("BACKEND_PUBLIC_URL") or os.getenv(
-            "COORDINATOR_PUBLIC_URL"
-        )
+        public_url = os.getenv("BACKEND_PUBLIC_URL")
         lan_ip = _detect_lan_ip()
         worker_url = public_url or (f"http://{lan_ip}:8000" if lan_ip else None)
         token_status = "set" if worker_token else "not set"
@@ -314,7 +333,7 @@ def create_app(
                 token_status,
             )
         log.info(
-            "Public URL (BACKEND_PUBLIC_URL; legacy COORDINATOR_PUBLIC_URL): %s",
+            "Public URL (BACKEND_PUBLIC_URL): %s",
             public_url or "not set",
         )
 
@@ -1121,11 +1140,10 @@ def create_app(
     def list_workers(_user: dict = Depends(require_user)):
         return {"workers": workers.list_workers(offline_after_seconds=offline_after_seconds)}
 
-    @app.get("/coordinator-info")
-    def coordinator_info():
+    @app.get("/backend-info")
+    def backend_info():
         return {
-            "worker_url": os.getenv("BACKEND_PUBLIC_URL")
-            or os.getenv("COORDINATOR_PUBLIC_URL"),
+            "worker_url": os.getenv("BACKEND_PUBLIC_URL"),
             "version": os.getenv("APP_VERSION", "dev"),
         }
 
