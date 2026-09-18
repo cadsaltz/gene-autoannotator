@@ -449,7 +449,7 @@ docker compose -f deploy/compose/docker-compose.backend.yml up -d --build
 | `PROFILES_DIR` | Local profile JSON | `data/profiles` |
 | `EMAIL_BACKEND` | OTP delivery: `console` (log) or `resend` | `console` |
 | `RESEND_API_KEY` / `EMAIL_FROM` | Required when `EMAIL_BACKEND=resend` | — |
-| `SESSION_COOKIE_SECURE` | Set `1` when the UI is served over HTTPS | `0` |
+| `SESSION_COOKIE_SECURE` | Set `1` only behind HTTPS. Use `0` for plain HTTP LAN/dev or the browser drops `ga_session` after verify | `0` |
 | `REQUIRE_WORKER_API_TOKEN` | Fail closed if `WORKER_API_TOKEN` is unset | `0` (dev); **`1` on public hosts** |
 
 API catalog: `backend/README.md`. Reader accounts use email OTP (see below).

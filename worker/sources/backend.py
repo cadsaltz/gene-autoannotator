@@ -42,13 +42,18 @@ class BackendJobSource(JobSource):
         free_slots = self._free_slots()
         if free_slots <= 0:
             return None
-        claim = self._client.claim(free_slots)
+        try:
+            claim = self._client.claim(free_slots)
+        except Exception as exc:  # noqa: BLE001 - keep serve loop alive across WAN blips
+            # BackendClient already retries transient httpx errors; if we still
+            # fail (NAT drop, Pi restart), sleep via wait_or_sleep and try again.
+            log.warning("Claim failed; will retry after poll interval: %s", exc)
+            return None
         if claim is None:
             self._maybe_log_empty_claim(free_slots)
             return None
         log.info("Claimed job %s from backend", claim["job_id"])
         return JobSpec(job_id=claim["job_id"], request=dict(claim["request"]))
-
     def _maybe_log_empty_claim(self, free_slots: int) -> None:
         active_jobs = self._active_jobs_fn()
         if active_jobs > 0:

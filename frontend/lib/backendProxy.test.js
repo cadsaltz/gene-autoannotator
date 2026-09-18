@@ -21,3 +21,30 @@ test("fetchBackendResponse returns service unavailable when FastAPI cannot be re
   assert.equal(payload.detail, "Backend API is unavailable");
   assert.match(payload.message, /ECONNREFUSED|fetch failed/);
 });
+
+test("fetchBackendResponse forwards Set-Cookie via getSetCookie", async () => {
+  const upstream = {
+    status: 200,
+    statusText: "OK",
+    body: JSON.stringify({ ok: true }),
+    headers: {
+      getSetCookie() {
+        return ["ga_session=abc; Path=/; HttpOnly; SameSite=Lax"];
+      },
+      entries() {
+        return [["content-type", "application/json"]].values();
+      },
+    },
+  };
+
+  const response = await fetchBackendResponse(
+    new URL("http://127.0.0.1:8000/auth/verify"),
+    { method: "POST", headers: new Headers() },
+    async () => upstream,
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.headers.getSetCookie(), [
+    "ga_session=abc; Path=/; HttpOnly; SameSite=Lax",
+  ]);
+});

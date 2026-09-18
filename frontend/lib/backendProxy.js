@@ -10,9 +10,24 @@ const HOP_BY_HOP_HEADERS = new Set([
 export function copyProxyHeaders(headers) {
   // Hop-by-hop headers describe one network connection and can break streamed
   // proxy responses if forwarded unchanged.
-  const copied = new Headers(headers);
-  for (const header of HOP_BY_HOP_HEADERS) {
-    copied.delete(header);
+  const copied = new Headers();
+  for (const [key, value] of headers.entries()) {
+    if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+      continue;
+    }
+    // set-cookie is handled separately via getSetCookie() — the Headers
+    // iterator can drop or join cookies incorrectly.
+    if (key.toLowerCase() === "set-cookie") {
+      continue;
+    }
+    copied.append(key, value);
+  }
+
+  const getSetCookie = typeof headers.getSetCookie === "function" ? headers.getSetCookie.bind(headers) : null;
+  if (getSetCookie) {
+    for (const cookie of getSetCookie()) {
+      copied.append("set-cookie", cookie);
+    }
   }
   return copied;
 }

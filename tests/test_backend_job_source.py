@@ -28,3 +28,17 @@ def test_empty_claim_not_logged_while_jobs_active(caplog):
     )
     source.claim_one()
     assert not any("Idle: no job" in r.message for r in caplog.records)
+
+
+class _BoomClient:
+    def claim(self, free_slots):
+        raise RuntimeError("backend blip")
+
+
+def test_claim_transport_error_returns_none_instead_of_raising(caplog):
+    import logging
+
+    caplog.set_level(logging.WARNING)
+    source = BackendJobSource(_BoomClient(), lambda: 1)
+    assert source.claim_one() is None
+    assert any("Claim failed" in r.message for r in caplog.records)
