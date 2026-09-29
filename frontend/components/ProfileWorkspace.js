@@ -183,7 +183,7 @@ function ProfileDetailList({ profile }) {
   );
 }
 
-export default function ProfileWorkspace() {
+export default function ProfileWorkspace({ canEdit = false }) {
   const [profiles, setProfiles] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingProfileId, setEditingProfileId] = useState("");
@@ -306,32 +306,52 @@ export default function ProfileWorkspace() {
 
   return (
     <div className="grid gap-5">
-      <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.95fr)]">
+      <section
+        className={
+          canEdit
+            ? "grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.95fr)]"
+            : "grid gap-5"
+        }
+      >
         <div className="workbench-card p-6">
           <p className="workbench-kicker">Organism Profiles</p>
           <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
-            Manage reusable annotation targets
+            {canEdit ? "Manage reusable annotation targets" : "Browse reusable annotation targets"}
           </h1>
-          <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
-            Profiles are stored locally on the backend as JSON files. Create,
-            edit, and delete them here; annotation jobs receive a snapshot of the
-            selected profile and the full local catalog for ortholog selection.
-          </p>
+          {canEdit ? (
+            <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
+              Profiles are stored locally on the backend as JSON files. Create,
+              edit, and delete them here; annotation jobs receive a snapshot of the
+              selected profile and the full local catalog for ortholog selection.
+            </p>
+          ) : (
+            <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
+              Profiles are managed by admins. Pick one when submitting a job;
+              expand a profile below to see its organism details and annotation fields.
+            </p>
+          )}
         </div>
 
-        <div className="workbench-amber-bg workbench-foreground rounded-[18px] border workbench-border p-6">
-          <h2 className="text-xl font-bold tracking-[-0.02em]">
-            Profile storage
-          </h2>
-          <p className="mt-3 text-sm leading-6 text-[#5f4b2e]">
-            Profiles live under <code>data/profiles</code> (or{" "}
-            <code>PROFILES_DIR</code>) on the API host. MongoDB is not
-            used for organism profiles.
-          </p>
-        </div>
+        {canEdit ? (
+          <div className="workbench-amber-bg workbench-foreground rounded-[18px] border workbench-border p-6">
+            <h2 className="text-xl font-bold tracking-[-0.02em]">
+              Profile storage
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-[#5f4b2e]">
+              Profiles live under <code>data/profiles</code> (or{" "}
+              <code>PROFILES_DIR</code>) on the API host. MongoDB is not
+              used for organism profiles.
+            </p>
+          </div>
+        ) : null}
       </section>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[0.95fr_1.05fr]">
+      <div
+        className={
+          canEdit ? "grid items-start gap-5 lg:grid-cols-[0.95fr_1.05fr]" : "grid items-start gap-5"
+        }
+      >
+        {canEdit ? (
         <section ref={formRef} className="workbench-card p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -448,6 +468,7 @@ export default function ProfileWorkspace() {
             </button>
           </form>
         </section>
+        ) : null}
 
         <section className="workbench-card p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -484,6 +505,12 @@ export default function ProfileWorkspace() {
               />
             </label>
           </div>
+
+          {!canEdit && statusMessage ? (
+            <p className="workbench-amber-bg mt-6 rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+              {statusMessage}
+            </p>
+          ) : null}
 
           <div className="mt-6 grid max-h-[760px] gap-4 overflow-y-auto pr-1">
             {isLoading ? (
@@ -524,20 +551,24 @@ export default function ProfileWorkspace() {
                             >
                               {isExpanded ? "Collapse" : "Expand"}
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => startEditing(profile)}
-                              className="workbench-button workbench-button-secondary"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(profile.profile_id)}
-                              className="workbench-button workbench-button-secondary workbench-red"
-                            >
-                              Delete
-                            </button>
+                            {canEdit ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => startEditing(profile)}
+                                  className="workbench-button workbench-button-secondary"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(profile.profile_id)}
+                                  className="workbench-button workbench-button-secondary workbench-red"
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            ) : null}
                           </div>
                         </div>
 

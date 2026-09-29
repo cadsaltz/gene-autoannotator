@@ -27,7 +27,92 @@ test("profiles route renders the profile workspace in the app shell", async () =
   assert.match(route, /import AppShell from "\.\.\/\.\.\/components\/AppShell";/);
   assert.match(route, /import ProfileWorkspace from "\.\.\/\.\.\/components\/ProfileWorkspace";/);
   assert.match(route, /title: "Profiles · Gene Autoannotator"/);
-  assert.match(route, /<AppShell>\s*<ProfileWorkspace \/>\s*<\/AppShell>/s);
+  assert.match(
+    route,
+    /<AppShell>\s*<ProfileWorkspace canEdit=\{user\?\.role === "admin"\} \/>\s*<\/AppShell>/s,
+  );
+});
+
+test("profiles route redirects signed-out visitors and derives canEdit from the session", async () => {
+  const route = await readProjectFile("app/profiles/page.js");
+
+  assert.match(route, /import \{ redirect \} from "next\/navigation";/);
+  assert.match(route, /import \{ getServerSession \} from "\.\.\/\.\.\/lib\/session";/);
+  assert.match(route, /export default async function ProfilesPage\(\)/);
+  assert.match(route, /const \{ user, reason \} = await getServerSession\(\);/);
+  assert.match(
+    route,
+    /if \(!user && reason === "signed_out"\) \{\s*redirect\("\/login\?next=\/profiles"\);\s*\}/,
+  );
+});
+
+const GATED_FORM =
+  /\{canEdit \? \(\s*<section ref=\{formRef\}[\s\S]*?<\/form>\s*<\/section>\s*\) : null\}/;
+const GATED_ROW_ACTIONS =
+  /\{canEdit \? \(\s*<>\s*<button[\s\S]*?<\/>\s*\) : null\}/;
+
+test("profile workspace defaults to read-only and gates the editor behind canEdit", async () => {
+  const workspace = await readProjectFile("components/ProfileWorkspace.js");
+
+  assert.match(workspace, /export default function ProfileWorkspace\(\{ canEdit = false \}\)/);
+
+  const form = workspace.match(GATED_FORM)?.[0];
+  assert.ok(form, "form section must be wrapped in {canEdit ? (...) : null}");
+  for (const piece of [
+    /<RegexHelper /,
+    /<CustomFieldsEditor/,
+    /onSubmit=\{handleSubmit\}/,
+    /"New profile"/,
+    /"Create profile"/,
+    /"Update profile"/,
+    /Cancel edit/,
+  ]) {
+    assert.match(form, piece);
+  }
+
+  const outsideForm = workspace.replace(GATED_FORM, "");
+  assert.doesNotMatch(outsideForm, /<RegexHelper /);
+  assert.doesNotMatch(outsideForm, /<CustomFieldsEditor/);
+  assert.doesNotMatch(outsideForm, /New profile|Create profile/);
+});
+
+test("profile rows only offer edit and delete when canEdit", async () => {
+  const workspace = await readProjectFile("components/ProfileWorkspace.js");
+
+  const actions = workspace.match(GATED_ROW_ACTIONS)?.[0];
+  assert.ok(actions, "row edit/delete buttons must be wrapped in {canEdit ? (<>...</>) : null}");
+  assert.match(actions, /onClick=\{\(\) => startEditing\(profile\)\}/);
+  assert.match(actions, /onClick=\{\(\) => handleDelete\(profile\.profile_id\)\}/);
+
+  const outside = workspace.replace(GATED_FORM, "").replace(GATED_ROW_ACTIONS, "");
+  assert.doesNotMatch(outside, /startEditing\(profile\)\}/);
+  assert.doesNotMatch(outside, /handleDelete\(profile\.profile_id\)/);
+  assert.match(outside, /\{isExpanded \? "Collapse" : "Expand"\}/);
+  assert.match(outside, /<ProfileDetailList profile=\{profile\} \/>/);
+});
+
+test("read-only profile workspace swaps admin copy for a managed-by-admins note", async () => {
+  const workspace = await readProjectFile("components/ProfileWorkspace.js");
+
+  assert.match(workspace, /Profiles are managed by admins\./);
+  assert.match(
+    workspace,
+    /\{canEdit \? "Manage reusable annotation targets" : "Browse reusable annotation targets"\}/,
+  );
+  assert.match(
+    workspace,
+    /\{canEdit \? \(\s*<div className="workbench-amber-bg[\s\S]*?Profile storage[\s\S]*?PROFILES_DIR[\s\S]*?<\/div>\s*\) : null\}/,
+  );
+  assert.doesNotMatch(workspace, /href=/);
+});
+
+test("read-only profile workspace still surfaces load errors", async () => {
+  const workspace = await readProjectFile("components/ProfileWorkspace.js");
+
+  assert.match(
+    workspace,
+    /\{!canEdit && statusMessage \? \(\s*<p[\s\S]*?\{statusMessage\}\s*<\/p>\s*\) : null\}/,
+  );
 });
 
 test("profile workspace supports editing all reusable profile fields", async () => {
