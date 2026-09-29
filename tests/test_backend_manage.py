@@ -169,7 +169,10 @@ def test_suspending_last_admin_warns(db, auth, capsys):
         ["--db", str(db), "set-status", "solavolantes@gmail.com", "suspended"]
     ) == 0
 
-    assert "no active admins" in capsys.readouterr().err.lower()
+    err = capsys.readouterr().err
+    assert "no active admins" in err.lower()
+    assert "set-role EMAIL admin" in err
+    assert "set-status EMAIL active" in err
 
 
 def test_no_warning_when_another_admin_remains(db, auth, capsys):
@@ -207,6 +210,25 @@ def test_list_users_query_filters(db, auth, capsys):
     out = capsys.readouterr().out
     assert "alice@example.com" in out
     assert "bob@example.com" not in out
+
+
+def test_list_users_limit_notes_truncation(db, auth, capsys):
+    for i in range(3):
+        auth.create_user(email=f"u{i}@example.com", username=None)
+
+    assert manage.main(["--db", str(db), "list-users", "--limit", "2"]) == 0
+
+    captured = capsys.readouterr()
+    assert len(captured.out.splitlines()) == 3
+    assert "--limit" in captured.err
+
+
+def test_list_users_under_limit_has_no_note(db, auth, capsys):
+    auth.create_user(email="a@example.com", username=None)
+
+    assert manage.main(["--db", str(db), "list-users"]) == 0
+
+    assert capsys.readouterr().err == ""
 
 
 def test_list_users_empty(db, auth, capsys):

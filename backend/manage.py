@@ -21,6 +21,13 @@ class CommandError(Exception):
     pass
 
 
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return number
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m backend.manage",
@@ -35,6 +42,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     list_users = commands.add_parser("list-users", help="List users")
     list_users.add_argument("--query", help="Filter by email or username substring")
+    list_users.add_argument(
+        "--limit", type=_positive_int, default=200, help="Maximum rows to show (default: 200)"
+    )
 
     set_role = commands.add_parser("set-role", help="Change a user's role")
     set_role.add_argument("email")
@@ -78,14 +88,14 @@ def _audit(audit: AuditStore, action: str, user: dict, details: dict) -> None:
 def _warn_if_no_admins(auth: AuthStore) -> None:
     if auth.count_admins() == 0:
         print(
-            "warning: there are now no active admins; "
-            "run `set-role EMAIL admin` to restore access",
+            "warning: there are now no active admins; restore access with "
+            "`set-role EMAIL admin` and, if that user is suspended, `set-status EMAIL active`",
             file=sys.stderr,
         )
 
 
 def _list_users(auth: AuthStore, args) -> None:
-    users = auth.list_users(query=args.query)
+    users = auth.list_users(query=args.query, limit=args.limit)
     if not users:
         print("No users.")
         return
@@ -94,6 +104,12 @@ def _list_users(auth: AuthStore, args) -> None:
     widths = [max(len(row[i]) for row in rows) for i in range(len(header) - 1)]
     for row in rows:
         print("  ".join([*(cell.ljust(w) for cell, w in zip(row, widths)), row[-1]]))
+    if len(users) == args.limit:
+        print(
+            f"note: showing the first {args.limit} users; there may be more "
+            "(use --limit or --query)",
+            file=sys.stderr,
+        )
 
 
 def _set_role(auth: AuthStore, audit: AuditStore, args) -> None:

@@ -276,7 +276,7 @@ a warning instead). Every change is written to the audit log with no actor and
 `"source": "cli"`.
 
 ```bash
-python -m backend.manage list-users [--query alice]
+python -m backend.manage list-users [--query alice] [--limit 200]
 python -m backend.manage set-role EMAIL {user,admin}
 python -m backend.manage set-status EMAIL {active,suspended}  # suspending also revokes sessions
 python -m backend.manage revoke-sessions EMAIL
