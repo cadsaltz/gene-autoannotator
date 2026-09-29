@@ -64,6 +64,11 @@ function UserRow({
             Joined {formatLocalTime(user.created_at)} · Last sign-in{" "}
             {formatLocalTime(user.last_login_at)}
           </p>
+          <p className="workbench-muted text-xs">
+            {user.terms_version
+              ? `Terms ${user.terms_version} accepted ${formatLocalTime(user.terms_accepted_at)}`
+              : "Terms not recorded"}
+          </p>
           {restrictions.lockedReason ? (
             <p className="workbench-muted mt-2 max-w-xs text-xs leading-5">
               {restrictions.lockedReason}

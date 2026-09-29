@@ -10,6 +10,7 @@ JOB = {"profile": "mtb-h37rv", "locus": "Rv0001"}
 USER_ROW_KEYS = {
     "id", "email", "username", "role", "status", "created_at", "last_login_at",
     "quota_max_active", "quota_max_per_day", "quota_max_batch", "active_jobs", "jobs_24h",
+    "terms_version", "terms_accepted_at",
 }
 QUOTA_ENV = (
     "MAX_QUEUED_JOBS", "USER_MAX_ACTIVE_JOBS", "USER_MAX_JOBS_PER_DAY", "USER_MAX_BATCH_SIZE",

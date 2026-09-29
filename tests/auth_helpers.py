@@ -20,7 +20,7 @@ WORKER_TOKEN = "test-token"
 def sign_in(client: TestClient, email: str = "tester@example.com") -> TestClient:
     with mock.patch.dict(os.environ, {"EMAIL_BACKEND": "console"}):
         email_sender._CONSOLE_OUTBOX.clear()
-        client.post("/auth/signup", json={"email": email})
+        client.post("/auth/signup", json={"email": email, "accept_terms": True})
         code = email_sender._CONSOLE_OUTBOX[-1]["code"]
         verify = client.post("/auth/verify", json={"email": email, "code": code})
     assert verify.status_code == 200

@@ -5,6 +5,7 @@ from pydantic import (
     ConfigDict,
     EmailStr,
     Field,
+    StrictBool,
     StrictInt,
     field_validator,
     model_validator,
@@ -401,6 +402,16 @@ class AnnotationVersionsResponse(BaseModel):
 class AuthSignupRequest(BaseModel):
     email: EmailStr
     username: str | None = None
+    accept_terms: StrictBool
+
+    @field_validator('accept_terms')
+    @classmethod
+    def validate_accept_terms(cls, value):
+        if value is not True:
+            raise ValueError(
+                'You must agree to the Terms of Service and Acceptable Use Policy'
+            )
+        return value
 
 
 class AuthLoginRequest(BaseModel):
@@ -465,6 +476,8 @@ class AdminUserResponse(BaseModel):
     quota_max_active: int | None
     quota_max_per_day: int | None
     quota_max_batch: int | None
+    terms_version: str | None = None
+    terms_accepted_at: str | None = None
     active_jobs: int
     jobs_24h: int
 

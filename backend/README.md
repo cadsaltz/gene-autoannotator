@@ -143,6 +143,12 @@ Environment variables:
   so out-of-date agents can be told to update.
 - `BACKEND_PUBLIC_URL` / `APP_VERSION`: surfaced by `GET /backend-info`
   (admin-only) so operators can see the backend URL and version.
+- `TERMS_VERSION` (default `draft-2026-09`): `POST /auth/signup` requires
+  `"accept_terms": true` (422 otherwise), and a new account is created with
+  this value in `terms_version` and the creation time in `terms_accepted_at`.
+  Keep it in sync with `TERMS_VERSION` in `frontend/lib/legal.js`. Accounts
+  created before consent was required keep null values (shown read-only in
+  `GET /admin/users`); they are not asked to re-consent.
 - Admin alerts: every `ALERT_CHECK_SECONDS` (default `300`, capped at `86400`;
   `0` disables) the
   backend emails all active admins through `EMAIL_BACKEND` (`console` logs

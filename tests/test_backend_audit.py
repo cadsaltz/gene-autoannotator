@@ -92,7 +92,7 @@ def test_login_code_sent_never_stores_code(tmp_path):
     client = make_client(tmp_path)
     with mock.patch.dict(os.environ, {"EMAIL_BACKEND": "console"}):
         email_sender._CONSOLE_OUTBOX.clear()
-        client.post("/auth/signup", json={"email": "alice@example.com"})
+        client.post("/auth/signup", json={"email": "alice@example.com", "accept_terms": True})
         code = email_sender._CONSOLE_OUTBOX[-1]["code"]
     admin = second_client(client, email=BOOTSTRAP_ADMIN_EMAIL)
     events = _events(admin, action="login_code_sent", user_id=_user_id(client, "alice@example.com"))

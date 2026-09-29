@@ -159,6 +159,13 @@ test("UsersTable quota inputs are text so invalid entries reach the parser", asy
   assert.match(table, /type="text"\s+inputMode="numeric"/);
 });
 
+test("UsersTable shows the accepted terms version read-only", async () => {
+  const table = await readProjectFile("components/admin/UsersTable.js");
+  assert.match(table, /user\.terms_version\s*\?/);
+  assert.match(table, /formatLocalTime\(user\.terms_accepted_at\)/);
+  assert.match(table, /Terms not recorded/);
+});
+
 test("UsersTable confirms before revoking the admin's own sessions", async () => {
   const table = await readProjectFile("components/admin/UsersTable.js");
   assert.match(

@@ -1,9 +1,13 @@
 import { apiFetch } from "./api.js";
 
-export function signup(email, username) {
+export function signup(email, username, acceptTerms = false) {
   return apiFetch("/auth/signup", {
     method: "POST",
-    body: JSON.stringify({ email, username: username || null }),
+    body: JSON.stringify({
+      email,
+      username: username || null,
+      accept_terms: acceptTerms === true,
+    }),
   });
 }
 

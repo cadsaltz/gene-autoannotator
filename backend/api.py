@@ -175,6 +175,8 @@ def _regex_model_health():
 
 
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "2000"))
+# Keep in sync with TERMS_VERSION in frontend/lib/legal.js.
+DEFAULT_TERMS_VERSION = "draft-2026-09"
 # Six hours is long enough for an HPC allocation to finish one annotation while
 # still recovering a job whose Slurm allocation died without failing it. Live
 # workers keep their leases fresh through progress reports and heartbeats.
@@ -288,6 +290,7 @@ def create_app(
     lease_seconds = int(os.getenv("LEASE_SECONDS", str(DEFAULT_LEASE_SECONDS)))
     max_attempts = int(os.getenv("MAX_ATTEMPTS", "3"))
     offline_after_seconds = int(os.getenv("WORKER_OFFLINE_SECONDS", "60"))
+    terms_version = (os.getenv("TERMS_VERSION") or "").strip() or DEFAULT_TERMS_VERSION
     annotations = (
         annotation_store
         if annotation_store is not None
@@ -920,8 +923,13 @@ def create_app(
         _enforce_rate_limits(_signup_ip_check(request), _otp_send_check(email))
         user = auth.get_user_by_email(email)
         if user is None:
-            user = auth.create_user(email=email, username=body.username)
-            _audit(request, "signup", user["id"], target_type="user", target_id=user["id"])
+            user = auth.create_user(
+                email=email, username=body.username, terms_version=terms_version
+            )
+            _audit(
+                request, "signup", user["id"], target_type="user", target_id=user["id"],
+                details={"terms_version": terms_version},
+            )
         if user["status"] != "active":
             return AuthOkResponse()
         _issue_login_code(request, user=user, email=email, purpose="signup")

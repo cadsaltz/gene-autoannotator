@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { getMe, logout } from "../lib/authApi";
 import { isNavItemActive, navItemsFor } from "../lib/navItems";
+import SiteFooter from "./SiteFooter";
 
 function SuspendedCard() {
   return (
@@ -79,7 +80,7 @@ export default function AppShell({ children }) {
   }
 
   return (
-    <main className="workbench-app">
+    <main className="workbench-app flex flex-col">
       <header className="workbench-nav">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
           <Link href="/" className="group">
@@ -125,9 +126,10 @@ export default function AppShell({ children }) {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
         {loading ? <SessionLoading /> : suspended ? <SuspendedCard /> : children}
       </div>
+      <SiteFooter />
     </main>
   );
 }

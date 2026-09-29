@@ -20,7 +20,10 @@ def _app(tmp_path, monkeypatch):
 
 def test_signup_sends_otp_and_verify_sets_cookie(tmp_path, monkeypatch):
     client = TestClient(_app(tmp_path, monkeypatch))
-    response = client.post("/auth/signup", json={"email": "a@example.com", "username": "alice"})
+    response = client.post(
+        "/auth/signup",
+        json={"email": "a@example.com", "username": "alice", "accept_terms": True},
+    )
     assert response.status_code == 200
     assert email_sender._CONSOLE_OUTBOX
     code = email_sender._CONSOLE_OUTBOX[-1]["code"]
@@ -37,7 +40,7 @@ def test_signup_sends_otp_and_verify_sets_cookie(tmp_path, monkeypatch):
 
 def test_verify_rejects_wrong_code(tmp_path, monkeypatch):
     client = TestClient(_app(tmp_path, monkeypatch))
-    client.post("/auth/signup", json={"email": "a@example.com"})
+    client.post("/auth/signup", json={"email": "a@example.com", "accept_terms": True})
     response = client.post("/auth/verify", json={"email": "a@example.com", "code": "000000"})
     assert response.status_code == 401
 
@@ -52,7 +55,10 @@ def test_login_unknown_email_still_returns_ok(tmp_path, monkeypatch):
 
 def test_logout_clears_session(tmp_path, monkeypatch):
     client = TestClient(_app(tmp_path, monkeypatch))
-    client.post("/auth/signup", json={"email": "a@example.com", "username": "alice"})
+    client.post(
+        "/auth/signup",
+        json={"email": "a@example.com", "username": "alice", "accept_terms": True},
+    )
     code = email_sender._CONSOLE_OUTBOX[-1]["code"]
     client.post("/auth/verify", json={"email": "a@example.com", "code": code})
 
@@ -71,7 +77,7 @@ def test_create_job_requires_session(tmp_path, monkeypatch):
 
 def test_create_job_allowed_when_signed_in(tmp_path, monkeypatch):
     client = TestClient(_app(tmp_path, monkeypatch))
-    client.post("/auth/signup", json={"email": "a@example.com"})
+    client.post("/auth/signup", json={"email": "a@example.com", "accept_terms": True})
     code = email_sender._CONSOLE_OUTBOX[-1]["code"]
     client.post("/auth/verify", json={"email": "a@example.com", "code": code})
     response = client.post("/jobs", json={"profile": "mtb-h37rv", "locus": "Rv0001"})
@@ -80,7 +86,7 @@ def test_create_job_allowed_when_signed_in(tmp_path, monkeypatch):
 
 def test_auth_me_refreshes_session_cookie_max_age(tmp_path, monkeypatch):
     client = TestClient(_app(tmp_path, monkeypatch))
-    client.post("/auth/signup", json={"email": "a@example.com"})
+    client.post("/auth/signup", json={"email": "a@example.com", "accept_terms": True})
     code = email_sender._CONSOLE_OUTBOX[-1]["code"]
     verify = client.post("/auth/verify", json={"email": "a@example.com", "code": code})
     token = verify.cookies[SESSION_COOKIE_NAME]

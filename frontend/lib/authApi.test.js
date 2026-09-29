@@ -37,7 +37,7 @@ test("OTP auth helpers call signup, login, verify, me, and logout", async () => 
     return { ok: true };
   });
 
-  await signup("user@example.com", "alice");
+  await signup("user@example.com", "alice", true);
   await signup("user@example.com");
   await login("user@example.com");
   await verifyCode("user@example.com", "123456");
@@ -50,13 +50,13 @@ test("OTP auth helpers call signup, login, verify, me, and logout", async () => 
       [
         "http://backend.test/auth/signup",
         "POST",
-        JSON.stringify({ email: "user@example.com", username: "alice" }),
+        JSON.stringify({ email: "user@example.com", username: "alice", accept_terms: true }),
         "include",
       ],
       [
         "http://backend.test/auth/signup",
         "POST",
-        JSON.stringify({ email: "user@example.com", username: null }),
+        JSON.stringify({ email: "user@example.com", username: null, accept_terms: false }),
         "include",
       ],
       [

@@ -30,6 +30,7 @@ import {
   getTotalVersionCount,
 } from "../lib/annotationVersions";
 import { buildJobPrefillHref } from "../lib/form";
+import { RESEARCH_DISCLAIMER } from "../lib/legal";
 import { resolveProfileFieldsForDisplay } from "../lib/profileStore";
 
 function EmptyState({ query }) {
@@ -333,6 +334,16 @@ function AnnotationDetail({
           </Link>
         ) : null}
       </div>
+
+      <p
+        className="workbench-amber-bg mt-4 rounded-xl border workbench-border px-4 py-3 text-sm text-[#5f4b2e]"
+        role="note"
+      >
+        {RESEARCH_DISCLAIMER}{" "}
+        <Link href="/legal/disclaimer" className="font-semibold underline">
+          Read the disclaimer
+        </Link>
+      </p>
 
       {viewingHistorical ? (
         <p className="workbench-amber mt-4 rounded-xl border workbench-border px-4 py-3 text-sm">

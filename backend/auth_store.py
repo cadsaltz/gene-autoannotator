@@ -95,19 +95,26 @@ class AuthStore:
         return True
 
     def create_user(
-        self, *, email: str, username: str | None, status: str = "active"
+        self,
+        *,
+        email: str,
+        username: str | None,
+        status: str = "active",
+        terms_version: str | None = None,
     ) -> dict:
         if status not in STATUSES:
             raise ValueError(f"invalid status: {status}")
         user_id = str(uuid.uuid4())
         normalized = _normalize_email(email)
         created_at = _now_iso()
+        terms_accepted_at = created_at if terms_version is not None else None
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO users (
-                    id, email, username, email_verified, created_at, role, status
-                ) VALUES (?, ?, ?, 0, ?, ?, ?)
+                    id, email, username, email_verified, created_at, role, status,
+                    terms_version, terms_accepted_at
+                ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -116,6 +123,8 @@ class AuthStore:
                     created_at,
                     initial_role_for(normalized),
                     status,
+                    terms_version,
+                    terms_accepted_at,
                 ),
             )
         return self.get_user(user_id)

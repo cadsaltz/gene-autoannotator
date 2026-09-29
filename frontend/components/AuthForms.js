@@ -46,15 +46,20 @@ export function SignupForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (!acceptTerms) {
+      setError("Please agree to the Terms of Service and Acceptable Use Policy.");
+      return;
+    }
     setError("");
     setSubmitting(true);
     try {
-      await signup(email.trim(), username.trim() || null);
+      await signup(email.trim(), username.trim() || null, acceptTerms);
       router.push(verifyPageUrl(email, searchParams.get("next")));
     } catch (err) {
       setError(err.message || "Signup failed");
@@ -103,11 +108,41 @@ export function SignupForm() {
             autoComplete="username"
           />
         </label>
+        <label className="flex items-start gap-3 text-sm leading-6">
+          <input
+            type="checkbox"
+            checked={acceptTerms}
+            onChange={(event) => setAcceptTerms(event.target.checked)}
+            className="mt-1 h-4 w-4"
+            required
+          />
+          <span>
+            I agree to the{" "}
+            <a
+              href="/legal/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold underline"
+            >
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <a
+              href="/legal/acceptable-use"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold underline"
+            >
+              Acceptable Use Policy
+            </a>
+            .
+          </span>
+        </label>
         <ErrorText message={error} />
         <button
           type="submit"
           className="workbench-button workbench-button-primary min-h-11 px-5 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={submitting}
+          disabled={submitting || !acceptTerms}
         >
           {submitting ? "Sending code…" : "Continue"}
         </button>

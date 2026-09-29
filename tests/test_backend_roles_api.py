@@ -111,7 +111,7 @@ def test_suspended_user_gets_no_login_code(tmp_path):
     with mock.patch.dict(os.environ, {"EMAIL_BACKEND": "console"}):
         email_sender._CONSOLE_OUTBOX.clear()
         login = client.post("/auth/login", json={"email": "u@example.com"})
-        signup = client.post("/auth/signup", json={"email": "u@example.com"})
+        signup = client.post("/auth/signup", json={"email": "u@example.com", "accept_terms": True})
     assert login.status_code == 200
     assert signup.status_code == 200
     assert email_sender._CONSOLE_OUTBOX == []
