@@ -22,9 +22,19 @@ active limits).
   client IP.
 - CLI: `$DC exec backend python -m backend.manage list-users --query SUBSTRING`
 
-## 2. Suspend and sign out
+## 2. Pause all submissions (optional)
 
-Suspending blocks sign-in and revokes all sessions immediately.
+For a flood from many accounts, stop intake first: set `SUBMISSIONS_PAUSED=1`
+in `.env` and recreate the backend (see section 5). Non-admins get HTTP 503
+("New submissions are paused") and the jobs page shows submissions as paused.
+Admins can still submit, and queued and running jobs keep going. Set it back
+to `0` when done.
+
+## 3. Suspend and sign out
+
+Suspending blocks sign-in, revokes all sessions, and cancels the user's queued
+and running jobs (running jobs stop at the worker's next progress report). The
+audit `status_change` event records `cancelled_jobs`.
 
 - **/admin/users**: set Status to `suspended`, **Save**.
 - CLI (also works with no admin session; audited as `"source": "cli"`):
@@ -34,27 +44,24 @@ Suspending blocks sign-in and revokes all sessions immediately.
   $DC exec backend python -m backend.manage revoke-sessions EMAIL   # sign out only
   ```
 
-Undo with `set-status EMAIL active`.
+Undo with `set-status EMAIL active` (cancelled jobs stay cancelled).
 
-## 3. Cancel the flood
+## 4. Cancel jobs without suspending
 
-**Suspending does not cancel queued jobs, and workers still run them.** Cancel
-them explicitly:
-
-- **All queued jobs for one user** (not written to the audit log):
+- **All of one user's queued and running jobs** (audited as `jobs_cancelled`):
 
   ```bash
-  $DC exec backend python -c 'import sys; from backend.auth_store import AuthStore; from backend.job_store import JobStore; from backend.db_path import DEFAULT_DB_PATH as P; u = AuthStore(P).get_user_by_email(sys.argv[1]); print(JobStore(P).cancel_queued_for_user(u["id"]), "queued job(s) cancelled")' EMAIL
+  $DC exec backend python -m backend.manage cancel-jobs EMAIL
   ```
 
-- **Individual or running jobs**: **/jobs** as an admin shows every user's jobs
-  with **Cancel** buttons (audited as `job_cancel`). It lists only the newest
-  100 jobs and does not show the submitter.
+- **Individual jobs**: **/jobs** as an admin shows every user's jobs with the
+  submitter's email and a **Cancel** button (audited as `job_cancel`). It
+  lists only the newest 100 jobs.
 - **Delete the account**: **Delete** on /admin/users revokes sessions and
   cancels the user's queued jobs (not running ones). It cannot be undone and
   frees the email to sign up again, so prefer suspend.
 
-## 4. Tighten limits
+## 5. Tighten limits
 
 Edit `.env` at the repo root, then recreate the backend (`restart` does not
 re-read `.env`):
@@ -65,22 +72,23 @@ $DC up -d --force-recreate backend
 
 | Variable | Effect |
 |----------|--------|
+| `SUBMISSIONS_PAUSED` | `1` rejects all non-admin submissions (HTTP 503) |
 | `MAX_QUEUED_JOBS` | Non-admin submissions get HTTP 429 once this many jobs are queued |
 | `USER_MAX_ACTIVE_JOBS`, `USER_MAX_JOBS_PER_DAY`, `USER_MAX_BATCH_SIZE` | Per-user defaults |
 | `IP_SIGNUPS_PER_DAY`, `IP_LOGINS_PER_HOUR`, `IP_SUBMITS_PER_HOUR` | Per client IP |
 | `OTP_SENDS_PER_EMAIL_PER_HOUR` | Sign-in codes per email address |
 
-`0` means **unlimited** for every one of these, so use `1` for the tightest
-setting; there is no switch that pauses all submissions. To restrict one user
+For the numeric limits `0` means **unlimited**, so use `1` for the tightest
+setting (or `SUBMISSIONS_PAUSED=1` to stop intake). To restrict one user
 without editing `.env`, set their quota overrides on /admin/users (no restart
-needed; `0` is unlimited there too). Rate-limit counters live in SQLite and survive the restart. Check that
-/admin shows the new values.
+needed; `0` is unlimited there too). Rate-limit counters live in SQLite and
+survive the restart. Check that /admin shows the new values.
 
 If every audit event shows the same IP (the proxy's), the per-IP limits are
 shared by everyone. Set `TRUST_FORWARDED_FOR=1` only when a proxy that
 overwrites `X-Forwarded-For` (for example Caddy) sits in front of the backend.
 
-## 5. Rotate `WORKER_API_TOKEN`
+## 6. Rotate `WORKER_API_TOKEN`
 
 Do this if the token leaks. Every holder must change together; until they do,
 worker and dispatcher calls get HTTP 401.
@@ -98,14 +106,14 @@ worker and dispatcher calls get HTTP 401.
    `sudo systemctl restart gene-autoannotator-worker`.
 5. Confirm workers show online on /admin.
 
-## 6. Edge protection (future)
+## 7. Edge protection (future)
 
 Once DNS is on Cloudflare (proxied records), turn on **"I'm Under Attack" mode**
 in the zone's security settings during a sign-up or request flood, and turn it
 off afterwards. It is not available until then.
 
-## 7. Afterwards
+## 8. Afterwards
 
 Review **/admin/audit** for `status_change`, `sessions_revoked`, `job_cancel`,
-and `user_delete` to confirm what happened, and restore any limits you
-lowered.
+`jobs_cancelled`, and `user_delete` to confirm what happened, and restore any
+limits you lowered (including `SUBMISSIONS_PAUSED=0`).
