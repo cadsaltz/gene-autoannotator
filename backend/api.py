@@ -25,6 +25,7 @@ from .auth import (
 )
 from .auth_store import AuthStore
 from .batch_store import BatchStore
+from .client_ip import client_ip
 from . import email_sender
 from .job_store import JobStore
 from .quotas import (
@@ -40,6 +41,13 @@ from .profile_store import (
     InvalidProfileError,
     ProfileStoreUnavailable,
     profile_store_from_env,
+)
+from .rate_limits import (
+    DAY_SECONDS,
+    HOUR_SECONDS,
+    RateLimited,
+    RateLimiter,
+    rate_limit_from_env,
 )
 from .runner import run_annotation_job
 from . import regex_gen
@@ -255,11 +263,13 @@ def create_app(
     start_worker=True,
     worker_api_token=None,
     worker_capacity_required=False,
+    rate_limiter=None,
 ):
     store = job_store or JobStore(_migrate_legacy_db_if_needed(DEFAULT_DB_PATH))
     auth = auth_store or AuthStore(store.db_path)
     batches = batch_store or BatchStore(store.db_path)
     workers = worker_registry or WorkerRegistry(store.db_path)
+    limiter = rate_limiter or RateLimiter(store.db_path)
     worker_token = worker_api_token if worker_api_token is not None else os.getenv("WORKER_API_TOKEN")
     # An HPC-only deploy has no warm worker to satisfy the gate, so
     # WORKER_CAPACITY_REQUIRED=0 must be able to turn it off at deploy time.
@@ -403,6 +413,46 @@ def create_app(
     @app.exception_handler(QuotaExceeded)
     async def quota_exceeded_handler(_request: Request, exc: QuotaExceeded):
         return JSONResponse(status_code=429, content={"detail": exc.message, "code": exc.code})
+
+    @app.exception_handler(RateLimited)
+    async def rate_limited_handler(_request: Request, exc: RateLimited):
+        return JSONResponse(status_code=429, content={"detail": exc.message, "code": exc.code})
+
+    def _enforce_rate_limit(*, bucket, key, window_seconds, env_name, message):
+        limit = rate_limit_from_env(env_name)
+        if limit <= 0:
+            return
+        if not limiter.hit(bucket, key or "unknown", window_seconds, limit):
+            raise RateLimited(message)
+
+    def _enforce_signup_limit(request: Request):
+        _enforce_rate_limit(
+            bucket="signup",
+            key=client_ip(request),
+            window_seconds=DAY_SECONDS,
+            env_name="IP_SIGNUPS_PER_DAY",
+            message="Too many sign-ups from your network today. Please try again later.",
+        )
+
+    def _enforce_otp_send_limit(email: str):
+        _enforce_rate_limit(
+            bucket="otp_send",
+            key=email.strip().lower(),
+            window_seconds=HOUR_SECONDS,
+            env_name="OTP_SENDS_PER_EMAIL_PER_HOUR",
+            message="Too many sign-in codes requested for this email. Please try again later.",
+        )
+
+    def _enforce_submit_limit(request: Request, user: dict):
+        if is_admin(user):
+            return
+        _enforce_rate_limit(
+            bucket="submit",
+            key=client_ip(request),
+            window_seconds=HOUR_SECONDS,
+            env_name="IP_SUBMITS_PER_HOUR",
+            message="Too many submissions from your network this hour. Please try again later.",
+        )
 
     def resource_snapshot():
         try:
@@ -779,10 +829,13 @@ def create_app(
         }
 
     # Signup and login answer 200 either way so responses never reveal whether
-    # an address is registered or suspended.
+    # an address is registered or suspended. Rate limits are charged before the
+    # account lookup for the same reason.
     @app.post("/auth/signup", response_model=AuthOkResponse)
-    def auth_signup(body: AuthSignupRequest):
+    def auth_signup(body: AuthSignupRequest, request: Request):
         email = str(body.email)
+        _enforce_signup_limit(request)
+        _enforce_otp_send_limit(email)
         user = auth.get_user_by_email(email)
         if user is None:
             user = auth.create_user(email=email, username=body.username)
@@ -794,6 +847,7 @@ def create_app(
     @app.post("/auth/login", response_model=AuthOkResponse)
     def auth_login(body: AuthLoginRequest):
         email = str(body.email)
+        _enforce_otp_send_limit(email)
         user = auth.get_user_by_email(email)
         if user is None or user["status"] != "active":
             return AuthOkResponse()
@@ -815,12 +869,11 @@ def create_app(
             raise HTTPException(status_code=403, detail="Account suspended")
         auth.mark_email_verified(user["id"])
         token = new_session_token()
-        client_ip = request.client.host if request.client else None
         auth.create_session(
             user_id=user["id"],
             token_hash=hash_secret(token),
             expires_at=_auth_expires_at(SESSION_TTL_SECONDS),
-            ip=client_ip,
+            ip=client_ip(request),
         )
         auth.mark_login(user["id"])
         _set_session_cookie(response, token)
@@ -943,6 +996,7 @@ def create_app(
     def create_batch(
         request: BatchCreateRequest,
         background_tasks: BackgroundTasks,
+        http_request: Request,
         _user: dict = Depends(require_user),
     ):
         request = request.model_copy(update=_SERVER_PATH_UPDATES)
@@ -977,6 +1031,7 @@ def create_app(
                 store=store,
                 config=QuotaConfig.from_env(),
             )
+            _enforce_submit_limit(http_request, _user)
             batch = batches.create_batch(
                 profile=request.profile,
                 organism=request.organism,
@@ -1027,6 +1082,7 @@ def create_app(
     def create_job(
         request: AnnotationJobRequest,
         background_tasks: BackgroundTasks,
+        http_request: Request,
         _user: dict = Depends(require_user),
     ):
         request = _server_owned_job_request(request)
@@ -1037,6 +1093,7 @@ def create_app(
         _require_worker_fleet()
         with submission_lock:
             check_submission(user=_user, job_count=1, store=store, config=QuotaConfig.from_env())
+            _enforce_submit_limit(http_request, _user)
             job = store.create_job(stored_request, submitted_by_user_id=_user["id"])
         _maybe_run_jobs_inline()
         if run_jobs_inline:

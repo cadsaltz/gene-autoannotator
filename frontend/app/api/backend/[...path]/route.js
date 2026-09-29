@@ -22,6 +22,9 @@ async function buildBackendUrl(request, context) {
 
 async function proxyRequest(request, context) {
   const backendUrl = await buildBackendUrl(request, context);
+  // x-forwarded-for passes through as received. Next does not reliably expose
+  // the socket address, so production depends on Caddy setting the header;
+  // without it FastAPI sees this proxy as the client.
   const headers = copyProxyHeaders(request.headers);
   headers.delete("host");
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fetchBackendResponse } from "./backendProxy.js";
+import { copyProxyHeaders, fetchBackendResponse } from "./backendProxy.js";
 
 test("fetchBackendResponse returns service unavailable when FastAPI cannot be reached", async () => {
   const response = await fetchBackendResponse(
@@ -47,4 +47,16 @@ test("fetchBackendResponse forwards Set-Cookie via getSetCookie", async () => {
   assert.deepEqual(response.headers.getSetCookie(), [
     "ga_session=abc; Path=/; HttpOnly; SameSite=Lax",
   ]);
+});
+
+test("copyProxyHeaders keeps an incoming x-forwarded-for header unchanged", () => {
+  const copied = copyProxyHeaders(
+    new Headers({
+      "x-forwarded-for": "203.0.113.7, 10.0.0.2",
+      connection: "keep-alive",
+    }),
+  );
+
+  assert.equal(copied.get("x-forwarded-for"), "203.0.113.7, 10.0.0.2");
+  assert.equal(copied.get("connection"), null);
 });

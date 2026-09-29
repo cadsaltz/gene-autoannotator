@@ -1,3 +1,5 @@
+// x-forwarded-for must never be listed here: the backend keys per-IP rate
+// limits and session IPs on it.
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "content-encoding",
