@@ -266,3 +266,31 @@ queue state is persisted in a Docker volume mounted at `/state/backend`
 are stored locally under `data/profiles` (mount or set `PROFILES_DIR` if
 needed). The frontend proxy uses `BACKEND_API_BASE_URL=http://backend:8000`
 inside the compose network.
+
+## Account management CLI
+
+`python -m backend.manage` changes accounts directly in SQLite. It is the
+lockout-recovery path: the bootstrap admin is only auto-promoted once, and
+unlike the admin API the CLI does not block removing the last admin (it prints
+a warning instead). Every change is written to the audit log with no actor and
+`"source": "cli"`.
+
+```bash
+python -m backend.manage list-users [--query alice]
+python -m backend.manage set-role EMAIL {user,admin}
+python -m backend.manage set-status EMAIL {active,suspended}  # suspending also revokes sessions
+python -m backend.manage revoke-sessions EMAIL
+```
+
+Run it from the repo root locally; it uses the same default database as the API
+(`backend/jobs.sqlite3`, relative to the working directory). Pass `--db PATH`
+to target another file. With Docker Compose, run it inside the backend
+container so it sees the `/state/backend` volume:
+
+```bash
+docker compose -f deploy/compose/docker-compose.backend.yml exec backend \
+  python -m backend.manage set-role solavolantes@gmail.com user
+```
+
+Emails match case-insensitively. Exit codes: `0` success, `1` unknown email,
+invalid role/status, or missing database, `2` usage error.

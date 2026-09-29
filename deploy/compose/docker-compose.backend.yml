@@ -25,6 +25,9 @@ services:
       - profiles-data:/app/data/profiles
     environment:
       PROFILES_DIR: /app/data/profiles
+      # Lets `docker compose exec backend python -m backend.manage ...` import
+      # the app from /state, where the relative DB path must resolve.
+      PYTHONPATH: /app
 
   frontend:
     build:

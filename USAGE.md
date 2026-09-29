@@ -478,6 +478,11 @@ Paper readers sign in with a **6-digit email code** (not magic links).
 
 Copy auth-related keys from `backend.env.example` into backend `.env`.
 
+To change a role or status from the server shell (including recovering admin
+access), use the management CLI, e.g.
+`python -m backend.manage set-role EMAIL admin`. See "Account management CLI"
+in `backend/README.md`.
+
 ### Manual smoke checklist
 
 Run automated API coverage first:

@@ -1,6 +1,5 @@
 import logging
 import os
-import shutil
 import threading
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -28,6 +27,8 @@ from .auth import (
 from .auth_store import AuthStore
 from .batch_store import BatchStore
 from .client_ip import client_ip
+from .db_path import DEFAULT_DB_PATH, LEGACY_DB_PATH  # noqa: F401 - re-exported
+from .db_path import migrate_legacy_db_if_needed as _migrate_legacy_db_if_needed
 from . import email_sender
 from .job_store import JobStore
 from .quotas import (
@@ -169,27 +170,6 @@ def _regex_model_health():
         }
     except Exception as exc:  # noqa: BLE001 - health reports Ollama failures without failing /health.
         return {"status": "unavailable", "model": model, "message": str(exc)}
-
-
-DEFAULT_DB_PATH = Path("backend/jobs.sqlite3")
-LEGACY_DB_PATH = Path("coordinator/jobs.sqlite3")
-
-
-def _migrate_legacy_db_if_needed(dest: Path = DEFAULT_DB_PATH) -> Path:
-    """One-time copy of coordinator SQLite into backend/ if only the old path exists."""
-    dest = Path(dest)
-    if dest.exists():
-        return dest
-    legacy = LEGACY_DB_PATH
-    if not legacy.exists():
-        return dest
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(legacy, dest)
-    for suffix in ("-wal", "-shm"):
-        side = Path(str(legacy) + suffix)
-        if side.exists():
-            shutil.copy2(side, Path(str(dest) + suffix))
-    return dest
 
 
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "2000"))
