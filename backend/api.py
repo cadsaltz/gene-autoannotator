@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import threading
@@ -415,7 +416,7 @@ def create_app(
         finally:
             stop_reaper.set()
             if alert_loop is not None:
-                alert_loop.stop(timeout=5)
+                await asyncio.to_thread(alert_loop.stop, timeout=5)
 
     app = FastAPI(title="Gene Autoannotator API", lifespan=lifespan)
     app.state.audit_store = audit

@@ -38,19 +38,29 @@ class FakeStore:
 
 
 class FakeWorkers:
-    def __init__(self, connected=1):
+    """`connected` counts ready workers; draining ones are online but take no jobs."""
+
+    def __init__(self, connected=1, *, provisioning=0, draining=0):
         self.connected = connected
+        self.provisioning = provisioning
+        self.draining = draining
         self.offline_after = []
 
     def summary(self, *, offline_after_seconds=60):
         self.offline_after.append(offline_after_seconds)
+        online = self.connected + self.provisioning + self.draining
         return {
-            "connected": self.connected,
-            "total": self.connected,
+            "connected": online,
+            "total": online,
             "used_slots": 0,
-            "available_slots": self.connected,
-            "total_slots": self.connected,
-            "states": {},
+            "available_slots": self.connected + self.provisioning,
+            "total_slots": online,
+            "states": {
+                "ready": self.connected,
+                "provisioning": self.provisioning,
+                "draining": self.draining,
+                "offline": 0,
+            },
         }
 
 
@@ -159,6 +169,31 @@ def test_no_worker_rule_disabled_by_zero():
         no_worker_since=NOW - timedelta(hours=2),
     )
     assert alerts == []
+
+
+def test_no_worker_alert_fires_when_only_draining_workers_remain():
+    store, workers = FakeStore(queued=3), FakeWorkers(connected=0, draining=2)
+    since = next_no_worker_since(
+        store=store, workers=workers, now=NOW - timedelta(minutes=15), config=config(), previous=None
+    )
+    assert since == NOW - timedelta(minutes=15)
+    alerts = evaluate_alerts(
+        store=store, workers=workers, now=NOW, config=config(), no_worker_since=since
+    )
+    assert keys(alerts) == {"no_worker"}
+
+
+def test_provisioning_worker_counts_as_job_taking():
+    assert (
+        next_no_worker_since(
+            store=FakeStore(queued=3),
+            workers=FakeWorkers(connected=0, provisioning=1),
+            now=NOW,
+            config=config(),
+            previous=None,
+        )
+        is None
+    )
 
 
 def test_evaluate_uses_configured_offline_window():
@@ -317,6 +352,17 @@ def test_config_bad_values_fall_back_to_defaults(monkeypatch, caplog):
         assert name in warned
 
 
+def test_config_clamps_check_interval_to_one_day(monkeypatch):
+    monkeypatch.setenv("ALERT_CHECK_SECONDS", "1e12")
+    assert AlertConfig.from_env().check_seconds == 86400
+
+
+def test_config_accepts_float_strings_for_int_settings(monkeypatch):
+    monkeypatch.setenv("ALERT_QUEUE_DEPTH", "40.0")
+    cfg = AlertConfig.from_env()
+    assert cfg.queue_depth == 40 and isinstance(cfg.queue_depth, int)
+
+
 def test_config_zero_disables(monkeypatch):
     monkeypatch.setenv("ALERT_CHECK_SECONDS", "0")
     monkeypatch.setenv("ALERT_QUEUE_DEPTH", "-1")
@@ -386,6 +432,20 @@ def test_loop_dedupes_per_key():
     assert len(subjects) == 2 and subjects[0] != subjects[1]
 
 
+def test_loop_realerts_new_incident_after_condition_resolves():
+    outbox = Outbox()
+    store = FakeStore(queued=60)
+    loop = make_loop(store, FakeWorkers(), outbox, admins=("a@example.com",))
+    loop.run_once(now=NOW)
+
+    store.queued = 0
+    loop.run_once(now=NOW + timedelta(minutes=5))
+
+    store.queued = 60
+    loop.run_once(now=NOW + timedelta(minutes=10))
+    assert len(outbox.sent) == 2
+
+
 def test_loop_tracks_no_worker_start_across_runs():
     outbox = Outbox()
     loop = make_loop(
@@ -441,6 +501,32 @@ def test_loop_thread_survives_errors_and_stops_cleanly():
     finally:
         loop.stop(timeout=5)
     assert not loop.is_alive()
+
+
+def test_loop_start_twice_keeps_one_thread():
+    loop = make_loop(FakeStore(), FakeWorkers(), Outbox(), check_seconds=60)
+    loop.start()
+    try:
+        first = loop._thread
+        loop.start()
+        assert loop._thread is first
+    finally:
+        loop.stop(timeout=5)
+    assert not loop.is_alive()
+
+
+def test_job_store_indexes_finished_at(tmp_path):
+    import sqlite3
+
+    from backend.job_store import JobStore
+
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    with sqlite3.connect(store.db_path) as connection:
+        columns = [
+            row[2]
+            for row in connection.execute("PRAGMA index_info(idx_jobs_finished)").fetchall()
+        ]
+    assert columns == ["finished_at", "status"]
 
 
 # --- email transport and admin lookup --------------------------------------

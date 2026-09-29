@@ -82,6 +82,10 @@ class JobStore:
                 "CREATE INDEX IF NOT EXISTS idx_jobs_status_created "
                 "ON annotation_jobs(status, created_at)"
             )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jobs_finished "
+                "ON annotation_jobs(finished_at, status)"
+            )
 
     def _ensure_column(self, connection, column_name, column_type):
         columns = {

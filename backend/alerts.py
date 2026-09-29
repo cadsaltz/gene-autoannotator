@@ -19,6 +19,7 @@ FOOTER = (
 )
 
 DEFAULT_CHECK_SECONDS = 300
+MAX_CHECK_SECONDS = 86400
 DEFAULT_QUEUE_DEPTH = 50
 DEFAULT_NO_WORKER_MINUTES = 15
 DEFAULT_FAILURE_RATE = 0.5
@@ -29,13 +30,13 @@ def _env_number(name, default, cast):
     if raw is None:
         return default
     try:
-        value = cast(raw.strip())
+        value = float(raw.strip())
     except ValueError:
         value = None
     if value is None or not math.isfinite(value):
         log.warning("Ignoring invalid %s=%r; using default %s", name, raw, default)
         return default
-    return value
+    return cast(value)
 
 
 def _fmt(value):
@@ -60,7 +61,11 @@ class AlertConfig:
     @classmethod
     def from_env(cls, *, offline_after_seconds=60) -> "AlertConfig":
         return cls(
-            check_seconds=_env_number("ALERT_CHECK_SECONDS", DEFAULT_CHECK_SECONDS, float),
+            # Event.wait raises OverflowError beyond threading.TIMEOUT_MAX.
+            check_seconds=min(
+                _env_number("ALERT_CHECK_SECONDS", DEFAULT_CHECK_SECONDS, float),
+                MAX_CHECK_SECONDS,
+            ),
             queue_depth=_env_number("ALERT_QUEUE_DEPTH", DEFAULT_QUEUE_DEPTH, int),
             no_worker_minutes=_env_number(
                 "ALERT_NO_WORKER_MINUTES", DEFAULT_NO_WORKER_MINUTES, float
@@ -75,7 +80,10 @@ class AlertConfig:
 
 
 def _online_workers(workers, config) -> int:
-    return workers.summary(offline_after_seconds=config.offline_after_seconds)["connected"]
+    # Draining workers are exempt from going offline, so counting them would let a
+    # crashed draining worker silence the no-worker alert forever.
+    states = workers.summary(offline_after_seconds=config.offline_after_seconds)["states"]
+    return states.get("ready", 0) + states.get("provisioning", 0)
 
 
 def next_no_worker_since(*, store, workers, now, config, previous):
@@ -177,6 +185,10 @@ class AlertLoop:
             config=self._config,
             no_worker_since=self._no_worker_since,
         )
+        active = {alert.key for alert in alerts}
+        for key in list(self._last_sent):
+            if key not in active:
+                del self._last_sent[key]
         due = [
             alert
             for alert in alerts
@@ -211,6 +223,9 @@ class AlertLoop:
                 log.exception("Admin alert check failed")
 
     def start(self):
+        if self.is_alive():
+            return
+        self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="admin-alerts", daemon=True)
         self._thread.start()
 
