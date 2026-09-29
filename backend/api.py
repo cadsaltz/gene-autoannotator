@@ -229,8 +229,8 @@ def _auth_expires_at(ttl_seconds: int) -> str:
     return (datetime.now(UTC) + timedelta(seconds=ttl_seconds)).isoformat()
 
 
-def _job_visible_to(job: dict, user: dict) -> bool:
-    return is_admin(user) or job.get("submitted_by_user_id") == user["id"]
+def _owned_or_admin(record: dict, user: dict) -> bool:
+    return is_admin(user) or record.get("submitted_by_user_id") == user["id"]
 
 
 def create_app(
@@ -573,13 +573,14 @@ def create_app(
         public_job["request"] = public_request
         if not is_admin(user):
             public_job.pop("submitted_by_user_id", None)
+            public_job.pop("output_path", None)
         return public_job
 
     def _visible_job_or_404(job_id, user):
         # 404 rather than 403 so job ids owned by others are indistinguishable
         # from ids that do not exist.
         job = store.get_job(job_id)
-        if job is None or not _job_visible_to(job, user):
+        if job is None or not _owned_or_admin(job, user):
             raise HTTPException(status_code=404, detail="Job not found")
         return job
 
@@ -980,7 +981,7 @@ def create_app(
     @app.get("/batches/{batch_id}", response_model=BatchDetailResponse)
     def get_batch(batch_id: str, _user: dict = Depends(require_user)):
         batch = batches.get_batch(batch_id)
-        if batch is None or not _job_visible_to(batch, _user):
+        if batch is None or not _owned_or_admin(batch, _user):
             raise HTTPException(status_code=404, detail="Batch not found")
         return {
             "id": batch["id"],
@@ -1015,7 +1016,7 @@ def create_app(
             job = store.get_job(job["id"])
         return {"job_id": job["id"], "status": job["status"]}
 
-    # Exclude unset fields so the owner id, popped for non-admins, is omitted
+    # Exclude unset fields so admin-only keys popped for non-admins are omitted
     # rather than serialized as null.
     @app.get(
         "/jobs",
@@ -1028,16 +1029,17 @@ def create_app(
         _user: dict = Depends(require_user),
     ):
         normalized_order = order if order in {"newest", "queue"} else "newest"
+        owner_filter = None if is_admin(_user) else _user["id"]
         return {
             "jobs": [
                 _public_job_record(job, _user)
                 for job in store.list_jobs(
                     order=normalized_order,
                     batch_id=batch_id,
-                    user_id=None if is_admin(_user) else _user["id"],
+                    user_id=owner_filter,
                 )
             ],
-            "queue": store.queue_summary(),
+            "queue": store.queue_summary(user_id=owner_filter),
         }
 
     @app.delete("/jobs/history")

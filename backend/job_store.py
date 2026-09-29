@@ -72,6 +72,10 @@ class JobStore:
                 "CREATE INDEX IF NOT EXISTS idx_jobs_owner "
                 "ON annotation_jobs(submitted_by_user_id, created_at)"
             )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jobs_status_created "
+                "ON annotation_jobs(status, created_at)"
+            )
 
     def _ensure_column(self, connection, column_name, column_type):
         columns = {
@@ -430,12 +434,20 @@ class JobStore:
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         params.append(limit)
 
+        # Positions are global across all owners and follow the claim order
+        # (created_at ASC), even when the listing itself is filtered.
         with self._connect() as connection:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(
                 f"""
-                SELECT *
-                FROM annotation_jobs
+                SELECT job.*,
+                    CASE WHEN job.status = 'queued' THEN (
+                        SELECT COUNT(*) FROM annotation_jobs ahead
+                        WHERE ahead.status = 'queued'
+                          AND (ahead.created_at < job.created_at
+                               OR (ahead.created_at = job.created_at AND ahead.id < job.id))
+                    ) + 1 END AS global_queue_position
+                FROM annotation_jobs job
                 {where_clause}
                 ORDER BY {order_clause}
                 LIMIT ?
@@ -443,7 +455,12 @@ class JobStore:
                 params,
             ).fetchall()
 
-        return self._add_queue_positions([self._row_to_job(row) for row in rows])
+        jobs = []
+        for row in rows:
+            job = self._row_to_job(row)
+            job["queue_position"] = row["global_queue_position"]
+            jobs.append(job)
+        return jobs
 
     def list_jobs_by_batch(self, batch_id, limit=5000):
         with self._connect() as connection:
@@ -491,14 +508,18 @@ class JobStore:
             ).fetchone()
         return int(row[0])
 
-    def queue_summary(self):
+    def queue_summary(self, *, user_id=None):
+        where_clause = "WHERE submitted_by_user_id = ?" if user_id is not None else ""
+        params = (user_id,) if user_id is not None else ()
         with self._connect() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT status, COUNT(*) AS count
                 FROM annotation_jobs
+                {where_clause}
                 GROUP BY status
-                """
+                """,
+                params,
             ).fetchall()
         counts = {status: count for status, count in rows}
         return {
@@ -540,13 +561,3 @@ class JobStore:
             "result_available": result is not None,
             "queue_position": None,
         }
-
-    def _add_queue_positions(self, jobs):
-        position = 1
-        for job in sorted(jobs, key=lambda item: item["created_at"]):
-            if job["status"] == "queued":
-                job["queue_position"] = position
-                position += 1
-            else:
-                job["queue_position"] = None
-        return jobs
