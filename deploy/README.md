@@ -137,6 +137,16 @@ containers and volumes, and Caddy on host ports 8080/8443.
    and fill in `WORKER_API_TOKEN` and `MONGO_URI`. Keep backups off in
    staging: its snapshots would land in the production GridFS bucket, and
    `restore --id latest` could later pick one.
+
+   **MongoDB is shared unless you separate it.** The database name is
+   hardcoded (`gene_autoannotator` in `backend/annotation_store.py` and
+   `frontend/lib/annotationStore.js`; there is no env override), so a staging
+   `MONGO_URI` for the production cluster reads and writes the production
+   annotation library: every job completed on staging lands there. A separate
+   Atlas user alone does not help. Use a separate cluster for staging (a free
+   M0 in its own Atlas project, or a throwaway `mongo` container) in both
+   `backend.staging.env` and `frontend.staging.env`, or accept that staging
+   test annotations appear in production.
 4. Optional, to test with real accounts, jobs, and profiles: seed staging from
    the running stack without stopping it (SQLite online backup; the source is
    only read):
@@ -192,7 +202,21 @@ Preparation (no downtime):
    $OLD ps
    ```
 
-4. Pick a quiet moment: check /fleet for running jobs.
+4. Pre-issue the certificate so it isn't part of the downtime. Check that
+   nothing else listens on 80/443 (`ss -ltn '( sport = :80 or sport = :443 )'`
+   prints only the header), then start Caddy alone:
+
+   ```bash
+   $DC up -d --no-deps caddy
+   $DC logs caddy | grep -i 'certificate obtained'
+   ```
+
+   Until the cutover the site answers 502 (no backend or frontend yet), and
+   the update cron (if installed) skips because the backend is not running.
+   If 80/443 are taken, skip this; the first request after `up -d` then waits
+   for issuance (seconds to about a minute).
+5. Don't install the update cron yet (see Updates).
+6. Pick a quiet moment: check /fleet for running jobs.
 
 Cutover (estimated downtime 1 to 3 minutes):
 
@@ -222,7 +246,9 @@ over plain HTTP (the same exposure as today's backend port), so
 `http://<host>:8000` keeps working. Move `BACKEND_URL` to `https://<domain>`,
 then drop the override (`$DC up -d`) once running workers have cycled.
 
-Rollback (the old volumes are exactly as they were at cutover):
+Rollback (the old volumes are exactly as they were at cutover). If the update
+cron is installed, comment it out first; it skips a stopped stack, but you
+don't want it running while you switch back and forth:
 
 ```bash
 $DC stop                  # frees 80/443 (and 8000 if the override was used)
@@ -240,7 +266,11 @@ for a while.
 Re-running the migration refuses if the target volumes are not empty; pass
 `--force` to move their contents into `.pre-migrate-<timestamp>/` inside the
 volume (nothing is deleted). Sources can also be given explicitly as volume
-names or absolute host directories: `--from-backend`, `--from-profiles`.
+names or absolute host directories: `--from-backend`, `--from-profiles`. For a
+host directory the script cannot tell whether a backend still uses it and
+only warns, so stop the old backend yourself. `--online` into the production
+project `gaa` is refused (writes after the copy would be lost) unless you add
+`--i-know-writes-are-lost`.
 
 ### Moving to another server
 
@@ -251,20 +281,56 @@ profiles to MongoDB every `BACKUP_INTERVAL_SECONDS`. On the new server:
 
 ## Updates
 
-`deploy/scripts/server-update.sh` runs preflight on both env files (skips the
-update if either fails), then `docker compose pull` and `up -d` (only
-containers whose image changed are recreated), then `docker image prune -f`
-(dangling images only). It holds an `flock` so overlapping runs exit, and logs
-to `/var/log/gaa-update.log`. Install for root (Docker access and the log path):
+`deploy/scripts/server-update.sh`, each run:
+
+1. Takes an `flock` (`/run/lock/gaa-update.lock`, else `/tmp`); an
+   overlapping run exits.
+2. Exits with `stack not running; skipping` unless the project's backend is
+   running, so it never starts a stack you stopped (before cutover, during a
+   rollback, while only Caddy runs to pre-issue the certificate).
+3. Runs preflight on both env files (an absolute `BACKEND_ENV_FILE` works);
+   a failure leaves the running stack alone.
+4. `docker compose pull` and `up -d`: only containers whose image changed are
+   recreated. It logs the image IDs before and after, and tags the
+   pre-update backend and frontend images `:previous`.
+5. Waits up to 90 s for the backend's `/healthz`; if it does not answer it
+   logs `ERROR: backend is not healthy ...` with the rollback command (it does
+   not roll back by itself). Otherwise `docker image prune -f` (dangling
+   images only; `:previous` stays).
+
+It logs to `/var/log/gaa-update.log`. Install for root (Docker access and the
+log path) only once the stack runs the way it should stay:
 
 ```cron
 */5 * * * * /path/to/checkout/deploy/scripts/server-update.sh
 ```
 
-Override `GAA_PROJECT`, `GAA_COMPOSE_FILE`, `GAA_ENV_FILE`, `GAA_UPDATE_LOG`,
-`GAA_UPDATE_LOCK` as needed. It does not `git pull`; compose file or Caddyfile
-changes need a manual `git pull` and `$DC up -d` (plus a Caddy reload for the
-Caddyfile). Add a logrotate rule for the log if it grows.
+**Pass every compose file the stack was started with.** The cron runs
+`up -d` with its own `-f` list; with only the prod file it would drop the
+worker-port override within five minutes. Either install the cron after the
+override is dropped, or list both files:
+
+```cron
+*/5 * * * * GAA_COMPOSE_FILES=/path/to/checkout/deploy/compose/docker-compose.prod.yml:/path/to/checkout/deploy/compose/docker-compose.worker-port.yml /path/to/checkout/deploy/scripts/server-update.sh
+```
+
+Other overrides: `GAA_PROJECT`, `GAA_ENV_FILE`, `GAA_UPDATE_LOG`,
+`GAA_UPDATE_LOCK`, `GAA_HEALTH_TIMEOUT`. It does not `git pull`; compose file
+or Caddyfile changes need a manual `git pull` and `$DC up -d` (plus a Caddy
+reload for the Caddyfile). Add a logrotate rule for the log if it grows.
+
+Rolling back a bad image update:
+
+1. Comment out the cron line (otherwise the next run pulls `prod` again).
+2. In `compose.env` set `IMAGE_TAG=previous` (the pair that ran before the
+   last update, tagged locally by the script), or `IMAGE_TAG=sha-<shortsha>`
+   of a known-good commit from GHCR.
+3. `$DC up -d`, check `/healthz` and a login.
+4. After `prod` is fixed, set `IMAGE_TAG=prod` again and re-enable the cron.
+
+`:previous` only covers the most recent update; the log keeps the image IDs of
+every update (`docker image inspect <id>` shows its digest if the image is
+still present).
 
 ## Operations
 

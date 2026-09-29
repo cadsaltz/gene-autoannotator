@@ -48,7 +48,7 @@ services:
     logging: *logging
 
   caddy:
-    image: caddy:2
+    image: caddy:2.10
     restart: unless-stopped
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in compose.env (a hostname, or :80 for staging)}

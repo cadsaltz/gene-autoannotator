@@ -50,7 +50,7 @@ if command -v caddy >/dev/null 2>&1; then
   done
 elif docker info >/dev/null 2>&1; then
   for site in ":80" "annotator.example.org"; do
-    docker run --rm -e SITE_ADDRESS="$site" -v "$tmp/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 \
+    docker run --rm -e SITE_ADDRESS="$site" -v "$tmp/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10 \
       caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
     echo "OK caddy validate (docker): SITE_ADDRESS=$site"
   done

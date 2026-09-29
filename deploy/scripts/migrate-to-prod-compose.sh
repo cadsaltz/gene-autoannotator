@@ -14,13 +14,16 @@
 #   --from-backend SOURCE     old backend-data volume or absolute host dir (default: found by label)
 #   --from-profiles SOURCE    old profiles-data volume or absolute host dir (default: found by label)
 #   --image IMAGE             helper image with python3           (default: the prod backend image)
-#   --online                  copy while the old backend is running (staging seed)
+#   --online                  copy while the old backend is running (staging seed; refused
+#                             for the production project without --i-know-writes-are-lost)
 #   --force                   target not empty: move its files into .pre-migrate-<timestamp>/ first
 #   --dry-run                 print what would happen, change nothing
 set -euo pipefail
 
+PROD_PROJECT=gaa
 FROM_PROJECT=compose
-TO_PROJECT=gaa
+TO_PROJECT="$PROD_PROJECT"
+WRITES_LOST_OK=0
 FROM_BACKEND=""
 FROM_PROFILES=""
 IMAGE="ghcr.io/cadsaltz/gene-autoannotator-backend:${IMAGE_TAG:-prod}"
@@ -29,7 +32,7 @@ FORCE=0
 DRY_RUN=0
 
 usage() {
-  sed -n '11,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '11,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -45,12 +48,19 @@ while [[ $# -gt 0 ]]; do
     --from-profiles) FROM_PROFILES="${2:?}"; shift 2 ;;
     --image) IMAGE="${2:?}"; shift 2 ;;
     --online) ONLINE=1; shift ;;
+    --i-know-writes-are-lost) WRITES_LOST_OK=1; shift ;;
     --force) FORCE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown option: $1" ;;
   esac
 done
+
+if [[ "$ONLINE" == 1 && "$TO_PROJECT" == "$PROD_PROJECT" && "$WRITES_LOST_OK" != 1 ]]; then
+  die "--online into the production project '$PROD_PROJECT' loses every write the old
+  backend makes after the copy (sign-ups, job results). Stop the old backend and run
+  without --online, or add --i-know-writes-are-lost."
+fi
 
 command -v docker >/dev/null 2>&1 || die "docker is not installed"
 
@@ -97,7 +107,9 @@ containers_using() {
   docker ps -q --filter "volume=$1"
 }
 
-if [[ "$SRC_BACKEND" != /* && "$ONLINE" != 1 && -n "$(containers_using "$SRC_BACKEND")" ]]; then
+if [[ "$SRC_BACKEND" == /* && "$ONLINE" != 1 ]]; then
+  echo "warning: cannot check whether a running backend uses $SRC_BACKEND; make sure the old backend is stopped" >&2
+elif [[ "$ONLINE" != 1 && -n "$(containers_using "$SRC_BACKEND")" ]]; then
   die "a running container uses $SRC_BACKEND. Stop the old backend first
   (docker compose -f deploy/compose/docker-compose.backend.yml stop backend frontend),
   or pass --online to copy from the running backend (staging seed only)."

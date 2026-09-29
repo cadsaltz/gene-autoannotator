@@ -51,7 +51,7 @@ def test_app_images_come_from_ghcr_with_image_tag(prod):
     services = prod["services"]
     assert services["backend"]["image"] == "ghcr.io/cadsaltz/gene-autoannotator-backend:${IMAGE_TAG:-prod}"
     assert services["frontend"]["image"] == "ghcr.io/cadsaltz/gene-autoannotator-frontend:${IMAGE_TAG:-prod}"
-    assert services["caddy"]["image"].startswith("caddy:2")
+    assert services["caddy"]["image"] == "caddy:2.10"
 
 
 def test_only_caddy_publishes_ports(prod):
@@ -309,6 +309,24 @@ def test_backend_example_lists_every_env_name_the_backend_reads(prod):
     aliases = {"MONGODB_URI": "MONGO_URI"}
     missing = sorted(name for name in names if aliases.get(name, name) not in documented)
     assert missing == []
+
+
+def test_backend_example_lists_autoannotation_env_the_backend_loads():
+    import subprocess
+    import sys
+
+    loaded = subprocess.run(
+        [sys.executable, "-c", "import sys, backend.api; print('autoannotation.go_resolution' in sys.modules)"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert loaded == "False"
+    documented = _env_names(BACKEND_ENV)
+    for name in ("NCBI_API_KEY", "ENTREZ_API_KEY", "PROFILES_SEED_DIR"):
+        assert documented[name][0] is False, f"{name} should be listed, commented out"
+    assert "GO_BASIC_OBO_PATH" not in documented
 
 
 def test_backend_example_sets_production_values():

@@ -243,6 +243,28 @@ def test_offline_refuses_while_the_old_backend_runs_and_online_copies(docker):
     copy.close()
 
 
+def test_online_copy_into_the_production_project_needs_explicit_consent(docker):
+    root, _bin = docker
+    _old_stack(root, leave_wal=False)
+
+    refused = _run(docker, "--online")
+    assert refused.returncode == 1
+    assert "--i-know-writes-are-lost" in refused.stderr
+    assert not (root / "volumes" / "gaa_backend-data").exists()
+
+    allowed = _run(docker, "--online", "--i-know-writes-are-lost")
+    assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+    assert (root / "volumes" / "gaa_backend-data" / "jobs.sqlite3").exists()
+
+
+def test_host_directory_source_warns_that_the_running_check_is_skipped(docker, tmp_path):
+    root, _bin = docker
+    backend, profiles, _ = _old_stack(root, leave_wal=False)
+    result = _run(docker, "--from-backend", str(backend), "--from-profiles", str(profiles))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "cannot check whether a running backend uses" in result.stderr
+
+
 def test_refuses_while_the_target_stack_runs(docker):
     root, _bin = docker
     _old_stack(root, leave_wal=False)
