@@ -233,3 +233,8 @@ textarea {
   border-left-color: #b9ad99;
   background: var(--surface);
 }
+
+.job-card-cancelled {
+  border-left-color: var(--line);
+  background: var(--surface-muted);
+}

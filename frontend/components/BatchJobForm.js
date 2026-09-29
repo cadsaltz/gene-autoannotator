@@ -9,6 +9,7 @@ import {
   parseGeneListText,
   readGeneFile,
 } from "../lib/form";
+import { describeSubmitError } from "../lib/queueStatus";
 
 const GENE_LIST_PLACEHOLDER =
   "One gene per line — locus (e.g. Rv0001) or gene name (e.g. dnaA). Commas and tabs also work.";
@@ -84,7 +85,7 @@ export default function BatchJobForm({
       setPreview(result);
     } catch (error) {
       setPreview(null);
-      setStatusMessage(error.message);
+      setStatusMessage(describeSubmitError(error));
     } finally {
       setIsValidating(false);
     }
@@ -149,7 +150,7 @@ export default function BatchJobForm({
       setPreview(null);
       setSelectedLoci({});
     } catch (error) {
-      setStatusMessage(error.message);
+      setStatusMessage(describeSubmitError(error));
     } finally {
       setIsSubmitting(false);
     }

@@ -16,6 +16,21 @@ export function shouldShowRunningSpinner(job) {
   return job?.status === "running";
 }
 
+export function isCancellable(job) {
+  return job?.status === "queued" || job?.status === "running";
+}
+
+export function getAnnotationQuery(job) {
+  const request = job?.request || {};
+  return (
+    request.locus ||
+    request.name ||
+    request.target_preflight?.resolved_name ||
+    request.target_preflight?.primary_identifier ||
+    ""
+  );
+}
+
 export function filterJobsByBatch(jobs, batchId) {
   const normalizedJobs = Array.isArray(jobs) ? jobs : [];
   if (!batchId) {

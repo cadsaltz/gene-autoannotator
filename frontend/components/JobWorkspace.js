@@ -2,33 +2,32 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 
 import BatchJobForm from "./BatchJobForm";
+import SingleJobForm, { queueSingleJob, useJobForm } from "./SingleJobForm";
 import {
+  cancelJob,
   clearFinishedJobHistory,
-  createJob,
   getAnnotationHealth,
   getBatch,
   getHealth,
   getProfiles,
   listJobs,
-  validateJob,
 } from "../lib/api";
-import {
-  buildJobPayload,
-  formatJobElapsed,
-} from "../lib/form";
+import { formatJobElapsed } from "../lib/form";
 import {
   filterJobsByBatch,
+  getAnnotationQuery,
   getHiddenJobCount,
   getJobDisplayName,
   getVisibleJobs,
+  isCancellable,
   shouldShowRunningSpinner,
 } from "../lib/jobQueue";
 import { buildJobsHealthDisplay } from "../lib/healthFormat";
 import { formatJobStepLabel, progressPercent } from "../lib/jobProgress";
+import { describeSubmitError } from "../lib/queueStatus";
 
 function JobsHealthBanner({ health, annotationHealth }) {
   const display = buildJobsHealthDisplay(health, annotationHealth);
@@ -71,27 +70,19 @@ const stepLabels = {
   saving_result: "Saving result",
   completed: "Completed",
   failed: "Failed",
-};
-
-const emptyCustomFields = {
-  organism: "",
-  strain: "",
-  locusRegex: "",
-  searchTerms: "",
-  targetPatterns: "",
-  offTargetPatterns: "",
-  excludedSpeciesPatterns: "",
+  cancelled: "Cancelled",
 };
 
 function statusTone(status) {
   if (status === "completed") return "job-card-completed";
   if (status === "failed") return "job-card-failed";
   if (status === "running") return "job-card-running";
+  if (status === "cancelled") return "job-card-cancelled";
   return "job-card-queued";
 }
 
 function summarizeJobStatuses(jobs) {
-  const counts = { queued: 0, running: 0, completed: 0, failed: 0 };
+  const counts = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
   for (const job of jobs) {
     if (Object.hasOwn(counts, job.status)) {
       counts[job.status] += 1;
@@ -122,7 +113,8 @@ function BatchSummaryCard({ batchId, batchDetail, queueCounts, batchFilterActive
 
       <p className="workbench-muted mt-4 text-sm">
         {queueCounts.running || 0} running · {queueCounts.queued || 0} queued ·{" "}
-        {queueCounts.completed || 0} completed · {queueCounts.failed || 0} failed
+        {queueCounts.completed || 0} completed · {queueCounts.failed || 0} failed ·{" "}
+        {queueCounts.cancelled || 0} cancelled
       </p>
 
       <div
@@ -159,15 +151,10 @@ function BatchSummaryCard({ batchId, batchDetail, queueCounts, batchFilterActive
   );
 }
 
-function JobTile({ job }) {
+function JobTile({ job, onCancel }) {
   const elapsed = formatJobElapsed(job);
   const request = job.request || {};
-  const annotationQuery =
-    request.locus ||
-    request.name ||
-    request.target_preflight?.resolved_name ||
-    request.target_preflight?.primary_identifier ||
-    "";
+  const annotationQuery = getAnnotationQuery(job);
   const step = formatJobStepLabel(job, stepLabels);
   const showSpinner = shouldShowRunningSpinner(job);
 
@@ -194,13 +181,26 @@ function JobTile({ job }) {
           <span className="rounded-full border workbench-border bg-white/60 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#3f4b43]">
             {job.status}
           </span>
+          {isCancellable(job) ? (
+            <button
+              type="button"
+              onClick={() => onCancel(job)}
+              className="workbench-button workbench-button-secondary"
+            >
+              Cancel
+            </button>
+          ) : null}
         </div>
       </div>
 
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#e3dbcf]">
         <div
           className={`h-full rounded-full ${
-            job.status === "failed" ? "bg-[#994f56]" : "bg-[#557864]"
+            job.status === "failed"
+              ? "bg-[#994f56]"
+              : job.status === "cancelled"
+                ? "bg-[#b9ad99]"
+                : "bg-[#557864]"
           }`}
           style={{ width: `${progressPercent(job)}%` }}
         />
@@ -243,38 +243,19 @@ function JobTile({ job }) {
 }
 
 export default function JobWorkspace() {
-  const searchParams = useSearchParams();
   const [health, setHealth] = useState(null);
   const [annotationHealth, setAnnotationHealth] = useState(null);
   const [profiles, setProfiles] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [showAllJobs, setShowAllJobs] = useState(false);
-  const [queue, setQueue] = useState({ queued: 0, running: 0, completed: 0, failed: 0 });
+  const [queue, setQueue] = useState({ queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0 });
   const [statusMessage, setStatusMessage] = useState("");
   const [submitMode, setSubmitMode] = useState("single");
   const [activeBatchId, setActiveBatchId] = useState(null);
   const [batchFilterActive, setBatchFilterActive] = useState(false);
   const [batchDetail, setBatchDetail] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    profile: searchParams.get("profile") || "mtb-h37rv",
-    organism: "",
-    strain: "",
-    locus: searchParams.get("locus") || "",
-    name: searchParams.get("name") || "",
-    allowOnlineNameLookup: true,
-    refreshGeneNameCache: false,
-    cacheSuppliedName: false,
-    allowOrthologFallback: false,
-    orthologProfile: "",
-    orthologLocus: "",
-    orthologName: "",
-    locusRegex: "",
-    searchTerms: "",
-    targetPatterns: "",
-    offTargetPatterns: "",
-    excludedSpeciesPatterns: "",
-  });
+  const { form, updateForm, selectedProfile, isCustomProfile } = useJobForm(profiles);
 
   const apiAvailable = health?.status === "ok";
   const canSubmit = health !== null && apiAvailable && !isSubmitting;
@@ -287,7 +268,7 @@ export default function JobWorkspace() {
     if (activeBatchId) {
       return summarizeJobStatuses(filterJobsByBatch(jobs, activeBatchId));
     }
-    return { queued: 0, running: 0, completed: 0, failed: 0 };
+    return { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
   }, [activeBatchId, batchDetail, jobs]);
   const hiddenJobCount = getHiddenJobCount(queueJobs);
   const visibleJobs = getVisibleJobs(queueJobs, showAllJobs);
@@ -360,51 +341,39 @@ export default function JobWorkspace() {
     };
   }, [activeBatchId]);
 
-  const selectedProfile = useMemo(
-    () => profiles.find((profile) => profile.profile_id === form.profile),
-    [profiles, form.profile],
-  );
-  const isCustomProfile = form.profile === "";
-
-  function updateForm(field, value) {
-    setForm((current) => {
-      if (field === "profile" && value !== "") {
-        return { ...current, ...emptyCustomFields, profile: value };
-      }
-      return { ...current, [field]: value };
-    });
-  }
-
   async function handleSubmit(event) {
     event.preventDefault();
     setStatusMessage("");
     setIsSubmitting(true);
 
     try {
-      const payload = buildJobPayload(form);
-      if (!payload.locus && !payload.name) {
-        throw new Error("Gene name or locus is required.");
-      }
-      const validation = await validateJob(payload);
-      if (!validation.valid) {
-        throw new Error("The target could not be submitted.");
-      }
-      const created = await createJob(payload);
-      const warningText = validation.warnings?.length
-        ? ` Warnings: ${validation.warnings.map((warning) => warning.message).join(" ")}`
-        : "";
-      setStatusMessage(`Queued job ${created.job_id}. It will run when earlier jobs finish.${warningText}`);
+      setStatusMessage(await queueSingleJob(form));
       await refreshJobs({ updateStatusOnError: false });
     } catch (error) {
-      setStatusMessage(error.message);
+      setStatusMessage(describeSubmitError(error));
     } finally {
       setIsSubmitting(false);
     }
   }
 
+  async function handleCancel(job) {
+    const confirmed = window.confirm(`Cancel the job for ${getJobDisplayName(job)}?`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await cancelJob(job.id);
+      setStatusMessage(`Cancelled job ${job.id}.`);
+    } catch (error) {
+      setStatusMessage(error.message);
+    }
+    await refreshJobs({ updateStatusOnError: false });
+  }
+
   async function handleClearHistory() {
     const confirmed = window.confirm(
-      "Clear completed and failed jobs from the history? Queued and running jobs will stay.",
+      "Clear completed, failed, and cancelled jobs from the history? Queued and running jobs will stay.",
     );
     if (!confirmed) {
       return;
@@ -493,218 +462,17 @@ export default function JobWorkspace() {
           </div>
 
           {submitMode === "single" ? (
-          <form className="mt-6 grid gap-4" onSubmit={handleSubmit}>
-            <label className="grid gap-2 text-sm font-medium">
-              Profile
-              <select
-                value={form.profile}
-                onChange={(event) => updateForm("profile", event.target.value)}
-                className="workbench-input"
-              >
-                <option value="">Custom organism/strain</option>
-                {profiles.map((profile) => (
-                  <option key={profile.profile_id} value={profile.profile_id}>
-                    {profile.canonical_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {!isCustomProfile && selectedProfile ? (
-              <div className="workbench-muted-bg workbench-muted rounded-xl border workbench-border p-4 text-sm">
-                Expected locus format:{" "}
-                <code className="rounded bg-[#eee6d9] px-1 py-0.5">
-                  {selectedProfile.locus_regex}
-                </code>
-              </div>
-            ) : null}
-
-            {isCustomProfile ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-2 text-sm font-medium">
-                  Organism
-                  <input
-                    value={form.organism}
-                    onChange={(event) => updateForm("organism", event.target.value)}
-                    className="workbench-input"
-                    placeholder="Trypanosoma cruzi"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  Strain
-                  <input
-                    value={form.strain}
-                    onChange={(event) => updateForm("strain", event.target.value)}
-                    className="workbench-input"
-                    placeholder="CL Brener"
-                  />
-                </label>
-              </div>
-            ) : null}
-
-            <label className="grid gap-2 text-sm font-medium">
-              Locus (optional if gene name is supplied)
-              <input
-                value={form.locus}
-                onChange={(event) => updateForm("locus", event.target.value)}
-                className="workbench-input"
-                placeholder="Rv0001 or TcCLB.503799.4"
-              />
-            </label>
-
-            <label className="grid gap-2 text-sm font-medium">
-              Gene name (optional if locus is supplied)
-              <input
-                value={form.name}
-                onChange={(event) => updateForm("name", event.target.value)}
-                className="workbench-input"
-                placeholder="dnaA"
-              />
-            </label>
-
-            <div className="workbench-muted-bg grid gap-3 rounded-xl border workbench-border p-4 text-sm">
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={form.allowOnlineNameLookup}
-                  onChange={(event) => updateForm("allowOnlineNameLookup", event.target.checked)}
-                />
-                Allow online gene-name lookup
-              </label>
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={form.refreshGeneNameCache}
-                  onChange={(event) => updateForm("refreshGeneNameCache", event.target.checked)}
-                />
-                Refresh gene-name cache
-              </label>
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={form.cacheSuppliedName}
-                  onChange={(event) => updateForm("cacheSuppliedName", event.target.checked)}
-                />
-                Cache supplied gene name
-              </label>
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={form.allowOrthologFallback}
-                  onChange={(event) => updateForm("allowOrthologFallback", event.target.checked)}
-                />
-                Allow ortholog fallback
-              </label>
-            </div>
-
-            {form.allowOrthologFallback ? (
-              <div className="workbench-muted-bg grid gap-4 rounded-xl border workbench-border p-4 text-sm">
-                <p className="workbench-muted">
-                  Leave the ortholog fields blank for automatic ortholog lookup across
-                  all profiled organisms. Choose a profile without a locus to restrict
-                  automatic search to that organism. Supply a locus to pin a specific
-                  ortholog gene.
-                </p>
-                <label className="grid gap-2 font-medium">
-                  Ortholog organism/profile
-                  <select
-                    value={form.orthologProfile}
-                    onChange={(event) => updateForm("orthologProfile", event.target.value)}
-                    className="workbench-input"
-                  >
-                    <option value="">Automatic (any profiled organism)</option>
-                    {profiles.map((profile) => (
-                      <option key={profile.profile_id} value={profile.profile_id}>
-                        {profile.canonical_name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-2 font-medium">
-                  Ortholog locus
-                  <input
-                    value={form.orthologLocus}
-                    onChange={(event) => updateForm("orthologLocus", event.target.value)}
-                    className="workbench-input"
-                    placeholder="Leave blank to search within the selected profile"
-                  />
-                </label>
-                <label className="grid gap-2 font-medium">
-                  Ortholog gene name (optional)
-                  <input
-                    value={form.orthologName}
-                    onChange={(event) => updateForm("orthologName", event.target.value)}
-                    className="workbench-input"
-                    placeholder="octT"
-                  />
-                </label>
-              </div>
-            ) : null}
-
-            {isCustomProfile ? (
-              <details className="workbench-muted-bg rounded-xl border workbench-border p-4 text-sm">
-                <summary className="cursor-pointer font-bold">Advanced custom organism terms</summary>
-                <div className="mt-4 grid gap-4">
-                  <label className="grid gap-2">
-                    Locus regex
-                    <input
-                      value={form.locusRegex}
-                      onChange={(event) => updateForm("locusRegex", event.target.value)}
-                      className="workbench-input"
-                      placeholder="^CUS_\\d+$"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    Search terms, one per line
-                    <textarea
-                      value={form.searchTerms}
-                      onChange={(event) => updateForm("searchTerms", event.target.value)}
-                      className="workbench-input min-h-24"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    Target organism patterns, one per line
-                    <textarea
-                      value={form.targetPatterns}
-                      onChange={(event) => updateForm("targetPatterns", event.target.value)}
-                      className="workbench-input min-h-24"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    Off-target patterns, one per line
-                    <textarea
-                      value={form.offTargetPatterns}
-                      onChange={(event) => updateForm("offTargetPatterns", event.target.value)}
-                      className="workbench-input min-h-24"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    Excluded species patterns, one per line
-                    <textarea
-                      value={form.excludedSpeciesPatterns}
-                      onChange={(event) => updateForm("excludedSpeciesPatterns", event.target.value)}
-                      className="workbench-input min-h-24"
-                    />
-                  </label>
-                </div>
-              </details>
-            ) : null}
-
-            {statusMessage ? (
-              <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
-                {statusMessage}
-              </p>
-            ) : null}
-
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              suppressHydrationWarning
-              className="workbench-button workbench-button-primary min-h-11 px-5 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSubmitting ? "Submitting..." : "Queue annotation job"}
-            </button>
-          </form>
+            <SingleJobForm
+              form={form}
+              updateForm={updateForm}
+              profiles={profiles}
+              selectedProfile={selectedProfile}
+              isCustomProfile={isCustomProfile}
+              canSubmit={canSubmit}
+              isSubmitting={isSubmitting}
+              statusMessage={statusMessage}
+              onSubmit={handleSubmit}
+            />
           ) : (
             <div className="mt-6 grid gap-4">
               <BatchJobForm
@@ -741,7 +509,8 @@ export default function JobWorkspace() {
               <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">Job queue</h2>
               <p className="workbench-muted w-full md:w-35 mt-2 text-sm">
                 {queue.running || 0} running · {queue.queued || 0} queued ·{" "}
-                {queue.completed || 0} completed · {queue.failed || 0} failed
+                {queue.completed || 0} completed · {queue.failed || 0} failed ·{" "}
+                {queue.cancelled || 0} cancelled
               </p>
             </div>
             <div className="flex flex-row flex-nowrap items-center gap-2 sm:justify-end">
@@ -757,7 +526,7 @@ export default function JobWorkspace() {
               <button
                 type="button"
                 onClick={handleClearHistory}
-                disabled={(queue.completed || 0) + (queue.failed || 0) === 0}
+                disabled={(queue.completed || 0) + (queue.failed || 0) + (queue.cancelled || 0) === 0}
                 suppressHydrationWarning
                 className="workbench-button workbench-button-secondary disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -781,7 +550,7 @@ export default function JobWorkspace() {
 
           <div className="mt-6 grid gap-4">
             {queueJobs.length > 0 ? (
-              visibleJobs.map((job) => <JobTile key={job.id} job={job} />)
+              visibleJobs.map((job) => <JobTile key={job.id} job={job} onCancel={handleCancel} />)
             ) : (
               <div className="workbench-muted rounded-2xl border border-dashed workbench-border p-8 text-center">
                 {activeBatchId && batchFilterActive

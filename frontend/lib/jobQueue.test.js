@@ -3,9 +3,11 @@ import test from "node:test";
 
 import {
   filterJobsByBatch,
+  getAnnotationQuery,
   getHiddenJobCount,
   getJobDisplayName,
   getVisibleJobs,
+  isCancellable,
   shouldShowRunningSpinner,
 } from "./jobQueue.js";
 
@@ -93,4 +95,28 @@ test("getJobDisplayName falls back to locus then unknown", () => {
   assert.equal(getJobDisplayName({ request: {} }), "Unknown locus");
   assert.equal(getJobDisplayName({}), "Unknown locus");
   assert.equal(getJobDisplayName(null), "Unknown locus");
+});
+
+test("isCancellable is true only for queued and running jobs", () => {
+  assert.equal(isCancellable({ status: "queued" }), true);
+  assert.equal(isCancellable({ status: "running" }), true);
+  assert.equal(isCancellable({ status: "completed" }), false);
+  assert.equal(isCancellable({ status: "failed" }), false);
+  assert.equal(isCancellable({ status: "cancelled" }), false);
+  assert.equal(isCancellable(null), false);
+});
+
+test("getAnnotationQuery falls back from locus to name and preflight identifiers", () => {
+  assert.equal(getAnnotationQuery({ request: { locus: "Rv0001", name: "dnaA" } }), "Rv0001");
+  assert.equal(getAnnotationQuery({ request: { name: "dnaA" } }), "dnaA");
+  assert.equal(
+    getAnnotationQuery({ request: { target_preflight: { resolved_name: "katG" } } }),
+    "katG",
+  );
+  assert.equal(
+    getAnnotationQuery({ request: { target_preflight: { primary_identifier: "Rv1908c" } } }),
+    "Rv1908c",
+  );
+  assert.equal(getAnnotationQuery({}), "");
+  assert.equal(getAnnotationQuery(null), "");
 });

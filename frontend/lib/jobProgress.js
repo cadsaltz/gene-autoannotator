@@ -34,7 +34,7 @@ function formatPhaseLabel(phase) {
 const FETCH_BASE = 5;
 
 export function progressPercent(job) {
-  if (job.status === "completed" || job.status === "failed") {
+  if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
     return 100;
   }
 
@@ -80,6 +80,11 @@ export function progressPercent(job) {
 // label; fall back to the legacy per-status label map for older jobs. The
 // subtitle always reports the current pass's own n/m, not a combined total.
 export function formatJobStepLabel(job, stepLabels) {
+  // A cancelled job keeps its last progress fields, which would read as still running.
+  if (job.status === "cancelled") {
+    return stepLabels.cancelled || "Cancelled";
+  }
+
   if (job.progress_phase && job.sections_total) {
     const done = job.sections_done ?? 0;
     const passSuffix = job.pass_name ? ` (${job.pass_name})` : "";

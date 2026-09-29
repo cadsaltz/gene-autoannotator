@@ -22,21 +22,38 @@ test("JobWorkspace integrates batch queue filtering and summary card", async () 
   assert.match(workspace, /Show all jobs/);
 });
 
-test("completed job annotation link falls back to name and preflight identifiers", async () => {
+test("completed job annotation link uses getAnnotationQuery", async () => {
   const workspace = await readProjectFile("components/JobWorkspace.js");
 
-  assert.match(
-    workspace,
-    /const annotationQuery =\s*request\.locus \|\|\s*request\.name \|\|\s*request\.target_preflight\?\.resolved_name \|\|\s*request\.target_preflight\?\.primary_identifier \|\|\s*"";/s,
-  );
+  assert.match(workspace, /const annotationQuery = getAnnotationQuery\(job\);/);
   assert.match(
     workspace,
     /href=\{`\/annotations\?query=\$\{encodeURIComponent\(annotationQuery\)\}`\}/,
   );
 });
 
-test("JobWorkspace exposes an ortholog fallback checkbox and manual override inputs", async () => {
+test("JobWorkspace renders the shared single-job form", async () => {
   const workspace = await readProjectFile("components/JobWorkspace.js");
+
+  assert.match(workspace, /import SingleJobForm, \{[^}]*useJobForm[^}]*\} from "\.\/SingleJobForm";/);
+  assert.match(workspace, /<SingleJobForm/);
+  assert.match(workspace, /queueSingleJob\(form\)/);
+});
+
+test("single-job form preserves the admin submit copy and hydration guard", async () => {
+  const form = await readProjectFile("components/SingleJobForm.js");
+
+  assert.match(form, /"use client";/);
+  assert.match(form, /profile: searchParams\.get\("profile"\) \|\| "mtb-h37rv"/);
+  assert.match(form, /Queued job \$\{created\.job_id\}\. It will run when earlier jobs finish\.\$\{warningText\}/);
+  assert.match(form, /Gene name or locus is required\./);
+  assert.match(form, /disabled=\{!canSubmit\}/);
+  assert.match(form, /suppressHydrationWarning/);
+  assert.match(form, /Queue annotation job/);
+});
+
+test("JobWorkspace exposes an ortholog fallback checkbox and manual override inputs", async () => {
+  const workspace = await readProjectFile("components/SingleJobForm.js");
 
   assert.match(workspace, /allowOrthologFallback: false/);
   assert.match(workspace, /Allow ortholog fallback/);
@@ -217,6 +234,21 @@ test("progressPercent clamps running progress below 100 and completes at 100", (
     100,
   );
   assert.equal(progressPercent({ status: "failed" }), 100);
+});
+
+test("cancelled jobs show a Cancelled label and a finished bar", () => {
+  assert.equal(
+    formatJobStepLabel(
+      { status: "cancelled", current_step: "cancelled", progress_phase: "extracting", sections_total: 4 },
+      {},
+    ),
+    "Cancelled",
+  );
+  assert.equal(
+    formatJobStepLabel({ status: "cancelled" }, { cancelled: "Cancelled by request" }),
+    "Cancelled by request",
+  );
+  assert.equal(progressPercent({ status: "cancelled", sections_done: 1, sections_total: 4 }), 100);
 });
 
 test("progressPercent falls back to coarse heuristic without structured fields", () => {
