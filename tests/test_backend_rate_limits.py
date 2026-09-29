@@ -57,12 +57,17 @@ def test_limiter_ignores_hits_outside_window_and_prunes_old_rows(tmp_path):
 
 
 def test_rate_limit_env_parsing(monkeypatch):
+    from backend.quotas import env_int
+
     monkeypatch.setenv("IP_SIGNUPS_PER_DAY", "3")
     assert rate_limit_from_env("IP_SIGNUPS_PER_DAY") == 3
+    assert env_int("IP_SIGNUPS_PER_DAY", 7) == 3
     monkeypatch.setenv("IP_SIGNUPS_PER_DAY", "many")
     assert rate_limit_from_env("IP_SIGNUPS_PER_DAY") == 5
     monkeypatch.delenv("IP_SUBMITS_PER_HOUR", raising=False)
     monkeypatch.delenv("OTP_SENDS_PER_EMAIL_PER_HOUR", raising=False)
+    monkeypatch.delenv("IP_LOGINS_PER_HOUR", raising=False)
+    assert rate_limit_from_env("IP_LOGINS_PER_HOUR") == 30
     assert rate_limit_from_env("IP_SUBMITS_PER_HOUR") == 30
     assert rate_limit_from_env("OTP_SENDS_PER_EMAIL_PER_HOUR") == 5
 
@@ -94,6 +99,71 @@ def test_signup_limit_uses_forwarded_ip_when_trusted(tmp_path, monkeypatch):
     assert client.post("/auth/signup", json={"email": "a@example.com"}, headers=first).status_code == 200
     assert client.post("/auth/signup", json={"email": "b@example.com"}, headers=first).status_code == 429
     assert client.post("/auth/signup", json={"email": "c@example.com"}, headers=other).status_code == 200
+
+
+def test_otp_rejected_signup_does_not_consume_ip_signup_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("IP_SIGNUPS_PER_DAY", "2")
+    monkeypatch.setenv("OTP_SENDS_PER_EMAIL_PER_HOUR", "1")
+    client = make_client(tmp_path)
+    assert client.post("/auth/signup", json={"email": "a@example.com"}).status_code == 200
+    assert client.post("/auth/signup", json={"email": "a@example.com"}).status_code == 429
+    assert client.post("/auth/signup", json={"email": "b@example.com"}).status_code == 200
+    assert client.post("/auth/signup", json={"email": "c@example.com"}).status_code == 429
+
+
+def test_ip_rejected_signup_does_not_consume_otp_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("IP_SIGNUPS_PER_DAY", "1")
+    monkeypatch.setenv("OTP_SENDS_PER_EMAIL_PER_HOUR", "1")
+    client = make_client(tmp_path)
+    assert client.post("/auth/signup", json={"email": "a@example.com"}).status_code == 200
+    assert client.post("/auth/signup", json={"email": "b@example.com"}).status_code == 429
+    assert client.post("/auth/login", json={"email": "b@example.com"}).status_code == 200
+
+
+def test_login_ip_limit_applies_to_unknown_emails(tmp_path, monkeypatch):
+    monkeypatch.setenv("IP_LOGINS_PER_HOUR", "2")
+    client = make_client(tmp_path)
+    assert client.post("/auth/login", json={"email": "x@example.com"}).status_code == 200
+    assert client.post("/auth/login", json={"email": "y@example.com"}).status_code == 200
+    resp = client.post("/auth/login", json={"email": "z@example.com"})
+    assert resp.status_code == 429
+    assert resp.json()["code"] == "rate_limited"
+
+
+def test_login_ip_rejection_does_not_consume_otp_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("IP_LOGINS_PER_HOUR", "1")
+    monkeypatch.setenv("OTP_SENDS_PER_EMAIL_PER_HOUR", "1")
+    monkeypatch.setenv("TRUST_FORWARDED_FOR", "1")
+    client = make_client(tmp_path)
+    first = {"x-forwarded-for": "9.9.9.9"}
+    other = {"x-forwarded-for": "8.8.8.8"}
+    assert client.post("/auth/login", json={"email": "x@example.com"}, headers=first).status_code == 200
+    assert client.post("/auth/login", json={"email": "y@example.com"}, headers=first).status_code == 429
+    assert client.post("/auth/login", json={"email": "y@example.com"}, headers=other).status_code == 200
+
+
+def test_zero_login_ip_limit_means_unlimited(tmp_path, monkeypatch):
+    monkeypatch.setenv("IP_LOGINS_PER_HOUR", "0")
+    client = make_client(tmp_path)
+    for index in range(3):
+        assert client.post("/auth/login", json={"email": f"u{index}@example.com"}).status_code == 200
+
+
+def test_rate_limited_is_a_quota_exceeded():
+    from backend.quotas import QuotaExceeded
+    from backend.rate_limits import RateLimited
+
+    exc = RateLimited("slow down")
+    assert isinstance(exc, QuotaExceeded)
+    assert (exc.code, exc.message) == ("rate_limited", "slow down")
+
+
+def test_would_allow_does_not_record(tmp_path):
+    limiter = RateLimiter(tmp_path / "db.sqlite3")
+    assert limiter.would_allow("signup", "1.2.3.4", 86400, 1)
+    assert limiter.would_allow("signup", "1.2.3.4", 86400, 1)
+    assert limiter.hit("signup", "1.2.3.4", 86400, 1)
+    assert not limiter.would_allow("signup", "1.2.3.4", 86400, 1)
 
 
 def test_otp_send_limit_per_email(tmp_path, monkeypatch):
@@ -152,12 +222,15 @@ def test_submit_limit_per_ip_counts_jobs_and_batches(tmp_path, monkeypatch):
     assert alice.get("/jobs/queue-status").json()["queued"] == 3
 
 
-def test_rejected_submission_does_not_consume_submit_limit(tmp_path, monkeypatch):
-    monkeypatch.setenv("IP_SUBMITS_PER_HOUR", "1")
-    monkeypatch.setenv("USER_MAX_BATCH_SIZE", "1")
+def test_over_quota_submission_does_not_consume_submit_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("IP_SUBMITS_PER_HOUR", "2")
+    monkeypatch.setenv("USER_MAX_ACTIVE_JOBS", "1")
     alice = signed_in_client(tmp_path, email="alice@example.com")
-    assert alice.post("/batches", json=BATCH).json()["code"] == "batch_limit"
+    bob = second_client(alice, email="bob@example.com")
     assert alice.post("/jobs", json=JOB).status_code == 201
+    assert alice.post("/jobs", json=JOB).json()["code"] == "active_limit"
+    assert alice.post("/batches", json=BATCH).json()["code"] == "active_limit"
+    assert bob.post("/jobs", json=JOB).status_code == 201
 
 
 def test_admin_is_exempt_from_submit_limit(tmp_path, monkeypatch):
@@ -170,6 +243,9 @@ def test_admin_is_exempt_from_submit_limit(tmp_path, monkeypatch):
 
 def test_injected_rate_limiter_is_used(tmp_path, monkeypatch):
     class DenyAll:
+        def would_allow(self, bucket, key, window_seconds, limit):
+            return False
+
         def hit(self, bucket, key, window_seconds, limit):
             return False
 

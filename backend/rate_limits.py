@@ -2,7 +2,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from .quotas import _env_int
+from .quotas import QuotaExceeded, env_int
 
 HOUR_SECONDS = 3600
 DAY_SECONDS = 86400
@@ -10,21 +10,19 @@ PRUNE_AFTER = timedelta(days=2)
 
 RATE_LIMIT_DEFAULTS = {
     "IP_SIGNUPS_PER_DAY": 5,
+    "IP_LOGINS_PER_HOUR": 30,
     "IP_SUBMITS_PER_HOUR": 30,
     "OTP_SENDS_PER_EMAIL_PER_HOUR": 5,
 }
 
 
 def rate_limit_from_env(name: str) -> int:
-    return _env_int(name, RATE_LIMIT_DEFAULTS[name])
+    return env_int(name, RATE_LIMIT_DEFAULTS[name])
 
 
-class RateLimited(Exception):
-    code = "rate_limited"
-
+class RateLimited(QuotaExceeded):
     def __init__(self, message: str):
-        super().__init__(message)
-        self.message = message
+        super().__init__("rate_limited", message)
 
 
 class RateLimiter:
@@ -49,6 +47,22 @@ class RateLimiter:
                 "ON rate_events (bucket, key, created_at)"
             )
 
+    @staticmethod
+    def _count(connection, bucket, key, window_start) -> int:
+        (count,) = connection.execute(
+            "SELECT COUNT(*) FROM rate_events WHERE bucket = ? AND key = ? AND created_at > ?",
+            (bucket, key, window_start),
+        ).fetchone()
+        return count
+
+    def would_allow(self, bucket: str, key: str, window_seconds: int, limit: int) -> bool:
+        window_start = (datetime.now(UTC) - timedelta(seconds=window_seconds)).isoformat()
+        connection = self._connect()
+        try:
+            return self._count(connection, bucket, key, window_start) < limit
+        finally:
+            connection.close()
+
     def hit(self, bucket: str, key: str, window_seconds: int, limit: int) -> bool:
         now = datetime.now(UTC)
         window_start = (now - timedelta(seconds=window_seconds)).isoformat()
@@ -61,11 +75,7 @@ class RateLimiter:
                 "DELETE FROM rate_events WHERE bucket = ? AND created_at < ?",
                 (bucket, (now - PRUNE_AFTER).isoformat()),
             )
-            (count,) = connection.execute(
-                "SELECT COUNT(*) FROM rate_events WHERE bucket = ? AND key = ? AND created_at > ?",
-                (bucket, key, window_start),
-            ).fetchone()
-            allowed = count < limit
+            allowed = self._count(connection, bucket, key, window_start) < limit
             if allowed:
                 connection.execute(
                     "INSERT INTO rate_events (bucket, key, created_at) VALUES (?, ?, ?)",

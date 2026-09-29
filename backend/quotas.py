@@ -10,7 +10,7 @@ log = logging.getLogger(__name__)
 DAILY_WINDOW = timedelta(hours=24)
 
 
-def _env_int(name: str, default: int) -> int:
+def env_int(name: str, default: int) -> int:
     raw = os.getenv(name)
     if raw is None:
         return default
@@ -42,10 +42,10 @@ class QuotaConfig:
     @classmethod
     def from_env(cls) -> "QuotaConfig":
         return cls(
-            max_queued=_env_int("MAX_QUEUED_JOBS", 200),
-            user_max_active=_env_int("USER_MAX_ACTIVE_JOBS", 20),
-            user_max_per_day=_env_int("USER_MAX_JOBS_PER_DAY", 50),
-            user_max_batch=_env_int("USER_MAX_BATCH_SIZE", 25),
+            max_queued=env_int("MAX_QUEUED_JOBS", 200),
+            user_max_active=env_int("USER_MAX_ACTIVE_JOBS", 20),
+            user_max_per_day=env_int("USER_MAX_JOBS_PER_DAY", 50),
+            user_max_batch=env_int("USER_MAX_BATCH_SIZE", 25),
         )
 
     def accepting(self, queued: int) -> bool:

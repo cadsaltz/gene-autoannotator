@@ -414,44 +414,58 @@ def create_app(
     async def quota_exceeded_handler(_request: Request, exc: QuotaExceeded):
         return JSONResponse(status_code=429, content={"detail": exc.message, "code": exc.code})
 
-    @app.exception_handler(RateLimited)
-    async def rate_limited_handler(_request: Request, exc: RateLimited):
-        return JSONResponse(status_code=429, content={"detail": exc.message, "code": exc.code})
+    def _rate_check(bucket, key, window_seconds, env_name, message):
+        return (bucket, key or "unknown", window_seconds, rate_limit_from_env(env_name), message)
 
-    def _enforce_rate_limit(*, bucket, key, window_seconds, env_name, message):
-        limit = rate_limit_from_env(env_name)
-        if limit <= 0:
-            return
-        if not limiter.hit(bucket, key or "unknown", window_seconds, limit):
-            raise RateLimited(message)
+    def _enforce_rate_limits(*checks):
+        active = [check for check in checks if check[3] > 0]
+        # Peek at every limit before recording any, so a request rejected by
+        # one limit is not charged against the others.
+        for bucket, key, window_seconds, limit, message in active:
+            if not limiter.would_allow(bucket, key, window_seconds, limit):
+                raise RateLimited(message)
+        for bucket, key, window_seconds, limit, message in active:
+            if not limiter.hit(bucket, key, window_seconds, limit):
+                raise RateLimited(message)
 
-    def _enforce_signup_limit(request: Request):
-        _enforce_rate_limit(
-            bucket="signup",
-            key=client_ip(request),
-            window_seconds=DAY_SECONDS,
-            env_name="IP_SIGNUPS_PER_DAY",
-            message="Too many sign-ups from your network today. Please try again later.",
+    def _signup_ip_check(request: Request):
+        return _rate_check(
+            "signup",
+            client_ip(request),
+            DAY_SECONDS,
+            "IP_SIGNUPS_PER_DAY",
+            "Too many sign-ups from your network today. Please try again later.",
         )
 
-    def _enforce_otp_send_limit(email: str):
-        _enforce_rate_limit(
-            bucket="otp_send",
-            key=email.strip().lower(),
-            window_seconds=HOUR_SECONDS,
-            env_name="OTP_SENDS_PER_EMAIL_PER_HOUR",
-            message="Too many sign-in codes requested for this email. Please try again later.",
+    def _login_ip_check(request: Request):
+        return _rate_check(
+            "login_ip",
+            client_ip(request),
+            HOUR_SECONDS,
+            "IP_LOGINS_PER_HOUR",
+            "Too many sign-in attempts from your network this hour. Please try again later.",
+        )
+
+    def _otp_send_check(email: str):
+        return _rate_check(
+            "otp_send",
+            email.strip().lower(),
+            HOUR_SECONDS,
+            "OTP_SENDS_PER_EMAIL_PER_HOUR",
+            "Too many sign-in codes requested for this email. Please try again later.",
         )
 
     def _enforce_submit_limit(request: Request, user: dict):
         if is_admin(user):
             return
-        _enforce_rate_limit(
-            bucket="submit",
-            key=client_ip(request),
-            window_seconds=HOUR_SECONDS,
-            env_name="IP_SUBMITS_PER_HOUR",
-            message="Too many submissions from your network this hour. Please try again later.",
+        _enforce_rate_limits(
+            _rate_check(
+                "submit",
+                client_ip(request),
+                HOUR_SECONDS,
+                "IP_SUBMITS_PER_HOUR",
+                "Too many submissions from your network this hour. Please try again later.",
+            )
         )
 
     def resource_snapshot():
@@ -834,8 +848,7 @@ def create_app(
     @app.post("/auth/signup", response_model=AuthOkResponse)
     def auth_signup(body: AuthSignupRequest, request: Request):
         email = str(body.email)
-        _enforce_signup_limit(request)
-        _enforce_otp_send_limit(email)
+        _enforce_rate_limits(_signup_ip_check(request), _otp_send_check(email))
         user = auth.get_user_by_email(email)
         if user is None:
             user = auth.create_user(email=email, username=body.username)
@@ -845,9 +858,9 @@ def create_app(
         return AuthOkResponse()
 
     @app.post("/auth/login", response_model=AuthOkResponse)
-    def auth_login(body: AuthLoginRequest):
+    def auth_login(body: AuthLoginRequest, request: Request):
         email = str(body.email)
-        _enforce_otp_send_limit(email)
+        _enforce_rate_limits(_login_ip_check(request), _otp_send_check(email))
         user = auth.get_user_by_email(email)
         if user is None or user["status"] != "active":
             return AuthOkResponse()
