@@ -1,15 +1,28 @@
+import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from .access import is_admin
 
+log = logging.getLogger(__name__)
+
+DAILY_WINDOW = timedelta(hours=24)
+
 
 def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except ValueError:
+    raw = os.getenv(name)
+    if raw is None:
         return default
+    try:
+        return int(raw)
+    except ValueError:
+        log.warning("Ignoring non-integer %s=%r; using default %d", name, raw, default)
+        return default
+
+
+def daily_window_start() -> str:
+    return (datetime.now(UTC) - DAILY_WINDOW).isoformat()
 
 
 class QuotaExceeded(Exception):
@@ -44,7 +57,8 @@ def effective_limits(user: dict, config: QuotaConfig) -> dict:
         return {"max_active": None, "max_per_day": None, "max_batch": None}
 
     def pick(override, default):
-        return override if override is not None else default
+        value = override if override is not None else default
+        return value if value > 0 else None
 
     return {
         "max_active": pick(user.get("quota_max_active"), config.user_max_active),
@@ -73,8 +87,7 @@ def check_submission(*, user: dict, job_count: int, store, config: QuotaConfig) 
         raise QuotaExceeded(
             "active_limit", f"You can have at most {limits['max_active']} queued or running jobs."
         )
-    since = (datetime.now(UTC) - timedelta(days=1)).isoformat()
-    today = store.count_created_since_for_user(user["id"], since)
+    today = store.count_created_since_for_user(user["id"], daily_window_start())
     if limits["max_per_day"] is not None and today + job_count > limits["max_per_day"]:
         raise QuotaExceeded(
             "daily_limit", f"You can submit at most {limits['max_per_day']} jobs per 24 hours."

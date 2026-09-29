@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from backend.access import BOOTSTRAP_ADMIN_EMAIL
@@ -40,6 +42,55 @@ def test_quota_config_defaults_and_bad_values(monkeypatch):
     config = QuotaConfig.from_env()
     assert config.max_queued == 200
     assert config.user_max_active == 3
+
+
+def test_unparseable_quota_env_logs_warning(monkeypatch, caplog):
+    monkeypatch.setenv("USER_MAX_JOBS_PER_DAY", "lots")
+    with caplog.at_level(logging.WARNING, logger="backend.quotas"):
+        assert QuotaConfig.from_env().user_max_per_day == 50
+    assert any("USER_MAX_JOBS_PER_DAY" in record.getMessage() for record in caplog.records)
+
+
+def test_zero_or_negative_limits_mean_unlimited():
+    config = QuotaConfig(max_queued=0, user_max_active=0, user_max_per_day=-1, user_max_batch=0)
+    user = {"role": "user", "status": "active", "quota_max_active": None,
+            "quota_max_per_day": None, "quota_max_batch": None}
+    assert effective_limits(user, config) == {
+        "max_active": None, "max_per_day": None, "max_batch": None,
+    }
+    capped = QuotaConfig(max_queued=0, user_max_active=1, user_max_per_day=1, user_max_batch=1)
+    overridden = {**user, "quota_max_active": 0, "quota_max_per_day": -5, "quota_max_batch": 0}
+    assert effective_limits(overridden, capped) == {
+        "max_active": None, "max_per_day": None, "max_batch": None,
+    }
+
+
+def test_zero_user_batch_size_is_unlimited(tmp_path, monkeypatch):
+    monkeypatch.setenv("USER_MAX_BATCH_SIZE", "0")
+    alice = signed_in_client(tmp_path, email="alice@example.com")
+    assert alice.post("/jobs", json=JOB).status_code == 201
+    assert alice.post("/batches", json=_batch(3)).status_code == 201
+    assert alice.get("/jobs/queue-status").json()["batch_limit"] == MAX_BATCH_SIZE
+
+
+def test_zero_per_user_override_is_unlimited(tmp_path, monkeypatch):
+    monkeypatch.setenv("USER_MAX_ACTIVE_JOBS", "1")
+    alice, store = signed_in_client(tmp_path, email="alice@example.com", return_store=True)
+    user = store.get_user_by_email("alice@example.com")
+    store.set_quota_overrides(user["id"], max_active=0, max_per_day=None, max_batch=None)
+    for _ in range(3):
+        assert alice.post("/jobs", json=JOB).status_code == 201
+    assert alice.get("/jobs/queue-status").json()["your_active_limit"] is None
+
+
+def test_batch_that_overflows_global_queue_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setenv("MAX_QUEUED_JOBS", "3")
+    alice = signed_in_client(tmp_path, email="alice@example.com")
+    assert alice.post("/jobs", json=JOB).status_code == 201
+    resp = alice.post("/batches", json=_batch(3))
+    assert resp.status_code == 429
+    assert resp.json()["code"] == "queue_full"
+    assert alice.get("/jobs/queue-status").json()["queued"] == 1
 
 
 def test_effective_limits_prefers_overrides_and_frees_admins():

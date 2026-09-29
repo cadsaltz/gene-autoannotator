@@ -27,7 +27,14 @@ from .auth_store import AuthStore
 from .batch_store import BatchStore
 from . import email_sender
 from .job_store import JobStore
-from .quotas import QuotaConfig, QuotaExceeded, check_batch_size, check_submission, effective_limits
+from .quotas import (
+    QuotaConfig,
+    QuotaExceeded,
+    check_batch_size,
+    check_submission,
+    daily_window_start,
+    effective_limits,
+)
 from .profile_store import (
     DuplicateProfileError,
     InvalidProfileError,
@@ -1077,14 +1084,13 @@ def create_app(
         config = QuotaConfig.from_env()
         limits = effective_limits(_user, config)
         queued = store.count_queued_jobs()
-        since = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
         max_batch = limits["max_batch"]
         return {
             "queued": queued,
             "accepting": is_admin(_user) or config.accepting(queued),
             "your_active": store.count_active_for_user(_user["id"]),
             "your_active_limit": limits["max_active"],
-            "your_today": store.count_created_since_for_user(_user["id"], since),
+            "your_today": store.count_created_since_for_user(_user["id"], daily_window_start()),
             "your_daily_limit": limits["max_per_day"],
             "batch_limit": MAX_BATCH_SIZE if max_batch is None else min(max_batch, MAX_BATCH_SIZE),
         }
