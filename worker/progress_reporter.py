@@ -21,6 +21,10 @@ if it raises, the exception is logged and swallowed rather than propagated.
 `last_sent_phase`/`last_sent_at` are only updated (and `pending` only cleared)
 on a *successful* send, so a failed send leaves the event pending and it will
 be retried on the next `report()`/`flush()`/`close()` call.
+
+Cancellation: when the backend answers a progress PATCH with `JobCancelled`,
+the job is marked cancelled, its pending event is dropped, every later event
+for it is ignored, and `on_cancelled(job_id)` is invoked exactly once.
 """
 
 from __future__ import annotations
@@ -29,9 +33,11 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from shared.job_progress import JobProgressEvent, format_current_step
+from worker.client import JobCancelled
 
 log = logging.getLogger(__name__)
 
@@ -53,20 +59,30 @@ class _JobState:
     last_sent_phase: str | None = None
     last_sent_at: float | None = None
     pending: JobProgressEvent | None = None
+    cancelled: bool = False
 
 
 class ProgressReporter:
-    def __init__(self, client, *, debounce_sec: float | None = None) -> None:
+    def __init__(
+        self,
+        client,
+        *,
+        debounce_sec: float | None = None,
+        on_cancelled: Callable[[str], None] | None = None,
+    ) -> None:
         self._client = client
         self._debounce_sec = (
             debounce_sec if debounce_sec is not None else _debounce_sec_from_env(DEFAULT_DEBOUNCE_SEC)
         )
+        self.on_cancelled = on_cancelled
         self._lock = threading.Lock()
         self._state: dict[str, _JobState] = {}
 
     def report(self, job_id: str, event: JobProgressEvent) -> None:
         with self._lock:
             state = self._state.setdefault(job_id, _JobState())
+            if state.cancelled:
+                return
             is_first = state.last_sent_at is None
             phase_changed = not is_first and event.phase != state.last_sent_phase
             if is_first or phase_changed:
@@ -113,6 +129,9 @@ class ProgressReporter:
                 sections_total=event.sections_total,
                 pass_name=event.pass_name,
             )
+        except JobCancelled:
+            self._mark_cancelled(job_id, state)
+            return
         except Exception:  # noqa: BLE001 - progress updates must never break job execution.
             log.warning("Progress update failed for job %s; will retry", job_id, exc_info=True)
             return
@@ -121,3 +140,18 @@ class ProgressReporter:
             state.last_sent_at = time.monotonic()
             if state.pending is event:
                 state.pending = None
+
+    def _mark_cancelled(self, job_id: str, state: _JobState) -> None:
+        with self._lock:
+            if state.cancelled:
+                return
+            state.cancelled = True
+            state.pending = None
+        log.info("Backend cancelled job %s; stopping it", job_id)
+        callback = self.on_cancelled
+        if callback is None:
+            return
+        try:
+            callback(job_id)
+        except Exception:  # noqa: BLE001 - cancellation must never break the progress thread.
+            log.warning("Cancelling job %s failed", job_id, exc_info=True)

@@ -62,6 +62,10 @@ class _OneShotJobSource:
         self.failed = True
         self._finished = True
 
+    def on_cancelled(self, job_id: str) -> None:
+        del job_id
+        self._finished = True
+
     def is_exhausted(self) -> bool:
         return self._finished
 
@@ -264,6 +268,7 @@ def _run_job(client, config, job: JobSpec, fleet, supervisor, router_thread, *, 
             execute_fn=_make_execute_fn(reporter),
             heartbeat_fn=heartbeat_fn,
         )
+        reporter.on_cancelled = runtime.cancel_job
         runtime.run()
         return 1 if source.failed else 0
     finally:
@@ -307,6 +312,7 @@ def _run_claimed_jobs(client, config, *, claim_max: int) -> int:
             heartbeat_fn=_heartbeat_fn(client),
         )
         runtime_holder["runtime"] = runtime
+        reporter.on_cancelled = runtime.cancel_job
         runtime.run()
         return 1 if source.failed else 0
     finally:

@@ -339,6 +339,7 @@ def main(args=None):
         heartbeat_fn=heartbeat_fn,
     )
     runtime_holder["runtime"] = runtime
+    reporter.on_cancelled = runtime.cancel_job
 
     def _dashboard_meta_provider() -> dict[str, Any]:
         out: dict[str, Any] = {"slots": config.max_slots}

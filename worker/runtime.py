@@ -125,6 +125,7 @@ class WorkerRuntime:
 
         self._pool = ThreadPoolExecutor(max_workers=max(1, self._max_slots))
         self._active_jobs: dict[str, ActiveJob] = {}
+        self._cancelled_jobs: set[str] = set()
         self._jobs_lock = threading.Lock()
         self._jobs_completed = 0
         self._jobs_failed = 0
@@ -192,6 +193,16 @@ class WorkerRuntime:
             active = self._active_jobs.get(job_id)
             if active is not None:
                 active.progress = event
+
+    def cancel_job(self, job_id: str) -> None:
+        """Stop a backend-cancelled job. Its slot frees once the subprocess
+        exits, and neither `on_complete` nor `on_fail` is reported for it."""
+        with self._jobs_lock:
+            if job_id not in self._active_jobs or job_id in self._cancelled_jobs:
+                return
+            self._cancelled_jobs.add(job_id)
+        log.info("Cancelling job %s", job_id)
+        executor.terminate_job(job_id)
 
     def request_shutdown(self) -> None:
         self._shutdown_requested.set()
@@ -277,9 +288,17 @@ class WorkerRuntime:
         for job_id, future in finished:
             with self._jobs_lock:
                 active = self._active_jobs.pop(job_id, None)
+                cancelled = job_id in self._cancelled_jobs
+                self._cancelled_jobs.discard(job_id)
             wall_ms = 0
             if active is not None:
                 wall_ms = max(0, int((time.monotonic() - active.started_at) * 1000))
+            if cancelled:
+                log.info("Stopped cancelled job %s after %dms", job_id, wall_ms)
+                on_cancelled = getattr(self._job_source, "on_cancelled", None)
+                if callable(on_cancelled):
+                    on_cancelled(job_id)
+                continue
             try:
                 result = future.result()
             except Exception as exc:  # noqa: BLE001 - report all execution errors.

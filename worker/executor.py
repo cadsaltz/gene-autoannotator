@@ -49,6 +49,46 @@ def _unregister_job_process(job_id: str | None, proc: subprocess.Popen) -> None:
             _active_processes.pop(job_id, None)
 
 
+_TERMINATE_GRACE_SEC = 5.0
+
+
+def _kill_after_grace(proc: subprocess.Popen) -> None:
+    try:
+        proc.wait(timeout=_TERMINATE_GRACE_SEC)
+    except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+        except (ProcessLookupError, OSError):
+            pass
+    except (ProcessLookupError, OSError):
+        pass
+
+
+def terminate_job(job_id: str) -> bool:
+    """SIGTERM one job's annotation subprocess without blocking the caller.
+
+    Must not block: cancellation arrives on that subprocess's own stderr reader
+    thread, and waiting there would stop the pipe from draining. Escalates to
+    SIGKILL from a background thread if it outlives the grace period. Returns
+    False when no subprocess is registered for `job_id`.
+    """
+    with _active_lock:
+        proc = _active_processes.get(job_id)
+    if proc is None:
+        return False
+    try:
+        proc.terminate()
+    except (ProcessLookupError, OSError):
+        return True
+    threading.Thread(
+        target=_kill_after_grace,
+        args=(proc,),
+        name=f"terminate-job-{job_id}",
+        daemon=True,
+    ).start()
+    return True
+
+
 def terminate_active_jobs() -> None:
     """Send SIGTERM to in-flight annotation subprocesses (bench Ctrl+C)."""
     with _active_lock:

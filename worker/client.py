@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 import httpx
@@ -19,6 +20,42 @@ _TRANSIENT_ERRORS = (
 _MAX_ATTEMPTS = 4
 _RETRY_BACKOFF_SEC = (0.5, 1.0, 2.0)
 
+# complete/fail must outlive a backend container swap so finished results are not lost.
+DEFAULT_COMPLETE_RETRY_SECONDS = 300.0
+_DEADLINE_BACKOFF_INITIAL_SEC = 0.5
+_DEADLINE_BACKOFF_MAX_SEC = 30.0
+
+
+def _complete_retry_seconds():
+    raw = os.getenv("WORKER_COMPLETE_RETRY_SECONDS", "").strip()
+    if not raw:
+        return DEFAULT_COMPLETE_RETRY_SECONDS
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        log.warning(
+            "Invalid WORKER_COMPLETE_RETRY_SECONDS=%r; using %.0fs",
+            raw,
+            DEFAULT_COMPLETE_RETRY_SECONDS,
+        )
+        return DEFAULT_COMPLETE_RETRY_SECONDS
+
+
+class JobCancelled(Exception):
+    def __init__(self, job_id):
+        super().__init__(f"Job {job_id} was cancelled")
+        self.job_id = job_id
+
+
+def _is_cancelled_response(response):
+    if response.status_code != 409:
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    return isinstance(body, dict) and body.get("cancelled") is True
+
 
 class BackendClient:
     def __init__(self, config, http_client=None):
@@ -33,7 +70,9 @@ class BackendClient:
         self._auth = {"Authorization": f"Bearer {config.worker_api_token}"}
         self.worker_id = None
 
-    def _request(self, method, path, **kwargs):
+    def _request(self, method, path, *, deadline_seconds=None, **kwargs):
+        if deadline_seconds is not None:
+            return self._request_until_deadline(method, path, deadline_seconds, **kwargs)
         attempt = 0
         while True:
             attempt += 1
@@ -53,6 +92,43 @@ class BackendClient:
                     _MAX_ATTEMPTS,
                 )
                 time.sleep(delay)
+
+    def _request_until_deadline(self, method, path, deadline_seconds, **kwargs):
+        """Retry transport errors and 5xx with capped exponential backoff until
+        `deadline_seconds` elapse. 4xx responses are returned immediately."""
+        deadline = time.monotonic() + deadline_seconds
+        delay = _DEADLINE_BACKOFF_INITIAL_SEC
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                response = getattr(self._http, method)(path, **kwargs)
+            except _TRANSIENT_ERRORS as exc:
+                reason = str(exc)
+                last_error = exc
+                response = None
+            else:
+                if response.status_code < 500:
+                    return response
+                reason = f"HTTP {response.status_code}"
+                last_error = None
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                if last_error is not None:
+                    raise last_error
+                return response
+            wait = min(delay, remaining)
+            log.warning(
+                "Backend %s %s failed (%s); retrying in %.1fs (attempt %d, %.0fs left)",
+                method.upper(),
+                path,
+                reason,
+                wait,
+                attempt,
+                remaining,
+            )
+            time.sleep(wait)
+            delay = min(delay * 2, _DEADLINE_BACKOFF_MAX_SEC)
 
     def register(self):
         response = self._request(
@@ -122,13 +198,20 @@ class BackendClient:
             value = fields.get(key)
             if value is not None:
                 payload[key] = value
-        self._request(
+        response = self._request(
             "patch", f"/jobs/{job_id}/progress", headers=self._auth, json=payload
-        ).raise_for_status()
+        )
+        if _is_cancelled_response(response):
+            raise JobCancelled(job_id)
+        response.raise_for_status()
 
     def complete(self, job_id, result):
         self._request(
-            "post", f"/jobs/{job_id}/complete", headers=self._auth, json={"result": result}
+            "post",
+            f"/jobs/{job_id}/complete",
+            headers=self._auth,
+            json={"result": result},
+            deadline_seconds=_complete_retry_seconds(),
         ).raise_for_status()
 
     def fail(self, job_id, error, retryable):
@@ -137,4 +220,5 @@ class BackendClient:
             f"/jobs/{job_id}/fail",
             headers=self._auth,
             json={"error": error, "retryable": retryable},
+            deadline_seconds=_complete_retry_seconds(),
         ).raise_for_status()

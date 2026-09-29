@@ -30,6 +30,36 @@ class _FlakyHttp:
         return item
 
 
+class _FlakyPatchHttp(_FlakyHttp):
+    def patch(self, path, headers=None, json=None):
+        return self.post(path, headers=headers, json=json)
+
+
+def test_progress_keeps_short_retry_budget(monkeypatch):
+    monkeypatch.setenv("WORKER_COMPLETE_RETRY_SECONDS", "300")
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    http = _FlakyPatchHttp([httpx.ConnectError("down")] * 5)
+    client = BackendClient(_Config(), http_client=http)
+
+    try:
+        client.progress("j1", "step")
+        raise AssertionError("expected ConnectError")
+    except httpx.ConnectError:
+        pass
+    assert http.calls == 4
+
+
+def test_complete_outlasts_short_retry_budget(monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    ok = httpx.Response(204, request=httpx.Request("POST", "http://backend.test/jobs/j1/complete"))
+    http = _FlakyHttp([httpx.RemoteProtocolError("Server disconnected")] * 6 + [ok])
+    client = BackendClient(_Config(), http_client=http)
+
+    client.complete("j1", {"ok": True})
+
+    assert http.calls == 7
+
+
 def test_claim_retries_transient_disconnect_then_succeeds(monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     ok = httpx.Response(204, request=httpx.Request("POST", "http://backend.test/claim"))
