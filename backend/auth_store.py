@@ -3,6 +3,8 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .access import BOOTSTRAP_ADMIN_EMAIL, ROLES, STATUSES, initial_role_for
+
 
 def _now_iso():
     return datetime.now(UTC).isoformat()
@@ -65,18 +67,56 @@ class AuthStore:
                 )
                 """
             )
+            role_added = self._ensure_user_column(
+                connection, "role", "TEXT NOT NULL DEFAULT 'user'"
+            )
+            self._ensure_user_column(connection, "status", "TEXT NOT NULL DEFAULT 'active'")
+            self._ensure_user_column(connection, "quota_max_active", "INTEGER")
+            self._ensure_user_column(connection, "quota_max_per_day", "INTEGER")
+            self._ensure_user_column(connection, "quota_max_batch", "INTEGER")
+            self._ensure_user_column(connection, "terms_version", "TEXT")
+            self._ensure_user_column(connection, "terms_accepted_at", "TEXT")
+            self._ensure_user_column(connection, "last_login_at", "TEXT")
+            # Promote only when the role column is first added, so a later
+            # demotion of the bootstrap admin is not undone on restart.
+            if role_added:
+                connection.execute(
+                    "UPDATE users SET role = 'admin' WHERE email = ?",
+                    (BOOTSTRAP_ADMIN_EMAIL,),
+                )
 
-    def create_user(self, *, email: str, username: str | None) -> dict:
+    def _ensure_user_column(self, connection, column_name, column_type) -> bool:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(users)").fetchall()
+        }
+        if column_name in columns:
+            return False
+        connection.execute(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}")
+        return True
+
+    def create_user(
+        self, *, email: str, username: str | None, status: str = "active"
+    ) -> dict:
+        if status not in STATUSES:
+            raise ValueError(f"invalid status: {status}")
         user_id = str(uuid.uuid4())
         normalized = _normalize_email(email)
         created_at = _now_iso()
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO users (id, email, username, email_verified, created_at)
-                VALUES (?, ?, ?, 0, ?)
+                INSERT INTO users (
+                    id, email, username, email_verified, created_at, role, status
+                ) VALUES (?, ?, ?, 0, ?, ?, ?)
                 """,
-                (user_id, normalized, username, created_at),
+                (
+                    user_id,
+                    normalized,
+                    username,
+                    created_at,
+                    initial_role_for(normalized),
+                    status,
+                ),
             )
         return self.get_user(user_id)
 
@@ -109,6 +149,103 @@ class AuthStore:
                 "UPDATE users SET email_verified = 1 WHERE id = ?",
                 (user_id,),
             )
+        return self._require_user(user_id)
+
+    def set_role(self, user_id: str, role: str) -> dict:
+        if role not in ROLES:
+            raise ValueError(f"invalid role: {role}")
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE users SET role = ? WHERE id = ?",
+                (role, user_id),
+            )
+        return self._require_user(user_id)
+
+    def set_status(self, user_id: str, status: str) -> dict:
+        if status not in STATUSES:
+            raise ValueError(f"invalid status: {status}")
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE users SET status = ? WHERE id = ?",
+                (status, user_id),
+            )
+        return self._require_user(user_id)
+
+    def set_quota_overrides(
+        self,
+        user_id: str,
+        *,
+        max_active: int | None,
+        max_per_day: int | None,
+        max_batch: int | None,
+    ) -> dict:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE users
+                SET quota_max_active = ?, quota_max_per_day = ?, quota_max_batch = ?
+                WHERE id = ?
+                """,
+                (max_active, max_per_day, max_batch, user_id),
+            )
+        return self._require_user(user_id)
+
+    def record_terms_acceptance(self, user_id: str, version: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE users SET terms_version = ?, terms_accepted_at = ? WHERE id = ?",
+                (version, _now_iso(), user_id),
+            )
+
+    def mark_login(self, user_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE users SET last_login_at = ? WHERE id = ?",
+                (_now_iso(), user_id),
+            )
+
+    def list_users(self, *, query: str | None = None, limit: int = 200) -> list[dict]:
+        sql = "SELECT * FROM users"
+        params: list = []
+        if query:
+            sql += " WHERE email LIKE ? OR username LIKE ?"
+            pattern = f"%{query.strip()}%"
+            params.extend([pattern, pattern])
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(sql, params).fetchall()
+        return [self._row_to_user(row) for row in rows]
+
+    def count_admins(self) -> int:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND status = 'active'"
+            ).fetchone()[0]
+
+    def revoke_sessions(self, user_id: str) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM sessions WHERE user_id = ?",
+                (user_id,),
+            )
+        return cursor.rowcount
+
+    def delete_user(self, user_id: str) -> bool:
+        user = self.get_user(user_id)
+        if user is None:
+            return False
+        with self._connect() as connection:
+            connection.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            connection.execute(
+                "DELETE FROM login_codes WHERE email = ?",
+                (user["email"],),
+            )
+            connection.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        return True
+
+    def _require_user(self, user_id: str) -> dict:
         user = self.get_user(user_id)
         if user is None:
             raise ValueError(f"user not found: {user_id}")
@@ -252,6 +389,14 @@ class AuthStore:
             "username": row["username"],
             "email_verified": bool(row["email_verified"]),
             "created_at": row["created_at"],
+            "role": row["role"],
+            "status": row["status"],
+            "quota_max_active": row["quota_max_active"],
+            "quota_max_per_day": row["quota_max_per_day"],
+            "quota_max_batch": row["quota_max_batch"],
+            "terms_version": row["terms_version"],
+            "terms_accepted_at": row["terms_accepted_at"],
+            "last_login_at": row["last_login_at"],
         }
 
     def _row_to_login_code(self, row, *, used_at: str | None = None) -> dict:
