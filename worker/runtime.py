@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from shared.job_contract import AnnotationJobRequest
 from shared.job_progress import JobProgressEvent
+from shared.redact import redact_url_secrets
 from worker import executor
 
 PERMANENT_ERROR_MARKERS = ("locus_schema_mismatch", "profile or organism", "name or locus")
@@ -307,7 +308,7 @@ class WorkerRuntime:
             try:
                 result = future.result()
             except Exception as exc:  # noqa: BLE001 - report all execution errors.
-                error = str(exc)
+                error = redact_url_secrets(str(exc))
                 log.warning("Failed job %s after %dms: %s", job_id, wall_ms, error)
                 self._job_source.on_fail(job_id, error, _is_retryable(error))
                 with self._jobs_lock:

@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 
 import requests
 
+from shared.redact import redact_url_secrets
+
 from . import http_
 from . import metadata
 from . import organisms
@@ -242,7 +244,7 @@ class PmcPaperManager(papers.PaperManager):
             return self._extract_esearch_idlist(result, query_label)
         except (RuntimeError, requests.RequestException) as exc:
             log.warning(
-                f'PMC search unavailable for {query_label} query ({exc}); '
+                f'PMC search unavailable for {query_label} query ({redact_url_secrets(str(exc))}); '
                 'falling back to PubMed-to-PMC links'
             )
             try:
@@ -250,7 +252,7 @@ class PmcPaperManager(papers.PaperManager):
             except (RuntimeError, requests.RequestException) as fallback_exc:
                 log.warning(
                     f'PubMed fallback unavailable for {query_label} '
-                    f'({fallback_exc}); treating as no papers'
+                    f'({redact_url_secrets(str(fallback_exc))}); treating as no papers'
                 )
                 return []
 
@@ -283,7 +285,9 @@ class PmcPaperManager(papers.PaperManager):
             response = self.throttler.get(url, base_url)
             result = _load_ncbi_json(response, 'PubMed-to-PMC elink')
         except (RuntimeError, requests.RequestException) as exc:
-            log.warning(f'PubMed-to-PMC elink failed ({exc}); returning no PMC ids')
+            log.warning(
+                f'PubMed-to-PMC elink failed ({redact_url_secrets(str(exc))}); returning no PMC ids'
+            )
             return []
         pmc_ids = []
         seen = set()

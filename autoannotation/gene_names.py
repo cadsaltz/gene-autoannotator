@@ -10,6 +10,8 @@ from urllib.parse import quote_plus
 import pandas as pd
 import requests
 
+from shared.redact import redact_url_secrets
+
 from . import http_
 
 # Gene names are hints for retrieval and prompts, not primary identity. The
@@ -133,7 +135,7 @@ def lookup_cached_gene_name(profile, locus, cache_dir=DEFAULT_GENE_NAME_CACHE_DI
     # Manual cache entries are curator-supplied and should remain visibly
     # distinct from online records that merely happen to be cached locally.
     source = 'manual_cache' if record.source == 'manual_cache' else 'cache'
-    source_detail = record.source_detail
+    source_detail = redact_url_secrets(record.source_detail)
     if source == 'cache' and record.source:
         source_detail = f'Cached {record.source}: {source_detail or "no source detail"}'
     return GeneNameLookupResult(
@@ -299,7 +301,7 @@ class NcbiGeneSource:
             return GeneNameLookupResult(
                 gene_name=None,
                 source='ncbi_gene',
-                source_detail=search_url,
+                source_detail=redact_url_secrets(search_url),
                 warnings=[f'ncbi_lookup_failed:{exc.__class__.__name__}'],
             )
         ids = search_result.get('esearchresult', {}).get('idlist', [])
@@ -307,7 +309,7 @@ class NcbiGeneSource:
             return GeneNameLookupResult(
                 gene_name=None,
                 source='ncbi_gene',
-                source_detail=search_url,
+                source_detail=redact_url_secrets(search_url),
                 candidates=list(ids),
                 warnings=['ambiguous_gene_name' if ids else 'no_gene_name_found'],
             )
@@ -324,7 +326,7 @@ class NcbiGeneSource:
             return GeneNameLookupResult(
                 gene_name=None,
                 source='ncbi_gene',
-                source_detail=summary_url,
+                source_detail=redact_url_secrets(summary_url),
                 warnings=[f'ncbi_lookup_failed:{exc.__class__.__name__}'],
             )
         record = summary.get('result', {}).get(ids[0], {})
@@ -339,7 +341,7 @@ class NcbiGeneSource:
         return GeneNameLookupResult(
             gene_name=gene_name,
             source='ncbi_gene',
-            source_detail=summary_url,
+            source_detail=redact_url_secrets(summary_url),
             confidence='clear',
             aliases=aliases,
         )

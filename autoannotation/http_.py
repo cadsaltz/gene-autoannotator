@@ -6,6 +6,8 @@ import cloudscraper as cs
 import requests
 from urllib3.exceptions import ProtocolError
 
+from shared.redact import redact_url_secrets
+
 from . import utils
 
 COOLDOWN_SECONDS_DEFAULT = 0.5
@@ -172,7 +174,7 @@ class Throttler:
                 log.warning(
                     'Request to %s failed (%s); retrying in %.1fs (%s/%s)',
                     label,
-                    exc,
+                    redact_url_secrets(str(exc)),
                     sleep_for,
                     attempt,
                     attempts,

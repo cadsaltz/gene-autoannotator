@@ -3,6 +3,7 @@ import sys
 import threading
 
 from shared.job_contract import AnnotationJobRequest
+from shared.redact import redact_url_secrets
 from worker import capacity, executor
 
 log = logging.getLogger(__name__)
@@ -120,7 +121,7 @@ def run_once(client, config, *, active_jobs, execute, heartbeat_interval=None):
         client.complete(job_id, result)
         log.info("Completed job %s", job_id)
     except Exception as exc:  # noqa: BLE001 - report every failure to the backend.
-        message = str(exc)
+        message = redact_url_secrets(str(exc))
         client.fail(job_id, message, _is_retryable(message))
         log.warning("Job %s failed: %s", job_id, message)
     finally:

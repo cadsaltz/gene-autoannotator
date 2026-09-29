@@ -4,6 +4,8 @@ import time
 
 import httpx
 
+from shared.redact import redact_url_secrets
+
 log = logging.getLogger(__name__)
 
 _TRANSIENT_ERRORS = (
@@ -227,6 +229,8 @@ class BackendClient:
             "post",
             f"/jobs/{job_id}/fail",
             headers=self._auth,
-            json=self._with_worker_id({"error": error, "retryable": retryable}),
+            json=self._with_worker_id(
+                {"error": redact_url_secrets(error), "retryable": retryable}
+            ),
             deadline_seconds=_complete_retry_seconds(),
         ).raise_for_status()

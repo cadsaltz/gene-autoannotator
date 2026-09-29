@@ -52,6 +52,7 @@ from .rate_limits import (
 from .runner import run_annotation_job
 from . import regex_gen
 from .worker_registry import WorkerRegistry
+from shared.redact import redact_url_secrets
 from shared.worker_contract import (
     ClaimRequest,
     HeartbeatResponse,
@@ -350,7 +351,7 @@ def create_app(
                     completed_job = store.get_job(job["id"])
                     persist_completed_annotation(completed_job)
                 except Exception as exc:  # noqa: BLE001 - API must persist job failures.
-                    store.mark_failed(job["id"], str(exc))
+                    store.mark_failed(job["id"], redact_url_secrets(str(exc)))
 
     @asynccontextmanager
     async def lifespan(app):
@@ -1324,7 +1325,7 @@ def create_app(
         _require_worker_token(authorization)
         applied = store.fail_job(
             job_id,
-            request.error,
+            redact_url_secrets(request.error),
             retryable=request.retryable,
             max_attempts=max_attempts,
             worker_id=request.worker_id,
