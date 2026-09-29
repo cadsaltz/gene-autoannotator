@@ -17,6 +17,12 @@ def _iso_in(seconds):
     return (datetime.now(UTC) + timedelta(seconds=seconds)).isoformat()
 
 
+def _held_by(row, worker_id):
+    if row is None or row["status"] != "running":
+        return False
+    return worker_id is None or row["worker_id"] == worker_id
+
+
 class JobStore:
     def __init__(self, db_path):
         self.db_path = Path(db_path)
@@ -376,14 +382,14 @@ class JobStore:
             connection.commit()
         return {"requeued": requeued, "failed": failed}
 
-    def complete_if_running(self, job_id, result, output_path=None):
+    def complete_if_running(self, job_id, result, output_path=None, *, worker_id=None):
         with self._connect() as connection:
             connection.row_factory = sqlite3.Row
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT status FROM annotation_jobs WHERE id = ?", (job_id,)
+                "SELECT status, worker_id FROM annotation_jobs WHERE id = ?", (job_id,)
             ).fetchone()
-            if row is None or row["status"] != "running":
+            if not _held_by(row, worker_id):
                 connection.commit()
                 return False
             connection.execute(
@@ -398,16 +404,19 @@ class JobStore:
             connection.commit()
         return True
 
-    def fail_job(self, job_id, error, *, retryable=False, max_attempts=3):
+    def fail_job(self, job_id, error, *, retryable=False, max_attempts=3, worker_id=None):
+        """Requeue or fail a running job. Returns False (no-op) when the job is
+        not running or, if `worker_id` is given, is held by another worker —
+        so a retried fail can never requeue a later attempt."""
         with self._connect() as connection:
             connection.row_factory = sqlite3.Row
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT status, attempts FROM annotation_jobs WHERE id = ?", (job_id,)
+                "SELECT status, attempts, worker_id FROM annotation_jobs WHERE id = ?", (job_id,)
             ).fetchone()
-            if row is None or row["status"] in ("completed", "failed", "cancelled"):
+            if not _held_by(row, worker_id):
                 connection.commit()
-                return
+                return False
             if retryable and row["attempts"] < max_attempts:
                 connection.execute(
                     """
@@ -429,6 +438,7 @@ class JobStore:
                     (str(error), _now_iso(), job_id),
                 )
             connection.commit()
+        return True
 
     def list_jobs(self, order="newest", limit=100, batch_id=None, *, user_id=None):
         if order == "queue":

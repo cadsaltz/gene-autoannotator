@@ -135,6 +135,10 @@ update.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `WORKER_PROGRESS_DEBOUNCE_SEC` | `1.5` | Minimum seconds between progress PATCHes for the same job while its phase is unchanged. |
+| `WORKER_COMPLETE_RETRY_SECONDS` | `300` | How long `complete`/`fail` reports keep retrying transport errors and 502/503/504 (backend restarts) with backoff up to 30 s. Other calls use a short ~3.5 s retry. |
+
+If a progress PATCH answers `409 {"cancelled": true}`, the worker stops that
+job's subprocess and reports neither completion nor failure for it.
 
 The backend persists these fields on the job record and exposes them via
 `GET /jobs`; the frontend Jobs page renders them on each job tile as

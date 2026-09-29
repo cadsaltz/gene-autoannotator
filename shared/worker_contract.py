@@ -56,8 +56,12 @@ class JobProgress(BaseModel):
 
 class JobComplete(BaseModel):
     result: dict
+    # Optional so workers predating the guard keep working; when set, only the
+    # worker currently holding the job may complete it.
+    worker_id: str | None = None
 
 
 class JobFail(BaseModel):
     error: str
     retryable: bool = True
+    worker_id: str | None = None

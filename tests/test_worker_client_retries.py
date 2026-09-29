@@ -1,6 +1,7 @@
 import time
 
 import httpx
+import pytest
 
 from worker.client import BackendClient
 
@@ -41,11 +42,8 @@ def test_progress_keeps_short_retry_budget(monkeypatch):
     http = _FlakyPatchHttp([httpx.ConnectError("down")] * 5)
     client = BackendClient(_Config(), http_client=http)
 
-    try:
+    with pytest.raises(httpx.ConnectError):
         client.progress("j1", "step")
-        raise AssertionError("expected ConnectError")
-    except httpx.ConnectError:
-        pass
     assert http.calls == 4
 
 

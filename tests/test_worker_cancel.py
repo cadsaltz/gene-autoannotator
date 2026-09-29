@@ -137,21 +137,69 @@ def test_complete_gives_up_after_window_and_raises_last_transport_error(monkeypa
     assert http.calls == len(clock.sleeps) + 1
 
 
-def test_complete_retries_5xx_during_backend_swap(monkeypatch):
+def test_complete_retries_gateway_errors_during_backend_swap(monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     http = _ScriptedPost(
         [
             _response("POST", "/jobs/j1/complete", 502),
             _response("POST", "/jobs/j1/complete", 503),
             _response("POST", "/jobs/j1/complete", 504),
-            _response("POST", "/jobs/j1/complete", 500),
             _response("POST", "/jobs/j1/complete", 204),
         ]
     )
 
     BackendClient(_Config(), http_client=http).complete("j1", {})
 
-    assert http.calls == 5
+    assert http.calls == 4
+
+
+def test_complete_does_not_retry_500(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+    http = _ScriptedPost([_response("POST", "/jobs/j1/complete", 500)])
+
+    with pytest.raises(httpx.HTTPStatusError):
+        BackendClient(_Config(), http_client=http).complete("j1", {})
+
+    assert http.calls == 1
+    assert sleeps == []
+
+
+class _RecordingPost:
+    def __init__(self):
+        self.bodies = []
+
+    def post(self, path, headers=None, json=None):
+        del headers
+        self.bodies.append(json)
+        return _response("POST", path, 204)
+
+
+def test_complete_and_fail_identify_the_registered_worker():
+    http = _RecordingPost()
+    client = BackendClient(_Config(), http_client=http)
+    client.worker_id = "worker-a"
+
+    client.complete("j1", {"ok": True})
+    client.fail("j2", "boom", True)
+
+    assert http.bodies == [
+        {"result": {"ok": True}, "worker_id": "worker-a"},
+        {"error": "boom", "retryable": True, "worker_id": "worker-a"},
+    ]
+
+
+def test_complete_and_fail_omit_worker_id_when_unregistered():
+    http = _RecordingPost()
+    client = BackendClient(_Config(), http_client=http)
+
+    client.complete("j1", {"ok": True})
+    client.fail("j2", "boom", False)
+
+    assert http.bodies == [
+        {"result": {"ok": True}},
+        {"error": "boom", "retryable": False},
+    ]
 
 
 def test_fail_retries_across_backend_restart(monkeypatch):
@@ -246,12 +294,20 @@ def test_reporter_on_cancelled_can_be_wired_after_construction():
 
 
 def test_reporter_swallows_on_cancelled_callback_errors():
-    def boom(_job_id):
+    invoked = []
+
+    def boom(job_id):
+        invoked.append(job_id)
         raise RuntimeError("callback broke")
 
-    reporter = ProgressReporter(_CancellingClient(), debounce_sec=0.0, on_cancelled=boom)
+    client = _CancellingClient()
+    reporter = ProgressReporter(client, debounce_sec=0.0, on_cancelled=boom)
 
-    reporter.report("j1", _event())
+    reporter.report("j1", _event(done=1))
+    reporter.report("j1", _event(phase="extracting", done=2))
+
+    assert invoked == ["j1"]
+    assert client.calls == ["j1"]
 
 
 class _RecordingSource:
@@ -357,6 +413,27 @@ def test_cancelled_job_that_still_returns_a_result_is_not_completed(monkeypatch)
     assert source.completed == []
     assert source.failed == []
     assert runtime.free_slots() == 1
+
+
+def test_cancel_warns_when_no_subprocess_can_be_stopped(monkeypatch, caplog):
+    import logging
+
+    monkeypatch.setattr(executor, "terminate_job", lambda _job_id: False)
+    release = threading.Event()
+
+    def execute(request, *, job_id=None):
+        assert release.wait(5)
+        return {}
+
+    runtime = _runtime(_RecordingSource([JobSpec(job_id="j1", request={})]), execute)
+    runtime._claim_to_capacity()
+    caplog.set_level(logging.WARNING, logger="worker.runtime")
+
+    runtime.cancel_job("j1")
+    release.set()
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("j1" in r.getMessage() for r in warnings)
 
 
 def test_cancel_unknown_job_is_a_noop(monkeypatch):

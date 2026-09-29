@@ -24,6 +24,9 @@ _RETRY_BACKOFF_SEC = (0.5, 1.0, 2.0)
 DEFAULT_COMPLETE_RETRY_SECONDS = 300.0
 _DEADLINE_BACKOFF_INITIAL_SEC = 0.5
 _DEADLINE_BACKOFF_MAX_SEC = 30.0
+# Proxy/gateway codes seen while the backend container is swapped; a 500 is an
+# application error that retrying will not fix.
+_RETRYABLE_STATUS = frozenset({502, 503, 504})
 
 
 def _complete_retry_seconds():
@@ -94,8 +97,8 @@ class BackendClient:
                 time.sleep(delay)
 
     def _request_until_deadline(self, method, path, deadline_seconds, **kwargs):
-        """Retry transport errors and 5xx with capped exponential backoff until
-        `deadline_seconds` elapse. 4xx responses are returned immediately."""
+        """Retry transport errors and 502/503/504 with capped exponential backoff
+        until `deadline_seconds` elapse. Any other response is returned at once."""
         deadline = time.monotonic() + deadline_seconds
         delay = _DEADLINE_BACKOFF_INITIAL_SEC
         attempt = 0
@@ -108,7 +111,7 @@ class BackendClient:
                 last_error = exc
                 response = None
             else:
-                if response.status_code < 500:
+                if response.status_code not in _RETRYABLE_STATUS:
                     return response
                 reason = f"HTTP {response.status_code}"
                 last_error = None
@@ -205,12 +208,17 @@ class BackendClient:
             raise JobCancelled(job_id)
         response.raise_for_status()
 
+    def _with_worker_id(self, payload):
+        if self.worker_id is not None:
+            payload["worker_id"] = self.worker_id
+        return payload
+
     def complete(self, job_id, result):
         self._request(
             "post",
             f"/jobs/{job_id}/complete",
             headers=self._auth,
-            json={"result": result},
+            json=self._with_worker_id({"result": result}),
             deadline_seconds=_complete_retry_seconds(),
         ).raise_for_status()
 
@@ -219,6 +227,6 @@ class BackendClient:
             "post",
             f"/jobs/{job_id}/fail",
             headers=self._auth,
-            json={"error": error, "retryable": retryable},
+            json=self._with_worker_id({"error": error, "retryable": retryable}),
             deadline_seconds=_complete_retry_seconds(),
         ).raise_for_status()

@@ -202,7 +202,12 @@ class WorkerRuntime:
                 return
             self._cancelled_jobs.add(job_id)
         log.info("Cancelling job %s", job_id)
-        executor.terminate_job(job_id)
+        if not executor.terminate_job(job_id):
+            log.warning(
+                "Cancelled job %s has no subprocess to stop (in-process execution?); "
+                "it will run to the end and its result will be discarded",
+                job_id,
+            )
 
     def request_shutdown(self) -> None:
         self._shutdown_requested.set()

@@ -1305,8 +1305,16 @@ def create_app(
     ):
         _require_worker_token(authorization)
         output_path = request.result.get("output_path")
-        if store.complete_if_running(job_id, request.result, output_path=output_path):
+        if store.complete_if_running(
+            job_id, request.result, output_path=output_path, worker_id=request.worker_id
+        ):
             persist_completed_annotation(store.get_job(job_id))
+        else:
+            log.info(
+                "Ignored complete for job %s from worker %s: not running on that worker",
+                job_id,
+                request.worker_id,
+            )
         return Response(status_code=204)
 
     @app.post("/jobs/{job_id}/fail", status_code=204)
@@ -1314,7 +1322,19 @@ def create_app(
         job_id: str, request: JobFail, authorization: str | None = Header(default=None)
     ):
         _require_worker_token(authorization)
-        store.fail_job(job_id, request.error, retryable=request.retryable, max_attempts=max_attempts)
+        applied = store.fail_job(
+            job_id,
+            request.error,
+            retryable=request.retryable,
+            max_attempts=max_attempts,
+            worker_id=request.worker_id,
+        )
+        if not applied:
+            log.info(
+                "Ignored fail for job %s from worker %s: not running on that worker",
+                job_id,
+                request.worker_id,
+            )
         return Response(status_code=204)
 
     @app.post("/workers/{worker_id}/drain", status_code=204)
