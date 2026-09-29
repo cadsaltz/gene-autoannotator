@@ -1,7 +1,7 @@
 const KICKER = "How the pipeline works";
 const TITLE = "From a gene identifier to a review-ready annotation";
 const INTRO =
-  "Every job runs the same nine stages on a compute worker. Most of the time goes into the language-model steps, because every excerpt is read by several models.";
+  "Every job runs up to nine stages on a compute worker (GO term resolution only runs when the organism profile enables it). Most of the time goes into the language-model steps, because every excerpt is read by several models.";
 
 const STAGES = [
   {

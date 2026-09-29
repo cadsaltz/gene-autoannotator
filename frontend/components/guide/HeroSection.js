@@ -34,14 +34,14 @@ export default function HeroSection() {
 
       <HeroActions />
 
-      <dl className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {AT_A_GLANCE.map((item) => (
-          <div key={item.value} className="guide-hero-stat pt-3">
-            <dt className="text-2xl font-bold tracking-[-0.03em]">{item.value}</dt>
-            <dd className="guide-hero-muted mt-1 text-sm leading-6">{item.label}</dd>
-          </div>
+          <li key={item.value} className="guide-hero-stat pt-3">
+            <p className="text-2xl font-bold tracking-[-0.03em]">{item.value}</p>
+            <p className="guide-hero-muted mt-1 text-sm leading-6">{item.label}</p>
+          </li>
         ))}
-      </dl>
+      </ul>
     </section>
   );
 }

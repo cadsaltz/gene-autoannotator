@@ -9,6 +9,12 @@ const HEADING = "Your limits";
 const SIGNED_OUT_COPY =
   "Sign in to see your current usage and the limits on your account. Unless the operator changes them, each account can have 20 active jobs, submit 50 jobs per 24 hours, and send batches of up to 25 genes.";
 
+function describeQueueState(queueStatus) {
+  if (queueStatus.accepting === true) return "submissions open";
+  if (queueStatus.paused === true) return "submissions paused by the operator";
+  return "queue full, try again later";
+}
+
 function Stat({ label, value }) {
   return (
     <div className="border-t workbench-border pt-2">
@@ -51,9 +57,7 @@ export default function QueueLimits() {
           <Stat label="Batch size" value={`Up to ${queueStatus.batch_limit} genes`} />
           <Stat
             label="Shared queue"
-            value={`${formatQueuedCount(queueStatus.queued)} · ${
-              queueStatus.accepting === true ? "submissions open" : "submissions paused"
-            }`}
+            value={`${formatQueuedCount(queueStatus.queued)} · ${describeQueueState(queueStatus)}`}
           />
         </dl>
       ) : (

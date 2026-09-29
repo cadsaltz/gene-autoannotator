@@ -43,7 +43,7 @@ const STEPS = [
     points: [
       "PMID citations sit inline next to claims. Open them on PubMed and check that the paper says what the annotation claims.",
       "“No supported data” means the pipeline found no supported evidence for that field. It is not a negative result.",
-      "Quality flags summarize the literature base: strong_literature_support, weak_literature_support, limited_literature, or relied_on_low_relevance_papers.",
+      "Quality flags summarize the literature base, with values such as strong_literature_support, weak_literature_support, limited_literature, or relied_on_low_relevance_papers.",
       "Cumulative relevance is compared with the 9.0 target. Annotation notes explain conflicts between papers and which fields stayed unknown.",
       "Fields borrowed from an ortholog are labeled as such, and each GO term carries a confidence score in the raw JSON.",
     ],

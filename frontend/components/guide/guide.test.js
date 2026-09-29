@@ -123,9 +123,23 @@ test("limits widget reads queue-status and falls back to generic copy", async ()
   assert.match(limits, /your_daily_limit/);
   assert.match(limits, /batch_limit/);
   assert.match(limits, /SIGNED_OUT_COPY/);
+  assert.match(limits, /queueStatus\.paused === true/);
+  assert.match(limits, /queue full/);
   const section = await readProjectFile("components/guide/LimitsSection.js");
   assert.match(section, /<QueueLimits \/>/);
   assert.match(section, /minutes to hours/);
+  assert.match(section, /ten hours or more/);
+});
+
+test("copy stays precise about optional stages, flags, and passwords", async () => {
+  const pipeline = await readProjectFile("components/guide/PipelineSection.js");
+  assert.match(pipeline, /up to nine stages/);
+  const tutorial = await readProjectFile("components/guide/TutorialSection.js");
+  assert.match(tutorial, /such as strong_literature_support/);
+  const faq = await readProjectFile("components/guide/FaqSection.js");
+  assert.match(faq, /no password to leak/);
+  const hero = await readProjectFile("components/guide/HeroSection.js");
+  assert.doesNotMatch(hero, /<dt|<dd|<dl/);
 });
 
 test("example output card is a trimmed real annotation with a real PMID", async () => {

@@ -20,7 +20,7 @@ const LIMIT_POINTS = [
   },
   {
     title: "How long it takes",
-    text: "Jobs can take minutes to hours depending on HPC availability and how much literature a gene has. In our saved example outputs, run times range from about 8 minutes to about 6 hours, not counting time spent waiting in the queue.",
+    text: "Jobs can take minutes to hours depending on HPC availability and how much literature a gene has. In our saved example outputs, run times range from several minutes to ten hours or more, not counting time waiting in the queue.",
   },
   {
     title: "Progress and retries",

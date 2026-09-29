@@ -9,7 +9,7 @@ const FAQ_ITEMS = [
   {
     question: "Why do I sign in with an email code instead of a password?",
     answer:
-      "Accounts are passwordless. Each time you sign in we email a 6-digit code that expires after 10 minutes. There is no password for you to reuse or for us to store, so there is nothing to leak.",
+      "Accounts are passwordless. Each time you sign in we email a 6-digit code that expires after 10 minutes. There is no password for you to reuse or for us to store, so there is no password to leak.",
   },
   {
     question: "Why are there quotas?",
