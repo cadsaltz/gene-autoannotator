@@ -137,9 +137,12 @@ def _set_status(auth: AuthStore, audit: AuditStore, jobs: JobStore, args) -> Non
         return
     auth.set_status(user["id"], status)
     details = {"from": user["status"], "to": status}
-    if status == "suspended":
-        details["cancelled_jobs"] = jobs.cancel_active_for_user(user["id"], by="cli")
-    _audit(audit, "status_change", user, details)
+    try:
+        if status == "suspended":
+            details["cancelled_jobs"] = None
+            details["cancelled_jobs"] = jobs.cancel_active_for_user(user["id"], by="cli")
+    finally:
+        _audit(audit, "status_change", user, details)
     print(f"{user['email']}: status {user['status']} -> {status}")
     if status == "suspended":
         print(f"{user['email']}: cancelled {details['cancelled_jobs']} job(s)")

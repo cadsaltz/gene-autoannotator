@@ -265,3 +265,12 @@ test("admin job tiles show the submitter email", async () => {
   assert.match(workspace, />Submitter</);
   assert.match(workspace, /job\.submitted_by_email \|\| "Unknown"/);
 });
+
+test("admin JobWorkspace shows a banner while submissions are paused", async () => {
+  const workspace = await readProjectFile("components/JobWorkspace.js");
+
+  assert.match(workspace, /getQueueStatus/);
+  assert.match(workspace, /setSubmissionsPaused\(queueStatus\?\.paused === true\)/);
+  assert.match(workspace, /\{submissionsPaused \? \(/);
+  assert.match(workspace, /SUBMISSIONS_PAUSED/);
+});

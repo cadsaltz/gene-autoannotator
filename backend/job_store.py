@@ -23,6 +23,33 @@ def _held_by(row, worker_id):
     return worker_id is None or row["worker_id"] == worker_id
 
 
+def _cancel_inactive_submitters_queued(connection) -> int:
+    """Cancel queued jobs whose submitter exists but is not active.
+
+    Backstop for suspensions made outside the API process (``backend.manage``),
+    which cannot take the API's submission lock. Jobs with no submitter, or a
+    submitter id with no users row, stay claimable. The users table lives in
+    the same SQLite file but may not exist in a bare job store.
+    """
+    has_users = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'"
+    ).fetchone()
+    if not has_users:
+        return 0
+    cursor = connection.execute(
+        """
+        UPDATE annotation_jobs
+        SET status = 'cancelled', current_step = 'cancelled', error = ?,
+            finished_at = ?, lease_expires_at = NULL
+        WHERE status = 'queued' AND submitted_by_user_id IN (
+            SELECT id FROM users WHERE status != 'active'
+        )
+        """,
+        ("Cancelled: account suspended", _now_iso()),
+    )
+    return cursor.rowcount
+
+
 class JobStore:
     def __init__(self, db_path):
         self.db_path = Path(db_path)
@@ -292,6 +319,7 @@ class JobStore:
             # BEGIN IMMEDIATE serializes claims across threads/processes using
             # the same database file.
             connection.execute("BEGIN IMMEDIATE")
+            _cancel_inactive_submitters_queued(connection)
             queued = connection.execute(
                 """
                 SELECT id
@@ -325,6 +353,7 @@ class JobStore:
             # write lock before selecting, so concurrent claimers cannot select
             # the same queued job.
             connection.execute("BEGIN IMMEDIATE")
+            _cancel_inactive_submitters_queued(connection)
             queued = connection.execute(
                 """
                 SELECT id FROM annotation_jobs

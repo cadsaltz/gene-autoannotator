@@ -354,3 +354,19 @@ def test_module_entrypoint_runs_without_importing_api(db, auth):
     )
     assert result.returncode == 0, result.stderr
     assert "a@example.com" in result.stdout
+
+
+def test_status_change_audited_even_if_cancel_fails(db, auth, monkeypatch):
+    auth.create_user(email="a@example.com", username=None)
+
+    def boom(self, user_id, **kwargs):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(JobStore, "cancel_active_for_user", boom)
+    with pytest.raises(RuntimeError):
+        manage.main(["--db", str(db), "set-status", "a@example.com", "suspended"])
+
+    [event] = _events(db, "status_change")
+    assert event["details"] == {
+        "from": "active", "to": "suspended", "cancelled_jobs": None, "source": "cli"
+    }

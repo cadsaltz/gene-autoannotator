@@ -493,3 +493,98 @@ def test_overview(alice, admin, store, monkeypatch):
         "ip_logins_per_hour": 30,
         "otp_sends_per_email_per_hour": 5,
     }
+
+
+def _suspend_during_quota_check(monkeypatch, client, user_id):
+    from backend import api
+
+    real_check = api.check_submission
+
+    def check_then_suspend(**kwargs):
+        real_check(**kwargs)
+        client.auth_store.set_status(user_id, "suspended")
+
+    monkeypatch.setattr(api, "check_submission", check_then_suspend)
+
+
+@pytest.mark.parametrize(
+    "path, body",
+    [
+        ("/jobs", JOB),
+        (
+            "/batches",
+            {
+                "profile": "mtb-h37rv",
+                "entries": [{"input": "Rv0001"}, {"input": "Rv0002"}],
+                "allow_online_name_lookup": False,
+            },
+        ),
+    ],
+)
+def test_submission_rejected_when_suspended_mid_request(alice, store, monkeypatch, path, body):
+    _suspend_during_quota_check(monkeypatch, alice, _id(alice, "alice@example.com"))
+
+    response = alice.post(path, json=body)
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Account suspended"}
+    assert store.count_queued_jobs() == 0
+
+
+def test_suspend_and_delete_hold_submission_lock(alice, admin, store, monkeypatch):
+    alice_id = _id(alice, "alice@example.com")
+    lock = admin.app.state.submission_lock
+    held = []
+
+    def spy(method_name):
+        real = getattr(store, method_name)
+
+        def wrapper(user_id, **kwargs):
+            held.append((method_name, lock.locked()))
+            return real(user_id, **kwargs)
+
+        monkeypatch.setattr(store, method_name, wrapper)
+
+    spy("cancel_active_for_user")
+    spy("cancel_queued_for_user")
+    admin.patch(f"/admin/users/{alice_id}", json={"status": "suspended"})
+    admin.delete(f"/admin/users/{alice_id}")
+    assert held == [("cancel_active_for_user", True), ("cancel_queued_for_user", True)]
+
+
+def test_status_change_audited_even_if_cancel_fails(alice, admin, store, monkeypatch):
+    alice_id = _id(alice, "alice@example.com")
+
+    def boom(user_id, **kwargs):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(store, "cancel_active_for_user", boom)
+    with pytest.raises(RuntimeError):
+        admin.patch(f"/admin/users/{alice_id}", json={"status": "suspended"})
+    [event] = _events(admin, action="status_change")
+    assert event["details"] == {"from": "active", "to": "suspended", "cancelled_jobs": None}
+
+
+def test_claim_skips_and_cancels_suspended_users_jobs(alice, admin, store):
+    alice_id = _id(alice, "alice@example.com")
+    alice_job = alice.post("/jobs", json=JOB).json()["job_id"]
+    admin_job = admin.post("/jobs", json=JOB).json()["job_id"]
+    legacy = store.create_job({})
+    unknown_owner = store.create_job({}, submitted_by_user_id="deleted-or-unknown")
+    alice.auth_store.set_status(alice_id, "suspended")
+
+    claimed = [store.assign_job_to_worker("w1")["id"] for _ in range(3)]
+
+    assert claimed == [admin_job, legacy["id"], unknown_owner["id"]]
+    assert store.assign_job_to_worker("w1") is None
+    skipped = store.get_job(alice_job)
+    assert skipped["status"] == "cancelled"
+    assert skipped["error"] == "Cancelled: account suspended"
+
+
+def test_claim_works_without_users_table(tmp_path):
+    from backend.job_store import JobStore
+
+    bare = JobStore(tmp_path / "bare.sqlite3")
+    job = bare.create_job({}, submitted_by_user_id="u1")
+    assert bare.assign_job_to_worker("w1")["id"] == job["id"]

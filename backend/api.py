@@ -299,8 +299,16 @@ def create_app(
     # concurrent submissions can all pass the same check.
     submission_lock = threading.Lock()
     # The last-admin guard counts admins before mutating, so two admins
-    # demoting each other concurrently could otherwise both pass it.
+    # demoting each other concurrently could otherwise both pass it. When both
+    # are needed, take admin_lock first.
     admin_lock = threading.Lock()
+
+    def _require_still_active(user: dict):
+        # Call under submission_lock: suspend and delete cancel jobs under the
+        # same lock, so a submission cannot slip in after their cancel.
+        current = auth.get_user(user["id"])
+        if current is None or current["status"] != "active":
+            raise HTTPException(status_code=403, detail="Account suspended")
 
     def _reject_if_paused(user: dict):
         if _submissions_paused() and not is_admin(user):
@@ -434,6 +442,7 @@ def create_app(
     app = FastAPI(title="Gene Autoannotator API", lifespan=lifespan)
     app.state.audit_store = audit
     app.state.alert_loop = None
+    app.state.submission_lock = submission_lock
     cors_origins = [
         origin.strip()
         for origin in os.getenv("CORS_ORIGINS", ",".join(DEFAULT_CORS_ORIGINS)).split(",")
@@ -1132,6 +1141,7 @@ def create_app(
                 store=store,
                 config=QuotaConfig.from_env(),
             )
+            _require_still_active(_user)
             _enforce_submit_limit(http_request, _user)
             batch = batches.create_batch(
                 profile=request.profile,
@@ -1203,6 +1213,7 @@ def create_app(
         _require_worker_fleet(_user)
         with submission_lock:
             check_submission(user=_user, job_count=1, store=store, config=QuotaConfig.from_env())
+            _require_still_active(_user)
             _enforce_submit_limit(http_request, _user)
             job = store.create_job(stored_request, submitted_by_user_id=_user["id"])
         _audit(http_request, "job_submit", _user["id"], target_type="job", target_id=job["id"])
@@ -1515,11 +1526,15 @@ def create_app(
                 auth.set_role(user_id, role)
                 audit_change("role_change", {"from": target["role"], "to": role})
             if new_status != target["status"]:
-                auth.set_status(user_id, new_status)
                 details = {"from": target["status"], "to": new_status}
-                if new_status == "suspended":
-                    details["cancelled_jobs"] = store.cancel_active_for_user(user_id)
-                audit_change("status_change", details)
+                with submission_lock:
+                    auth.set_status(user_id, new_status)
+                    try:
+                        if new_status == "suspended":
+                            details["cancelled_jobs"] = None
+                            details["cancelled_jobs"] = store.cancel_active_for_user(user_id)
+                    finally:
+                        audit_change("status_change", details)
                 if new_status == "suspended":
                     audit_change("sessions_revoked", {"count": auth.revoke_sessions(user_id)})
             quota_changes = {
@@ -1559,22 +1574,21 @@ def create_app(
             target = _user_or_404(user_id)
             _guard_last_admin(target, None)
             revoked = auth.revoke_sessions(user_id)
-            auth.delete_user(user_id)
             cancelled = None
-            try:
-                # Cancelling after the delete narrows, but does not close, the
-                # window for a submission that passed auth before the delete.
-                cancelled = store.cancel_queued_for_user(user_id)
-            finally:
-                _audit(
-                    request, "user_delete", _user["id"],
-                    target_type="user", target_id=user_id,
-                    details={
-                        "email": target["email"],
-                        "cancelled_jobs": cancelled,
-                        "sessions_revoked": revoked,
-                    },
-                )
+            with submission_lock:
+                auth.delete_user(user_id)
+                try:
+                    cancelled = store.cancel_queued_for_user(user_id)
+                finally:
+                    _audit(
+                        request, "user_delete", _user["id"],
+                        target_type="user", target_id=user_id,
+                        details={
+                            "email": target["email"],
+                            "cancelled_jobs": cancelled,
+                            "sessions_revoked": revoked,
+                        },
+                    )
         return {"deleted": True, "cancelled_jobs": cancelled}
 
     @app.get("/admin/overview", response_model=AdminOverviewResponse)

@@ -13,6 +13,7 @@ import {
   getBatch,
   getHealth,
   getProfiles,
+  getQueueStatus,
   listJobs,
 } from "../lib/api";
 import { formatJobElapsed } from "../lib/form";
@@ -254,6 +255,7 @@ export default function JobWorkspace() {
   const [showAllJobs, setShowAllJobs] = useState(false);
   const [queue, setQueue] = useState({ queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0 });
   const [statusMessage, setStatusMessage] = useState("");
+  const [submissionsPaused, setSubmissionsPaused] = useState(false);
   const [submitMode, setSubmitMode] = useState("single");
   const [activeBatchId, setActiveBatchId] = useState(null);
   const [batchFilterActive, setBatchFilterActive] = useState(false);
@@ -286,6 +288,13 @@ export default function JobWorkspace() {
         stores: {},
         resources: { status: "unavailable", message: error.message },
       });
+    }
+
+    try {
+      const queueStatus = await getQueueStatus();
+      setSubmissionsPaused(queueStatus?.paused === true);
+    } catch {
+      setSubmissionsPaused(false);
     }
 
     try {
@@ -415,6 +424,13 @@ export default function JobWorkspace() {
       </section>
 
       <JobsHealthBanner health={health} annotationHealth={annotationHealth} />
+
+      {submissionsPaused ? (
+        <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+          New submissions from non-admin users are paused (<code>SUBMISSIONS_PAUSED=1</code>).
+          Queued and running jobs continue, and admins can still submit.
+        </p>
+      ) : null}
 
       <div className="grid items-start gap-5 lg:grid-cols-[0.95fr_1.05fr]">
         <section className="workbench-card p-6">
