@@ -15,6 +15,7 @@ from autoannotation.batch_parse import BatchParseError
 
 from .access import is_admin
 from .annotation_store import AnnotationStoreUnavailable, annotation_store_from_env
+from .audit_store import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, AuditStore
 from .auth import (
     OTP_TTL_SECONDS,
     SESSION_COOKIE_NAME,
@@ -265,12 +266,14 @@ def create_app(
     worker_api_token=None,
     worker_capacity_required=False,
     rate_limiter=None,
+    audit_store=None,
 ):
     store = job_store or JobStore(_migrate_legacy_db_if_needed(DEFAULT_DB_PATH))
     auth = auth_store or AuthStore(store.db_path)
     batches = batch_store or BatchStore(store.db_path)
     workers = worker_registry or WorkerRegistry(store.db_path)
     limiter = rate_limiter or RateLimiter(store.db_path)
+    audit = audit_store or AuditStore(store.db_path)
     worker_token = worker_api_token if worker_api_token is not None else os.getenv("WORKER_API_TOKEN")
     # An HPC-only deploy has no warm worker to satisfy the gate, so
     # WORKER_CAPACITY_REQUIRED=0 must be able to turn it off at deploy time.
@@ -396,6 +399,7 @@ def create_app(
             stop_reaper.set()
 
     app = FastAPI(title="Gene Autoannotator API", lifespan=lifespan)
+    app.state.audit_store = audit
     cors_origins = [
         origin.strip()
         for origin in os.getenv("CORS_ORIGINS", ",".join(DEFAULT_CORS_ORIGINS)).split(",")
@@ -455,6 +459,9 @@ def create_app(
             "OTP_SENDS_PER_EMAIL_PER_HOUR",
             "Too many sign-in codes requested for this email. Please try again later.",
         )
+
+    def _audit(request: Request, action: str, actor_user_id: str | None, **fields):
+        audit.record(action=action, actor_user_id=actor_user_id, ip=client_ip(request), **fields)
 
     def _enforce_submit_limit(request: Request, user: dict):
         if is_admin(user):
@@ -777,7 +784,7 @@ def create_app(
             samesite="lax",
         )
 
-    def _issue_login_code(*, email: str, purpose: str):
+    def _issue_login_code(request: Request, *, user: dict, email: str, purpose: str):
         code = new_otp_code()
         auth.create_login_code(
             email=email,
@@ -792,6 +799,14 @@ def create_app(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Could not send login code: {exc}",
             ) from exc
+        _audit(
+            request,
+            "login_code_sent",
+            user["id"],
+            target_type="user",
+            target_id=user["id"],
+            details={"purpose": purpose},
+        )
 
     def require_user(request: Request, response: Response) -> dict:
         token = request.cookies.get(SESSION_COOKIE_NAME)
@@ -853,9 +868,10 @@ def create_app(
         user = auth.get_user_by_email(email)
         if user is None:
             user = auth.create_user(email=email, username=body.username)
+            _audit(request, "signup", user["id"], target_type="user", target_id=user["id"])
         if user["status"] != "active":
             return AuthOkResponse()
-        _issue_login_code(email=email, purpose="signup")
+        _issue_login_code(request, user=user, email=email, purpose="signup")
         return AuthOkResponse()
 
     @app.post("/auth/login", response_model=AuthOkResponse)
@@ -865,7 +881,7 @@ def create_app(
         user = auth.get_user_by_email(email)
         if user is None or user["status"] != "active":
             return AuthOkResponse()
-        _issue_login_code(email=email, purpose="login")
+        _issue_login_code(request, user=user, email=email, purpose="login")
         return AuthOkResponse()
 
     @app.post("/auth/verify", response_model=AuthOkResponse)
@@ -890,6 +906,7 @@ def create_app(
             ip=client_ip(request),
         )
         auth.mark_login(user["id"])
+        _audit(request, "login", user["id"], target_type="user", target_id=user["id"])
         _set_session_cookie(response, token)
         return AuthOkResponse()
 
@@ -908,7 +925,11 @@ def create_app(
     def auth_logout(request: Request, response: Response):
         token = request.cookies.get(SESSION_COOKIE_NAME)
         if token:
-            auth.delete_session(hash_secret(token))
+            token_hash = hash_secret(token)
+            user = auth.get_session_user(token_hash)
+            auth.delete_session(token_hash)
+            if user is not None:
+                _audit(request, "logout", user["id"], target_type="user", target_id=user["id"])
         _clear_session_cookie(response)
 
     @app.get("/profiles", response_model=ProfilesResponse)
@@ -923,15 +944,25 @@ def create_app(
         response_model=ProfileDetailResponse,
         status_code=status.HTTP_201_CREATED,
     )
-    def create_profile(request: ProfilePayload, _user: dict = Depends(require_admin)):
+    def create_profile(
+        request: ProfilePayload, http_request: Request, _user: dict = Depends(require_admin)
+    ):
         try:
-            return profiles_store.create_user_profile(request.model_dump())
+            profile = profiles_store.create_user_profile(request.model_dump())
         except DuplicateProfileError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except InvalidProfileError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except ProfileStoreUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        _audit(
+            http_request,
+            "profile_create",
+            _user["id"],
+            target_type="profile",
+            target_id=profile.get("profile_id") or request.profile_id,
+        )
+        return profile
 
     @app.get("/profiles/{profile_id}", response_model=ProfileDetailResponse)
     def get_profile(profile_id: str, _user: dict = Depends(require_user)):
@@ -945,7 +976,10 @@ def create_app(
 
     @app.put("/profiles/{profile_id}", response_model=ProfileDetailResponse)
     def update_profile(
-        profile_id: str, request: ProfilePayload, _user: dict = Depends(require_admin)
+        profile_id: str,
+        request: ProfilePayload,
+        http_request: Request,
+        _user: dict = Depends(require_admin),
     ):
         try:
             profile = profiles_store.update_user_profile(profile_id, request.model_dump())
@@ -955,10 +989,15 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         if profile is None:
             raise HTTPException(status_code=404, detail="Profile not found")
+        _audit(
+            http_request, "profile_update", _user["id"], target_type="profile", target_id=profile_id
+        )
         return profile
 
     @app.delete("/profiles/{profile_id}")
-    def delete_profile(profile_id: str, _user: dict = Depends(require_admin)):
+    def delete_profile(
+        profile_id: str, http_request: Request, _user: dict = Depends(require_admin)
+    ):
         try:
             deleted = profiles_store.delete_user_profile(profile_id)
         except InvalidProfileError as exc:
@@ -967,6 +1006,9 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         if not deleted:
             raise HTTPException(status_code=404, detail="Profile not found")
+        _audit(
+            http_request, "profile_delete", _user["id"], target_type="profile", target_id=profile_id
+        )
         return {"deleted": True}
 
     @app.post("/validate")
@@ -1062,6 +1104,14 @@ def create_app(
                 )["id"]
                 for stored_request in stored_requests
             ]
+        _audit(
+            http_request,
+            "batch_submit",
+            _user["id"],
+            target_type="batch",
+            target_id=batch["id"],
+            details={"job_count": len(job_ids)},
+        )
 
         _maybe_run_jobs_inline()
 
@@ -1109,6 +1159,7 @@ def create_app(
             check_submission(user=_user, job_count=1, store=store, config=QuotaConfig.from_env())
             _enforce_submit_limit(http_request, _user)
             job = store.create_job(stored_request, submitted_by_user_id=_user["id"])
+        _audit(http_request, "job_submit", _user["id"], target_type="job", target_id=job["id"])
         _maybe_run_jobs_inline()
         if run_jobs_inline:
             job = store.get_job(job["id"])
@@ -1179,11 +1230,19 @@ def create_app(
         response_model=JobRecordResponse,
         response_model_exclude_unset=True,
     )
-    def cancel_job(job_id: str, _user: dict = Depends(require_user)):
+    def cancel_job(job_id: str, http_request: Request, _user: dict = Depends(require_user)):
         job = _visible_job_or_404(job_id, _user)
         by = "user" if job.get("submitted_by_user_id") == _user["id"] else "admin"
         if store.cancel_job(job_id, by=by) is None:
             raise HTTPException(status_code=409, detail="Job is already finished")
+        _audit(
+            http_request,
+            "job_cancel",
+            _user["id"],
+            target_type="job",
+            target_id=job_id,
+            details={"previous_status": job["status"], "by": by},
+        )
         return _public_job_record(store.get_job(job_id), _user)
 
     @app.get("/jobs/{job_id}/result")
@@ -1359,6 +1418,15 @@ def create_app(
     @app.get("/workers")
     def list_workers(_user: dict = Depends(require_admin)):
         return {"workers": workers.list_workers(offline_after_seconds=offline_after_seconds)}
+
+    @app.get("/admin/audit")
+    def list_audit_events(
+        limit: int = Query(default=DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
+        action: str | None = None,
+        user_id: str | None = None,
+        _user: dict = Depends(require_admin),
+    ):
+        return {"events": audit.list(limit=limit, action=action, user_id=user_id)}
 
     @app.get("/backend-info")
     def backend_info(_user: dict = Depends(require_admin)):
