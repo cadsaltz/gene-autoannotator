@@ -10,6 +10,7 @@ import {
   buildUserPatch,
   draftFromUser,
   formatLocalTime,
+  hasUnsavedDrafts,
   quotaPlaceholder,
   selfRowRestrictions,
 } from "../../lib/adminConsole";
@@ -23,6 +24,11 @@ import {
 
 function draftsFor(users) {
   return Object.fromEntries(users.map((user) => [user.id, draftFromUser(user)]));
+}
+
+function withoutKey(record, key) {
+  const { [key]: _removed, ...rest } = record;
+  return rest;
 }
 
 function UserRow({
@@ -58,6 +64,11 @@ function UserRow({
             Joined {formatLocalTime(user.created_at)} · Last sign-in{" "}
             {formatLocalTime(user.last_login_at)}
           </p>
+          {restrictions.lockedReason ? (
+            <p className="workbench-muted mt-2 max-w-xs text-xs leading-5">
+              {restrictions.lockedReason}
+            </p>
+          ) : null}
         </td>
         <td className="px-3 py-3 align-top">
           <label className="sr-only" htmlFor={`role-${user.id}`}>
@@ -68,7 +79,7 @@ function UserRow({
             value={draft.role}
             onChange={(event) => onDraftChange(user.id, { role: event.target.value })}
             disabled={pending || !restrictions.canChangeRole}
-            title={restrictions.isSelf ? "You cannot change your own role" : undefined}
+            title={restrictions.lockedReason ?? undefined}
             className="workbench-input disabled:opacity-60"
           >
             {ROLES.map((role) => (
@@ -87,7 +98,7 @@ function UserRow({
             value={draft.status}
             onChange={(event) => onDraftChange(user.id, { status: event.target.value })}
             disabled={pending || !restrictions.canChangeStatus}
-            title={restrictions.isSelf ? "You cannot suspend yourself" : undefined}
+            title={restrictions.lockedReason ?? undefined}
             className="workbench-input disabled:opacity-60"
           >
             {STATUSES.map((status) => (
@@ -105,9 +116,9 @@ function UserRow({
                   {field.label}
                 </span>
                 <input
-                  type="number"
-                  min="0"
-                  step="1"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
                   value={draft[field.key]}
                   placeholder={quotaPlaceholder(quotaDefaults?.[field.defaultKey])}
                   onChange={(event) =>
@@ -152,7 +163,7 @@ function UserRow({
               type="button"
               onClick={() => onDelete(user)}
               disabled={pending || !restrictions.canDelete}
-              title={restrictions.isSelf ? "You cannot delete your own account" : undefined}
+              title={restrictions.lockedReason ?? undefined}
               className="workbench-button workbench-button-secondary disabled:cursor-not-allowed disabled:opacity-50"
             >
               Delete
@@ -254,9 +265,22 @@ export default function UsersTable({ currentUserId }) {
   }
 
   async function handleRevoke(user) {
+    const isSelf = selfRowRestrictions(user, currentUserId).isSelf;
+    if (
+      isSelf &&
+      !window.confirm(
+        "Revoke all of your own sessions? This signs you out everywhere, including this browser.",
+      )
+    ) {
+      return;
+    }
     setRowPending(user.id, true);
     try {
       const { revoked } = await adminRevokeSessions(user.id);
+      if (isSelf) {
+        window.location.assign("/login?next=/admin/users");
+        return;
+      }
       setRowMessage(user.id, {
         error: false,
         text: `Revoked ${revoked} session${revoked === 1 ? "" : "s"}.`,
@@ -277,21 +301,31 @@ export default function UsersTable({ currentUserId }) {
       return;
     }
     setRowPending(user.id, true);
+    let cancelled;
     try {
-      const { cancelled_jobs: cancelled } = await adminDeleteUser(user.id);
-      setUsers((current) => current.filter((row) => row.id !== user.id));
-      setNotice(
-        `Deleted ${user.email}; cancelled ${cancelled} queued job${cancelled === 1 ? "" : "s"}.`,
-      );
+      ({ cancelled_jobs: cancelled } = await adminDeleteUser(user.id));
     } catch (error) {
       setRowMessage(user.id, { error: true, text: error.message });
-    } finally {
       setRowPending(user.id, false);
+      return;
     }
+    setUsers((current) => current.filter((row) => row.id !== user.id));
+    setDrafts((current) => withoutKey(current, user.id));
+    setMessages((current) => withoutKey(current, user.id));
+    setPending((current) => withoutKey(current, user.id));
+    setNotice(
+      `Deleted ${user.email}; cancelled ${cancelled} queued job${cancelled === 1 ? "" : "s"}.`,
+    );
   }
 
   function handleSearch(event) {
     event.preventDefault();
+    if (
+      hasUnsavedDrafts(users, drafts) &&
+      !window.confirm("Discard unsaved changes to users in this list and search again?")
+    ) {
+      return;
+    }
     setNotice("");
     load(query.trim());
   }

@@ -33,11 +33,17 @@ export function draftFromUser(user) {
   return draft;
 }
 
-function parseQuota(raw) {
+export const MAX_QUOTA = 2147483647;
+
+function parseQuota(raw, label) {
   const text = String(raw ?? "").trim();
   if (text === "") return { value: null };
-  if (!/^\d+$/.test(text)) return { error: true };
-  return { value: Number(text) };
+  if (!/^\d+$/.test(text)) {
+    return { error: `${label} must be a whole number of 0 or more, or blank for the default.` };
+  }
+  const value = Number(text);
+  if (value > MAX_QUOTA) return { error: `${label} must be at most ${MAX_QUOTA}.` };
+  return { value };
 }
 
 /** Returns `{ patch }` with only changed fields (blank quota → null), or `{ error }`. */
@@ -46,13 +52,20 @@ export function buildUserPatch(user, draft) {
   if (draft.role !== user.role) patch.role = draft.role;
   if (draft.status !== user.status) patch.status = draft.status;
   for (const { key, label } of QUOTA_FIELDS) {
-    const parsed = parseQuota(draft[key]);
-    if (parsed.error) {
-      return { error: `${label} must be a whole number of 0 or more, or blank for the default.` };
-    }
+    const parsed = parseQuota(draft[key], label);
+    if (parsed.error) return { error: parsed.error };
     if (parsed.value !== (user[key] ?? null)) patch[key] = parsed.value;
   }
   return { patch };
+}
+
+export function hasUnsavedDrafts(users, drafts) {
+  return users.some((user) => {
+    const draft = drafts[user.id];
+    if (!draft) return false;
+    const result = buildUserPatch(user, draft);
+    return Boolean(result.error) || Object.keys(result.patch).length > 0;
+  });
 }
 
 export function quotaPlaceholder(defaultValue) {
@@ -65,6 +78,11 @@ export function formatQuotaLimit(value) {
   return value > 0 ? String(value) : "Unlimited";
 }
 
+const SELF_LOCKED_REASON =
+  "You can't change the role or status of, or delete, your own account here. Ask another admin, " +
+  "or on the server run `python -m backend.manage set-role EMAIL {user,admin}` " +
+  "(or `set-status EMAIL {active,suspended}`).";
+
 export function selfRowRestrictions(user, currentUserId) {
   const isSelf = Boolean(currentUserId) && user.id === currentUserId;
   return {
@@ -72,6 +90,7 @@ export function selfRowRestrictions(user, currentUserId) {
     canChangeRole: !isSelf,
     canChangeStatus: !isSelf,
     canDelete: !isSelf,
+    lockedReason: isSelf ? SELF_LOCKED_REASON : null,
   };
 }
 

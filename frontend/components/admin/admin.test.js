@@ -11,6 +11,8 @@ import {
   formatAuditTarget,
   formatLocalTime,
   formatQuotaLimit,
+  hasUnsavedDrafts,
+  MAX_QUOTA,
   quotaPlaceholder,
   selfRowRestrictions,
 } from "../../lib/adminConsole.js";
@@ -97,18 +99,95 @@ test("formatQuotaLimit shows unlimited for 0 or less", () => {
 });
 
 test("selfRowRestrictions locks role, status, and delete on the admin's own row", () => {
-  assert.deepEqual(selfRowRestrictions({ id: "me" }, "me"), {
-    isSelf: true,
-    canChangeRole: false,
-    canChangeStatus: false,
-    canDelete: false,
-  });
+  const self = selfRowRestrictions({ id: "me" }, "me");
+  assert.equal(self.isSelf, true);
+  assert.equal(self.canChangeRole, false);
+  assert.equal(self.canChangeStatus, false);
+  assert.equal(self.canDelete, false);
   assert.deepEqual(selfRowRestrictions({ id: "other" }, "me"), {
     isSelf: false,
     canChangeRole: true,
     canChangeStatus: true,
     canDelete: true,
+    lockedReason: null,
   });
+});
+
+test("selfRowRestrictions explains the lock and points to the manage CLI", () => {
+  const { lockedReason } = selfRowRestrictions({ id: "me" }, "me");
+  assert.match(lockedReason, /your own account/i);
+  assert.match(lockedReason, /python -m backend\.manage set-role EMAIL \{user,admin\}/);
+  assert.match(lockedReason, /another admin/i);
+});
+
+test("buildUserPatch rejects quotas above the backend's 32-bit limit", () => {
+  assert.equal(MAX_QUOTA, 2147483647);
+  const ok = buildUserPatch(user, { ...draftFromUser(user), quota_max_per_day: "2147483647" });
+  assert.deepEqual(ok, { patch: { quota_max_per_day: 2147483647 } });
+
+  const tooBig = buildUserPatch(user, { ...draftFromUser(user), quota_max_per_day: "2147483648" });
+  assert.equal(tooBig.patch, undefined);
+  assert.match(tooBig.error, /at most 2147483647/);
+});
+
+test("buildUserPatch rejects partial numeric text instead of clearing the override", () => {
+  for (const bad of ["5e", "-", "+3", "3 4"]) {
+    const result = buildUserPatch(user, { ...draftFromUser(user), quota_max_active: bad });
+    assert.equal(result.patch, undefined, bad);
+    assert.match(result.error, /whole number/i, bad);
+  }
+});
+
+test("hasUnsavedDrafts detects changed or invalid rows", () => {
+  const other = { ...user, id: "u2" };
+  const clean = { u1: draftFromUser(user), u2: draftFromUser(other) };
+  assert.equal(hasUnsavedDrafts([user, other], clean), false);
+  assert.equal(hasUnsavedDrafts([user, other], {}), false);
+  assert.equal(
+    hasUnsavedDrafts([user, other], { ...clean, u2: { ...clean.u2, role: "admin" } }),
+    true,
+  );
+  assert.equal(
+    hasUnsavedDrafts([user, other], { ...clean, u1: { ...clean.u1, quota_max_batch: "x" } }),
+    true,
+  );
+});
+
+test("UsersTable quota inputs are text so invalid entries reach the parser", async () => {
+  const table = await readProjectFile("components/admin/UsersTable.js");
+  assert.doesNotMatch(table, /type="number"/);
+  assert.match(table, /type="text"\s+inputMode="numeric"/);
+});
+
+test("UsersTable confirms before revoking the admin's own sessions", async () => {
+  const table = await readProjectFile("components/admin/UsersTable.js");
+  assert.match(
+    table,
+    /async function handleRevoke\(user\) \{[\s\S]*?selfRowRestrictions\(user, currentUserId\)\.isSelf[\s\S]*?window\.confirm\([\s\S]*?\)[\s\S]*?adminRevokeSessions\(user\.id\)/,
+  );
+});
+
+test("UsersTable shows the lock reason on disabled self-row controls", async () => {
+  const table = await readProjectFile("components/admin/UsersTable.js");
+  const titles = table.match(/title=\{restrictions\.lockedReason \?\? undefined\}/g) || [];
+  assert.equal(titles.length, 3);
+  assert.match(table, /\{restrictions\.lockedReason\}/);
+});
+
+test("UsersTable confirms before a search discards unsaved drafts", async () => {
+  const table = await readProjectFile("components/admin/UsersTable.js");
+  assert.match(
+    table,
+    /function handleSearch\(event\) \{[\s\S]*?hasUnsavedDrafts\(users, drafts\)[\s\S]*?window\.confirm\([\s\S]*?\)[\s\S]*?load\(/,
+  );
+});
+
+test("UsersTable drops drafts, messages, and pending state for deleted users", async () => {
+  const table = await readProjectFile("components/admin/UsersTable.js");
+  const handler = table.match(/async function handleDelete\(user\) \{[\s\S]*?\n {2}\}\n/)?.[0] || "";
+  assert.match(handler, /setDrafts\(\(current\) => withoutKey\(current, user\.id\)\)/);
+  assert.match(handler, /setMessages\(\(current\) => withoutKey\(current, user\.id\)\)/);
+  assert.match(handler, /setPending\(\(current\) => withoutKey\(current, user\.id\)\)/);
 });
 
 test("formatAuditDetails renders compact JSON and blanks empty details", () => {
