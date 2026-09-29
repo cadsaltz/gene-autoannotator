@@ -423,7 +423,7 @@ class AuthMeResponse(BaseModel):
     status: str
 
 
-QuotaOverride = Annotated[StrictInt, Field(ge=0)] | None
+QuotaOverride = Annotated[StrictInt, Field(ge=0, le=2**31 - 1)] | None
 
 
 class AdminUserUpdateRequest(BaseModel):

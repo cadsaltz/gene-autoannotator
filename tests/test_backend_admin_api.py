@@ -218,6 +218,44 @@ def test_patch_rejects_invalid_values(alice, admin, body):
     assert _row(admin, "alice@example.com") == before
 
 
+def test_oversized_quota_rejects_whole_patch(alice, admin):
+    alice_id = _id(alice, "alice@example.com")
+    before = _row(admin, "alice@example.com")
+    response = admin.patch(
+        f"/admin/users/{alice_id}", json={"role": "admin", "quota_max_active": 2**31}
+    )
+    assert response.status_code == 422
+    assert _row(admin, "alice@example.com") == before
+    ok = admin.patch(f"/admin/users/{alice_id}", json={"quota_max_active": 2**31 - 1})
+    assert ok.status_code == 200
+
+
+def test_combined_demote_and_suspend_blocked_for_last_admin(admin):
+    admin_id = _id(admin, BOOTSTRAP_ADMIN_EMAIL)
+    response = admin.patch(
+        f"/admin/users/{admin_id}", json={"role": "user", "status": "suspended"}
+    )
+    assert response.status_code == 409
+    user = admin.auth_store.get_user(admin_id)
+    assert (user["role"], user["status"]) == ("admin", "active")
+    assert admin.get("/auth/me").status_code == 200
+    assert _events(admin, action="role_change") == []
+    assert _events(admin, action="status_change") == []
+
+
+def test_combined_demote_and_suspend_for_non_last_admin(alice, admin):
+    alice_id = _id(alice, "alice@example.com")
+    admin.patch(f"/admin/users/{alice_id}", json={"role": "admin"})
+    response = admin.patch(
+        f"/admin/users/{alice_id}", json={"role": "user", "status": "suspended"}
+    )
+    assert response.status_code == 200
+    assert (response.json()["role"], response.json()["status"]) == ("user", "suspended")
+    assert alice.get("/auth/me").status_code in (401, 403)
+    revoked = _events(admin, action="sessions_revoked")
+    assert [(e["target_id"], e["details"]) for e in revoked] == [(alice_id, {"count": 1})]
+
+
 def test_unknown_user_returns_404(admin):
     assert admin.patch("/admin/users/nope", json={"role": "admin"}).status_code == 404
     assert admin.post("/admin/users/nope/revoke-sessions").status_code == 404
@@ -304,6 +342,23 @@ def test_delete_user_cancels_queued_jobs_only(alice, admin, store):
     assert events[0]["target_id"] == alice_id
     assert events[0]["details"]["email"] == "alice@example.com"
     assert events[0]["details"]["cancelled_jobs"] == 2
+
+
+def test_delete_audited_even_if_cancel_fails(alice, admin, store, monkeypatch):
+    alice_id = _id(alice, "alice@example.com")
+
+    def boom(user_id, **kwargs):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(store, "cancel_queued_for_user", boom)
+    with pytest.raises(RuntimeError):
+        admin.delete(f"/admin/users/{alice_id}")
+    assert admin.auth_store.get_user(alice_id) is None
+    events = _events(admin, action="user_delete")
+    assert len(events) == 1
+    assert events[0]["target_id"] == alice_id
+    assert events[0]["details"]["email"] == "alice@example.com"
+    assert events[0]["details"]["cancelled_jobs"] is None
 
 
 def test_cancel_queued_for_user_store(store):

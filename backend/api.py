@@ -1522,18 +1522,21 @@ def create_app(
             _guard_last_admin(target, None)
             revoked = auth.revoke_sessions(user_id)
             auth.delete_user(user_id)
-            # Cancel after deleting so a submission already past auth when the
-            # delete began is still caught.
-            cancelled = store.cancel_queued_for_user(user_id)
-        _audit(
-            request, "user_delete", _user["id"],
-            target_type="user", target_id=user_id,
-            details={
-                "email": target["email"],
-                "cancelled_jobs": cancelled,
-                "sessions_revoked": revoked,
-            },
-        )
+            cancelled = None
+            try:
+                # Cancelling after the delete narrows, but does not close, the
+                # window for a submission that passed auth before the delete.
+                cancelled = store.cancel_queued_for_user(user_id)
+            finally:
+                _audit(
+                    request, "user_delete", _user["id"],
+                    target_type="user", target_id=user_id,
+                    details={
+                        "email": target["email"],
+                        "cancelled_jobs": cancelled,
+                        "sessions_revoked": revoked,
+                    },
+                )
         return {"deleted": True, "cancelled_jobs": cancelled}
 
     @app.get("/admin/overview", response_model=AdminOverviewResponse)
