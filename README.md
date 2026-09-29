@@ -50,7 +50,9 @@ annotation search/review. MongoDB is not the job queue, and organism profiles
 remain local JSON files. See
 [`docs/deploy-cloud-backend-hpc-dispatcher.md`](docs/deploy-cloud-backend-hpc-dispatcher.md)
 for the cloud frontend/backend, MongoDB, SCRI dispatcher, optional laptop, and
-rollback deployment path.
+rollback deployment path. The production Compose stack (Caddy, split env
+files, staging, migration from the Pi stack, update cron) is documented in
+[`deploy/README.md`](deploy/README.md).
 
 ## Dependencies
 

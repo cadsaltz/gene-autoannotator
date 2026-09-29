@@ -8,6 +8,8 @@ __pycache__/**
 worker.env
 dispatcher.env
 worker.run.env
+# Production/staging compose env files (backend.env, compose.staging.env, ...).
+deploy/compose/*.env
 .worktrees/
 **/*.pyc
 backend/*.sqlite3

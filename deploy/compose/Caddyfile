@@ -1,0 +1,67 @@
+# SITE_ADDRESS: a hostname (automatic HTTPS) or :80 for staging without a domain.
+#
+# X-Forwarded-For is always replaced by {client_ip}: the connecting IP, or the
+# IP a CDN reports once its ranges are set in trusted_proxies (see
+# deploy/README.md). The backend (TRUST_FORWARDED_FOR=1) keys rate limits on
+# the left-most entry, and the Next /api/backend proxy passes it through, so a
+# client-sent value must never reach either.
+
+(proxy) {
+	reverse_proxy {args[0]} {
+		header_up X-Forwarded-For {client_ip}
+	}
+}
+
+(worker_routes) {
+	# Worker, dispatcher, and uptime-check paths; everything else a browser
+	# needs goes through the frontend, which proxies /api/backend/* itself.
+	@backend path /healthz /jobs/queue-summary /workers/* /jobs/*/progress /jobs/*/complete /jobs/*/fail
+}
+
+(access_log) {
+	log {
+		output stdout
+		format json
+	}
+}
+
+{$SITE_ADDRESS} {
+	import access_log
+	import worker_routes
+	encode zstd gzip
+
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=31536000"
+
+	handle @backend {
+		# Job results are tens of KB; the cap only stops unauthenticated floods.
+		request_body {
+			max_size 32MB
+		}
+		import proxy backend:8000
+	}
+
+	handle {
+		request_body {
+			max_size 10MB
+		}
+		import proxy frontend:3000
+	}
+}
+
+# Plain-HTTP worker listener, published only by docker-compose.worker-port.yml.
+:8000 {
+	import access_log
+	import worker_routes
+
+	handle @backend {
+		request_body {
+			max_size 32MB
+		}
+		import proxy backend:8000
+	}
+
+	handle {
+		respond 404
+	}
+}

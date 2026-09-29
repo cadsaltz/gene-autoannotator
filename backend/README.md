@@ -295,6 +295,12 @@ with both identifiers supplied.
 
 ## Docker Compose
 
+For internet-facing deployments use the production stack instead
+(`deploy/compose/docker-compose.prod.yml`: prebuilt images behind Caddy, split
+`backend.env`/`frontend.env`, staging mode, data migration from this stack,
+update cron); see [`deploy/README.md`](../deploy/README.md). This section
+covers the LAN/dev stack.
+
 From the project root, copy `backend.env.example` to `.env`, then start the
 backend API and Next.js frontend:
 
@@ -324,8 +330,10 @@ The preflight prints `OK NAME` or `MISSING NAME` (never values) for
 `MONGO_URI` (or `MONGODB_URI`; the frontend's annotation routes need it too),
 `WORKER_API_TOKEN`, `REQUIRE_WORKER_API_TOKEN`, `SESSION_COOKIE_SECURE`,
 `EMAIL_BACKEND`, and, when `EMAIL_BACKEND=resend`, `RESEND_API_KEY` and
-`EMAIL_FROM`. It exits non-zero if any is missing or empty; fix `.env` before
-building.
+`EMAIL_FROM`. It exits non-zero if any is missing, empty, or still a
+`CHANGE_ME` placeholder; fix `.env` before building. For the production
+stack's split files use `--role backend` / `--role frontend` (see
+`deploy/README.md`).
 
 The backend image installs only `requirements-backend.txt`, pinned by
 `deploy/docker/constraints-backend.txt` (no torch, CUDA,

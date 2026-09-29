@@ -4,8 +4,13 @@ What to do when someone floods the queue, spams sign-ups, or a worker token
 leaks. Run commands on the backend host from the repo root:
 
 ```bash
-DC="docker compose -f deploy/compose/docker-compose.backend.yml"
+# Production stack (backend env file: deploy/compose/backend.env; see deploy/README.md)
+DC="docker compose -p gaa -f deploy/compose/docker-compose.prod.yml --env-file deploy/compose/compose.env"
+# Older docker-compose.backend.yml stack (backend env file: .env at the repo root)
+# DC="docker compose -f deploy/compose/docker-compose.backend.yml"
 ```
+
+"The backend env file" below means whichever of the two your stack uses.
 
 Admin alerts (`backend/alerts.py`) email every active admin when the queue
 passes `ALERT_QUEUE_DEPTH`, jobs wait `ALERT_NO_WORKER_MINUTES` with no worker,
@@ -20,12 +25,12 @@ active limits).
 - **/admin/audit**: filter by action (`signup`, `login_code_sent`,
   `job_submit`, `batch_submit`, ...) or user ID. The Actor column shows the
   client IP.
-- CLI: `$DC exec backend python -m backend.manage list-users --query SUBSTRING`
+- CLI: `$DC exec -u app backend python -m backend.manage list-users --query SUBSTRING`
 
 ## 2. Pause all submissions (optional)
 
 For a flood from many accounts, stop intake first: set `SUBMISSIONS_PAUSED=1`
-in `.env` and recreate the backend (see section 5). Non-admins get HTTP 503
+in the backend env file and recreate the backend (see section 5). Non-admins get HTTP 503
 ("New submissions are paused") and the jobs page shows submissions as paused.
 Admins can still submit, and queued and running jobs keep going. Set it back
 to `0` when done.
@@ -40,8 +45,8 @@ audit `status_change` event records `cancelled_jobs`.
 - CLI (also works with no admin session; audited as `"source": "cli"`):
 
   ```bash
-  $DC exec backend python -m backend.manage set-status EMAIL suspended
-  $DC exec backend python -m backend.manage revoke-sessions EMAIL   # sign out only
+  $DC exec -u app backend python -m backend.manage set-status EMAIL suspended
+  $DC exec -u app backend python -m backend.manage revoke-sessions EMAIL   # sign out only
   ```
 
 Undo with `set-status EMAIL active` (cancelled jobs stay cancelled).
@@ -51,7 +56,7 @@ Undo with `set-status EMAIL active` (cancelled jobs stay cancelled).
 - **All of one user's queued and running jobs** (audited as `jobs_cancelled`):
 
   ```bash
-  $DC exec backend python -m backend.manage cancel-jobs EMAIL
+  $DC exec -u app backend python -m backend.manage cancel-jobs EMAIL
   ```
 
 - **Individual jobs**: **/jobs** as an admin shows every user's jobs with the
@@ -63,8 +68,8 @@ Undo with `set-status EMAIL active` (cancelled jobs stay cancelled).
 
 ## 5. Tighten limits
 
-Edit `.env` at the repo root, then recreate the backend (`restart` does not
-re-read `.env`):
+Edit the backend env file, then recreate the backend (`restart` does not
+re-read env files):
 
 ```bash
 $DC up -d --force-recreate backend
@@ -80,7 +85,7 @@ $DC up -d --force-recreate backend
 
 For the numeric limits `0` means **unlimited**, so use `1` for the tightest
 setting (or `SUBMISSIONS_PAUSED=1` to stop intake). To restrict one user
-without editing `.env`, set their quota overrides on /admin/users (no restart
+without editing the env file, set their quota overrides on /admin/users (no restart
 needed; `0` is unlimited there too). Rate-limit counters live in SQLite and
 survive the restart. Check that /admin shows the new values.
 
@@ -94,7 +99,7 @@ Do this if the token leaks. Every holder must change together; until they do,
 worker and dispatcher calls get HTTP 401.
 
 1. Generate: `deploy/scripts/generate-worker-token.sh`
-2. Backend: set `WORKER_API_TOKEN` in `.env` (keep
+2. Backend: set `WORKER_API_TOKEN` in the backend env file (keep
    `REQUIRE_WORKER_API_TOKEN=1`), then `$DC up -d --force-recreate backend`.
 3. HPC: update `WORKER_API_TOKEN` in `dispatcher.env` and in the
    `worker.run.env` that `WORKER_RUN_ENV_FILE` points to. Cancel the running
@@ -110,7 +115,10 @@ worker and dispatcher calls get HTTP 401.
 
 Once DNS is on Cloudflare (proxied records), turn on **"I'm Under Attack" mode**
 in the zone's security settings during a sign-up or request flood, and turn it
-off afterwards. It is not available until then.
+off afterwards. It is not available until then. Before proxying DNS through
+Cloudflare, add its ranges to Caddy's `trusted_proxies` (deploy/README.md,
+"Routing and client IPs"); otherwise every visitor appears as a Cloudflare IP
+and shares its per-IP limits.
 
 ## 8. Afterwards
 

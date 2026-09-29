@@ -1,0 +1,12 @@
+# Optional override for the cutover from docker-compose.backend.yml: publishes
+# Caddy's plain-HTTP worker listener on the old backend port, so workers and the
+# dispatcher keep BACKEND_URL=http://<host>:8000 until they are moved to the
+# site URL. Only worker/dispatcher routes are served there. The old backend
+# must be stopped first (same host port).
+#   docker compose -p gaa -f deploy/compose/docker-compose.prod.yml \
+#     -f deploy/compose/docker-compose.worker-port.yml \
+#     --env-file deploy/compose/compose.env up -d
+services:
+  caddy:
+    ports:
+      - "${CADDY_WORKER_PORT:-8000}:8000"

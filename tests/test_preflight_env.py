@@ -86,6 +86,105 @@ def test_later_assignment_wins(tmp_path):
     assert "MISSING WORKER_API_TOKEN" in _lines(result)
 
 
+COMPOSE_DIR = REPO_ROOT / "deploy" / "compose"
+
+
+def _run_role(tmp_path, role, text):
+    env_file = tmp_path / f"{role}.env"
+    env_file.write_text(text, encoding="utf-8")
+    return subprocess.run(
+        ["bash", str(SCRIPT), "--role", role, str(env_file)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def _filled_backend_example():
+    text = (COMPOSE_DIR / "backend.prod.env.example").read_text(encoding="utf-8")
+    return (
+        text.replace("WORKER_API_TOKEN=CHANGE_ME", "WORKER_API_TOKEN=tok-s3cret")
+        .replace("RESEND_API_KEY=CHANGE_ME", "RESEND_API_KEY=re_s3cret")
+        .replace("noreply@CHANGE_ME", "noreply@example.org")
+        .replace(
+            "MONGO_URI=mongodb+srv://CHANGE_ME:CHANGE_ME@CHANGE_ME.mongodb.net",
+            "MONGO_URI=mongodb+srv://rw:s3cret@cluster0.mongodb.net",
+        )
+    )
+
+
+def test_backend_role_flags_placeholders_in_the_example(tmp_path):
+    text = (COMPOSE_DIR / "backend.prod.env.example").read_text(encoding="utf-8")
+    result = _run_role(tmp_path, "backend", text)
+    assert result.returncode == 1
+    lines = _lines(result)
+    for name in ("MONGO_URI", "WORKER_API_TOKEN", "RESEND_API_KEY", "EMAIL_FROM"):
+        assert f"PLACEHOLDER {name}" in lines
+    assert "OK TRUST_FORWARDED_FOR" in lines
+    assert "OK REQUIRE_WORKER_API_TOKEN" in lines
+
+
+def test_backend_role_passes_a_filled_example_without_printing_values(tmp_path):
+    result = _run_role(tmp_path, "backend", _filled_backend_example())
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _lines(result) == [
+        "OK MONGO_URI",
+        "OK WORKER_API_TOKEN",
+        "OK REQUIRE_WORKER_API_TOKEN",
+        "OK SESSION_COOKIE_SECURE",
+        "OK TRUST_FORWARDED_FOR",
+        "OK EMAIL_BACKEND",
+        "OK RESEND_API_KEY",
+        "OK EMAIL_FROM",
+    ]
+    output = result.stdout + result.stderr
+    for secret in ("s3cret", "example.org", "mongodb"):
+        assert secret not in output
+
+
+def test_backend_role_requires_forwarded_for_and_worker_token_enabled(tmp_path):
+    text = (
+        _filled_backend_example()
+        .replace("TRUST_FORWARDED_FOR=1", "TRUST_FORWARDED_FOR=0")
+        .replace("REQUIRE_WORKER_API_TOKEN=1", "REQUIRE_WORKER_API_TOKEN=")
+    )
+    result = _run_role(tmp_path, "backend", text)
+    assert result.returncode == 1
+    assert "INVALID TRUST_FORWARDED_FOR (must be 1 behind Caddy)" in _lines(result)
+    assert "MISSING REQUIRE_WORKER_API_TOKEN" in _lines(result)
+
+
+def test_backend_role_staging_console_email_needs_no_resend_keys(tmp_path):
+    text = (
+        _filled_backend_example()
+        .replace("EMAIL_BACKEND=resend", "EMAIL_BACKEND=console")
+        .replace("RESEND_API_KEY=re_s3cret", "RESEND_API_KEY=CHANGE_ME")
+        .replace("SESSION_COOKIE_SECURE=1", "SESSION_COOKIE_SECURE=0")
+    )
+    result = _run_role(tmp_path, "backend", text)
+    assert result.returncode == 0, result.stdout
+    assert not any("RESEND_API_KEY" in line for line in _lines(result))
+
+
+def test_frontend_role(tmp_path):
+    text = (COMPOSE_DIR / "frontend.prod.env.example").read_text(encoding="utf-8")
+    result = _run_role(tmp_path, "frontend", text)
+    assert result.returncode == 1
+    assert _lines(result) == ["PLACEHOLDER MONGO_URI", "OK BACKEND_API_BASE_URL"]
+
+    filled = text.replace("CHANGE_ME:CHANGE_ME@CHANGE_ME", "ro:s3cret@cluster0")
+    result = _run_role(tmp_path, "frontend", filled)
+    assert result.returncode == 0
+    assert _lines(result) == ["OK MONGO_URI", "OK BACKEND_API_BASE_URL"]
+    assert "s3cret" not in result.stdout + result.stderr
+
+
+def test_unknown_role_exits_2(tmp_path):
+    result = _run_role(tmp_path, "worker", "A=1\n")
+    assert result.returncode == 2
+    assert "unknown role" in result.stderr
+
+
 def test_missing_env_file_exits_2(tmp_path):
     result = subprocess.run(
         ["bash", str(SCRIPT), str(tmp_path / "nope.env")],
