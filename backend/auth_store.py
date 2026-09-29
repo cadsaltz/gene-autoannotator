@@ -218,6 +218,14 @@ class AuthStore:
             rows = connection.execute(sql, params).fetchall()
         return [self._row_to_user(row) for row in rows]
 
+    def count_users_by_status(self) -> dict[str, int]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT status, COUNT(*) FROM users GROUP BY status"
+            ).fetchall()
+        counts = dict(rows)
+        return {status: counts.get(status, 0) for status in STATUSES}
+
     def count_admins(self) -> int:
         with self._connect() as connection:
             return connection.execute(

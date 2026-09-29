@@ -244,6 +244,19 @@ class JobStore:
             return None
         return row["status"]
 
+    def cancel_queued_for_user(self, user_id, *, by="admin") -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE annotation_jobs
+                SET status = 'cancelled', current_step = 'cancelled', error = ?,
+                    finished_at = ?, lease_expires_at = NULL
+                WHERE submitted_by_user_id = ? AND status = 'queued'
+                """,
+                (f"Cancelled by {by}", _now_iso(), user_id),
+            )
+            return cursor.rowcount
+
     def clear_finished_jobs(self):
         with self._connect() as connection:
             cursor = connection.execute(
@@ -539,6 +552,47 @@ class JobStore:
                 (user_id, since_iso),
             ).fetchone()
         return int(row[0])
+
+    def user_job_counts(self, user_ids, since_iso) -> dict[str, dict[str, int]]:
+        """Map each user id to its active job count and jobs created since `since_iso`."""
+        user_ids = list(user_ids)
+        counts = {user_id: {"active": 0, "since": 0} for user_id in user_ids}
+        if not user_ids:
+            return counts
+        placeholders = ",".join("?" for _ in user_ids)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT submitted_by_user_id,
+                    SUM(status IN ('queued', 'running')),
+                    SUM(created_at >= ?)
+                FROM annotation_jobs
+                WHERE submitted_by_user_id IN ({placeholders})
+                GROUP BY submitted_by_user_id
+                """,
+                (since_iso, *user_ids),
+            ).fetchall()
+        for user_id, active, since in rows:
+            counts[user_id] = {"active": int(active), "since": int(since)}
+        return counts
+
+    def counts_since(self, since_iso) -> dict[str, int]:
+        """Count jobs by terminal status among those finished at or after `since_iso`."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT status, COUNT(*) FROM annotation_jobs
+                WHERE finished_at IS NOT NULL AND finished_at >= ?
+                GROUP BY status
+                """,
+                (since_iso,),
+            ).fetchall()
+        counts = dict(rows)
+        return {
+            "completed": counts.get("completed", 0),
+            "failed": counts.get("failed", 0),
+            "cancelled": counts.get("cancelled", 0),
+        }
 
     def queue_summary(self, *, user_id=None):
         where_clause = "WHERE submitted_by_user_id = ?" if user_id is not None else ""

@@ -1,6 +1,14 @@
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 from autoannotation import field_defs
 from autoannotation import gene_names
@@ -9,6 +17,8 @@ from shared.job_contract import (
     OrthologOverride,
     _normalize_optional_string,
 )
+
+from .access import ROLES, STATUSES
 
 
 class AnnotationFieldPayload(BaseModel):
@@ -411,3 +421,83 @@ class AuthMeResponse(BaseModel):
     email_verified: bool
     role: str
     status: str
+
+
+QuotaOverride = Annotated[StrictInt, Field(ge=0)] | None
+
+
+class AdminUserUpdateRequest(BaseModel):
+    """Omitted fields are left unchanged; an explicit null clears a quota override."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    role: str | None = None
+    status: str | None = None
+    quota_max_active: QuotaOverride = None
+    quota_max_per_day: QuotaOverride = None
+    quota_max_batch: QuotaOverride = None
+
+    @field_validator('role')
+    @classmethod
+    def validate_role(cls, value):
+        if value not in ROLES:
+            raise ValueError(f'role must be one of {", ".join(ROLES)}')
+        return value
+
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, value):
+        if value not in STATUSES:
+            raise ValueError(f'status must be one of {", ".join(STATUSES)}')
+        return value
+
+
+class AdminUserResponse(BaseModel):
+    id: str
+    email: str
+    username: str | None
+    role: str
+    status: str
+    created_at: str
+    last_login_at: str | None
+    quota_max_active: int | None
+    quota_max_per_day: int | None
+    quota_max_batch: int | None
+    active_jobs: int
+    jobs_24h: int
+
+
+class AdminUsersResponse(BaseModel):
+    users: list[AdminUserResponse]
+
+
+class AdminRevokeSessionsResponse(BaseModel):
+    revoked: int
+
+
+class AdminUserDeleteResponse(BaseModel):
+    deleted: bool
+    cancelled_jobs: int
+
+
+class AdminQuotaConfig(BaseModel):
+    max_queued: int
+    user_max_active: int
+    user_max_per_day: int
+    user_max_batch: int
+    ip_signups_per_day: int
+    ip_submits_per_hour: int
+    ip_logins_per_hour: int
+    otp_sends_per_email_per_hour: int
+
+
+class AdminOverviewResponse(BaseModel):
+    queued: int
+    running: int
+    failed_24h: int
+    completed_24h: int
+    workers_online: int
+    users_total: int
+    users_suspended: int
+    quota_config: AdminQuotaConfig
+    version: str

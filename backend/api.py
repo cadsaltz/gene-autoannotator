@@ -3,6 +3,7 @@ import os
 import shutil
 import threading
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -46,6 +47,7 @@ from .profile_store import (
 from .rate_limits import (
     DAY_SECONDS,
     HOUR_SECONDS,
+    RATE_LIMIT_DEFAULTS,
     RateLimited,
     RateLimiter,
     rate_limit_from_env,
@@ -65,6 +67,12 @@ from shared.worker_contract import (
     WorkerRegisterResponse,
 )
 from .schemas import (
+    AdminOverviewResponse,
+    AdminRevokeSessionsResponse,
+    AdminUserDeleteResponse,
+    AdminUserResponse,
+    AdminUsersResponse,
+    AdminUserUpdateRequest,
     AnnotationDetailResponse,
     AnnotationJobRequest,
     AnnotationSearchResponse,
@@ -229,6 +237,7 @@ PROFILE_CONFIG_FIELDS = (
     "kegg_locus_regex",
     "go_resolution_enabled",
 )
+QUOTA_OVERRIDE_FIELDS = ("quota_max_active", "quota_max_per_day", "quota_max_batch")
 
 
 def _env_flag(name, default):
@@ -291,6 +300,9 @@ def create_app(
     # Quota checks count existing rows, so check-then-insert must be atomic or
     # concurrent submissions can all pass the same check.
     submission_lock = threading.Lock()
+    # The last-admin guard counts admins before mutating, so two admins
+    # demoting each other concurrently could otherwise both pass it.
+    admin_lock = threading.Lock()
 
     def _require_worker_fleet():
         if not capacity_required or run_jobs_inline:
@@ -1418,6 +1430,133 @@ def create_app(
     @app.get("/workers")
     def list_workers(_user: dict = Depends(require_admin)):
         return {"workers": workers.list_workers(offline_after_seconds=offline_after_seconds)}
+
+    def _admin_user_rows(users):
+        counts = store.user_job_counts([user["id"] for user in users], daily_window_start())
+        return [
+            {
+                **user,
+                "active_jobs": counts[user["id"]]["active"],
+                "jobs_24h": counts[user["id"]]["since"],
+            }
+            for user in users
+        ]
+
+    def _user_or_404(user_id):
+        user = auth.get_user(user_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+
+    def _guard_last_admin(target, after):
+        if is_admin(target) and not is_admin(after) and auth.count_admins() <= 1:
+            raise HTTPException(status_code=409, detail="Cannot remove the last admin")
+
+    @app.get("/admin/users", response_model=AdminUsersResponse)
+    def admin_list_users(query: str | None = None, _user: dict = Depends(require_admin)):
+        return {"users": _admin_user_rows(auth.list_users(query=query))}
+
+    @app.patch("/admin/users/{user_id}", response_model=AdminUserResponse)
+    def admin_update_user(
+        user_id: str,
+        body: AdminUserUpdateRequest,
+        request: Request,
+        _user: dict = Depends(require_admin),
+    ):
+        provided = body.model_fields_set
+        with admin_lock:
+            target = _user_or_404(user_id)
+            role = body.role if "role" in provided else target["role"]
+            new_status = body.status if "status" in provided else target["status"]
+            _guard_last_admin(target, {"role": role, "status": new_status})
+
+            def audit_change(action, details):
+                _audit(
+                    request, action, _user["id"],
+                    target_type="user", target_id=user_id, details=details,
+                )
+
+            if role != target["role"]:
+                auth.set_role(user_id, role)
+                audit_change("role_change", {"from": target["role"], "to": role})
+            if new_status != target["status"]:
+                auth.set_status(user_id, new_status)
+                audit_change("status_change", {"from": target["status"], "to": new_status})
+                if new_status == "suspended":
+                    audit_change("sessions_revoked", {"count": auth.revoke_sessions(user_id)})
+            quota_changes = {
+                field: {"from": target[field], "to": getattr(body, field)}
+                for field in QUOTA_OVERRIDE_FIELDS
+                if field in provided and getattr(body, field) != target[field]
+            }
+            if quota_changes:
+                quotas = {field: target[field] for field in QUOTA_OVERRIDE_FIELDS}
+                quotas.update({field: change["to"] for field, change in quota_changes.items()})
+                auth.set_quota_overrides(
+                    user_id,
+                    max_active=quotas["quota_max_active"],
+                    max_per_day=quotas["quota_max_per_day"],
+                    max_batch=quotas["quota_max_batch"],
+                )
+                audit_change("quota_change", quota_changes)
+            return _admin_user_rows([auth.get_user(user_id)])[0]
+
+    @app.post(
+        "/admin/users/{user_id}/revoke-sessions", response_model=AdminRevokeSessionsResponse
+    )
+    def admin_revoke_sessions(
+        user_id: str, request: Request, _user: dict = Depends(require_admin)
+    ):
+        _user_or_404(user_id)
+        revoked = auth.revoke_sessions(user_id)
+        _audit(
+            request, "sessions_revoked", _user["id"],
+            target_type="user", target_id=user_id, details={"count": revoked},
+        )
+        return {"revoked": revoked}
+
+    @app.delete("/admin/users/{user_id}", response_model=AdminUserDeleteResponse)
+    def admin_delete_user(user_id: str, request: Request, _user: dict = Depends(require_admin)):
+        with admin_lock:
+            target = _user_or_404(user_id)
+            _guard_last_admin(target, None)
+            revoked = auth.revoke_sessions(user_id)
+            auth.delete_user(user_id)
+            # Cancel after deleting so a submission already past auth when the
+            # delete began is still caught.
+            cancelled = store.cancel_queued_for_user(user_id)
+        _audit(
+            request, "user_delete", _user["id"],
+            target_type="user", target_id=user_id,
+            details={
+                "email": target["email"],
+                "cancelled_jobs": cancelled,
+                "sessions_revoked": revoked,
+            },
+        )
+        return {"deleted": True, "cancelled_jobs": cancelled}
+
+    @app.get("/admin/overview", response_model=AdminOverviewResponse)
+    def admin_overview(_user: dict = Depends(require_admin)):
+        queue = store.queue_summary()
+        finished = store.counts_since(daily_window_start())
+        users_by_status = auth.count_users_by_status()
+        return {
+            "queued": queue["queued"],
+            "running": queue["running"],
+            "failed_24h": finished["failed"],
+            "completed_24h": finished["completed"],
+            "workers_online": workers.summary(offline_after_seconds=offline_after_seconds)[
+                "connected"
+            ],
+            "users_total": sum(users_by_status.values()),
+            "users_suspended": users_by_status["suspended"],
+            "quota_config": {
+                **asdict(QuotaConfig.from_env()),
+                **{name.lower(): rate_limit_from_env(name) for name in RATE_LIMIT_DEFAULTS},
+            },
+            "version": os.getenv("APP_VERSION", "dev"),
+        }
 
     @app.get("/admin/audit")
     def list_audit_events(
