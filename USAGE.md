@@ -799,6 +799,10 @@ script, so `BASH_SOURCE` would point at the spool directory, not the repo.
 Keep the interval longer than a typical dispatcher pass so runs do not overlap.
 Confirm with your site’s `scrontab` list/edit commands.
 
+To keep the checkout and the worker SIF current, add
+`deploy/scripts/hpc-update.sh` as a second (daily) entry; see
+`deploy/README.md` § HPC updates.
+
 ### If your lead already has a working Slurm test script
 
 **Yes — use it as the site template for `#SBATCH` headers / Apptainer invocation.**

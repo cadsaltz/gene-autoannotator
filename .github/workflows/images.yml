@@ -1,0 +1,129 @@
+name: Images
+
+# Builds ghcr.io/cadsaltz/gene-autoannotator-{backend,frontend,worker}:sha-<7-char sha>
+# for every master commit whose CI run passed, then moves :prod to that commit if
+# it is still the tip of master. workflow_run only fires once this file is on the
+# default branch. workflow_dispatch builds the selected ref (sha tag only unless
+# it is the tip of master).
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images
+  cancel-in-progress: false
+
+env:
+  IMAGE_PREFIX: ghcr.io/cadsaltz/gene-autoannotator
+  HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  build:
+    # push + same repository: a fork PR can have head_branch "master" too.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'master' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: backend
+            dockerfile: deploy/docker/Dockerfile.backend
+            platforms: linux/amd64,linux/arm64
+            cache: type=gha,scope=backend
+          - image: frontend
+            dockerfile: deploy/docker/Dockerfile.frontend
+            platforms: linux/amd64,linux/arm64
+            cache: type=gha,scope=frontend
+          # The worker's torch/CUDA layers would evict everything else from the
+          # 10 GB Actions cache, so its build cache lives in GHCR instead.
+          - image: worker
+            dockerfile: deploy/docker/Dockerfile.worker
+            platforms: linux/amd64
+            cache: type=registry,ref=ghcr.io/cadsaltz/gene-autoannotator-worker:buildcache
+    steps:
+      - name: Free disk space for the worker image
+        if: matrix.image == 'worker'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h /
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          persist-credentials: false
+      - id: sha
+        run: echo "short=${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v4
+        if: contains(matrix.platforms, 'arm64')
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          tags: type=raw,value=sha-${{ steps.sha.outputs.short }}
+          labels: org.opencontainers.image.revision=${{ env.HEAD_SHA }}
+      # context: . (not the default git context, which would build github.sha,
+      # the default branch tip, instead of the commit that passed CI).
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: ${{ matrix.cache }}
+          cache-to: ${{ matrix.cache }},mode=max
+
+  promote:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tip="$(gh api "repos/$GITHUB_REPOSITORY/commits/master" --jq .sha)"
+          if [[ "$tip" == "$HEAD_SHA" ]]; then
+            echo "promote=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "master moved on to $tip; leaving :prod alone (its own run promotes it)"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: docker/setup-buildx-action@v4
+        if: steps.tip.outputs.promote == 'true'
+      - uses: docker/login-action@v4
+        if: steps.tip.outputs.promote == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag the sha images as prod
+        if: steps.tip.outputs.promote == 'true'
+        run: |
+          for image in backend frontend worker; do
+            docker buildx imagetools create \
+              -t "$IMAGE_PREFIX-$image:prod" "$IMAGE_PREFIX-$image:sha-${HEAD_SHA:0:7}"
+          done

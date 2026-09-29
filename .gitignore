@@ -50,4 +50,7 @@ experiments/paper/results/*/
 
 *.log
 /log*.txt
+# deploy/scripts/hpc-update.sh state
+/sif/
+/.hpc-update.lock
 /run_log.txt

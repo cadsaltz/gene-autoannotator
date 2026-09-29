@@ -105,6 +105,55 @@ requires `REQUIRE_WORKER_API_TOKEN=1` and `TRUST_FORWARDED_FOR=1`, which are
 right for every deployment behind this Caddyfile. Without `--role` it checks
 the old stack's shared `.env`.
 
+## Images (CI → GHCR)
+
+`.github/workflows/ci.yml` runs on every push and pull request: the tracked
+Python tests with the backend image's pinned dependencies (no torch/CUDA
+stack), and `npm ci`, `npm test`, `npm run lint`, `npm run build` in
+`frontend/` (no env secrets needed). Five `tests/test_gene_names.py`
+annotation-table tests that already fail on master are deselected there.
+
+`.github/workflows/images.yml` runs after each successful CI run of a push to
+`master`, builds the exact commit CI tested, and pushes:
+
+| Image | Platforms | Tags |
+|-------|-----------|------|
+| `ghcr.io/cadsaltz/gene-autoannotator-backend` | amd64, arm64 | `sha-<7-char sha>`, `prod` |
+| `ghcr.io/cadsaltz/gene-autoannotator-frontend` | amd64, arm64 | `sha-<7-char sha>`, `prod` |
+| `ghcr.io/cadsaltz/gene-autoannotator-worker` | amd64 | `sha-<7-char sha>`, `prod` (plus `buildcache`) |
+
+`prod` moves only after all three images built, and only if the commit is
+still the tip of `master` (a newer push promotes itself). The arm64 frontend
+build runs under QEMU and takes the longest (expect 15 to 30 minutes per
+run). The workflow only fires once it is on the default branch; **Run
+workflow** on the Actions tab (`workflow_dispatch`) builds any branch with
+just the `sha-` tag, e.g. for staging.
+
+GHCR packages start private. The host that pulls them logs in once with a
+classic personal access token that has only `read:packages`, as the user
+that runs `server-update.sh` (root, for the cron below):
+
+```bash
+sudo docker login ghcr.io -u <github-user>   # paste the token as the password
+```
+
+`IMAGE_TAG` in `compose.env` picks the tag: `prod` (default, follows master),
+`sha-<7-char sha>` to pin a commit, or `previous` (see Updates).
+
+**Before the cutover the images must exist in GHCR**: push to `master`, wait
+for CI and then Images to finish, then `$DC pull`. Fallback without GHCR:
+build on the Pi from the checkout you deploy, tagged the way the compose file
+expects (native arm64, no QEMU):
+
+```bash
+docker build -f deploy/docker/Dockerfile.backend  -t ghcr.io/cadsaltz/gene-autoannotator-backend:prod .
+docker build -f deploy/docker/Dockerfile.frontend -t ghcr.io/cadsaltz/gene-autoannotator-frontend:prod .
+```
+
+and leave the update cron off until GHCR has the images: `pull` fails
+without them (or without the login), and once they exist it replaces the
+local `:prod` images.
+
 ## Staging on the Pi (no domain, old stack keeps running)
 
 The running `docker-compose.backend.yml` stack keeps ports 3000 and 8000 and
@@ -191,8 +240,8 @@ Preparation (no downtime):
 1. Staging passed. Env files for production exist and pass preflight.
    `SITE_ADDRESS` is the hostname, DNS points at the host, ports 80/443 are
    reachable (Caddy needs port 80 for the first certificate).
-2. Images are on the host: `$DC pull` (or locally built and tagged with
-   `IMAGE_TAG`).
+2. Images are on the host: `$DC pull` (needs the GHCR images and login, see
+   Images), or locally built and tagged with `IMAGE_TAG`.
 3. `docker compose ls` shows the old project name (normally `compose`); pass
    `--from-project` below if it differs. Point `OLD` at the checkout the old
    stack was started from, and note its state:
@@ -331,6 +380,57 @@ Rolling back a bad image update:
 `:previous` only covers the most recent update; the log keeps the image IDs of
 every update (`docker image inspect <id>` shows its digest if the image is
 still present).
+
+## HPC updates (dispatcher checkout and worker SIF)
+
+The HPC side runs from a git checkout on the shared filesystem: the
+dispatcher (`dispatcher-once.sh`, scrontab) uses the checkout's `.venv`, and
+each Slurm worker-run starts the SIF named by `WORKER_IMAGE` in
+`dispatcher.env`. `deploy/scripts/hpc-update.sh` keeps both on the same
+commit:
+
+1. `flock` on `<repo>/.hpc-update.lock`; an overlapping run exits.
+2. `git fetch`, then `apptainer pull` of
+   `ghcr.io/cadsaltz/gene-autoannotator-worker:sha-<7-char sha>` for the
+   upstream tip into `<repo>/sif/worker-sha-<sha>.sif` (skipped if present).
+   If that image isn't there yet (Images still running, CI failed, no
+   registry login) it logs `waiting: ...` and changes nothing.
+3. `git merge --ff-only`. A diverged checkout or local edits that conflict
+   with the update stop the run with an error in the log.
+4. Reinstalls `requirements.txt` and `requirements-web.txt` into `.venv` when
+   their contents changed since the last install.
+5. Points `sif/worker-current.sif` at the new SIF (running allocations keep
+   the file they opened; pending ones get the new one) and deletes older SIFs,
+   keeping the two newest and any whose replacement is under 48 hours old.
+
+It logs to `<repo>/hpc-update.log`. One-time setup on the login node:
+
+```bash
+# read:packages token, as for the Pi (skip if the packages are made public)
+apptainer registry login --username <github-user> docker://ghcr.io
+# dispatcher.env
+WORKER_IMAGE=/shared/gene-autoannotator/sif/worker-current.sif
+# first run by hand, then check the log
+/shared/gene-autoannotator/deploy/scripts/hpc-update.sh; tail /shared/gene-autoannotator/hpc-update.log
+```
+
+scrontab (`scrontab -e`); scrontab entries run as Slurm jobs, so the node
+they land on needs outbound HTTPS to GitHub and ghcr.io, and converting the image to a SIF needs
+a few CPUs, memory, and roughly twice the image size (about 15 GB) of scratch
+under `sif/.tmp`:
+
+```cron
+#SCRON --time=02:00:00 --cpus-per-task=4 --mem=16G
+17 4 * * * /shared/gene-autoannotator/deploy/scripts/hpc-update.sh
+```
+
+A run with nothing new only fetches, so it can run more often than daily.
+Overrides: `GAA_SIF_DIR`, `GAA_VENV`, `GAA_REQUIREMENTS`, `GAA_SIF_KEEP`,
+`GAA_SIF_GRACE_HOURS`, `GAA_HPC_UPDATE_LOG`, `GAA_HPC_UPDATE_LOCK`,
+`APPTAINER` (e.g. `singularity`), `APPTAINER_TMPDIR`. With a hand-built SIF,
+`GAA_PULL_SIF=0` updates only the code and venv. To roll back, set
+`WORKER_IMAGE` to a kept `worker-sha-*.sif` and comment out the scrontab line
+(the next run would move `worker-current.sif` again, but not `WORKER_IMAGE`).
 
 ## Operations
 
