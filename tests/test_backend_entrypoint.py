@@ -62,12 +62,20 @@ def test_missing_command_is_a_usage_error(tmp_path):
 
 def test_chown_tree_only_touches_mismatched_paths(tmp_path, monkeypatch):
     entrypoint = _load_entrypoint()
+    # /proc/self/fd links resolve symlinks, so compare against the real path.
+    tmp_path = tmp_path.resolve()
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "jobs.sqlite3").write_text("", encoding="utf-8")
     (tmp_path / "link").symlink_to("/etc/passwd")
     (tmp_path / "dirlink").symlink_to("/etc")
     calls = []
-    monkeypatch.setattr(entrypoint.os, "lchown", lambda path, uid, gid: calls.append(path))
+
+    def fake_chown(name, uid, gid, *, dir_fd=None, follow_symlinks=True):
+        assert follow_symlinks is False
+        parent = os.readlink(f"/proc/self/fd/{dir_fd}") if dir_fd is not None else ""
+        calls.append(os.path.join(parent, name))
+
+    monkeypatch.setattr(entrypoint.os, "chown", fake_chown)
 
     assert entrypoint._chown_tree(str(tmp_path), os.getuid(), os.getgid()) == 0
     assert calls == []

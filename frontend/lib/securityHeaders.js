@@ -8,6 +8,9 @@ export const CONTENT_SECURITY_POLICY = [
   "script-src 'self' 'unsafe-inline'",
   "connect-src 'self'",
   "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
 ].join("; ");
 
 const BASELINE_HEADERS = [

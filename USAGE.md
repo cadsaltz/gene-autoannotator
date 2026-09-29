@@ -433,9 +433,13 @@ detailed `/health` and `/backend-info` require an admin session)
 Compose (frontend + backend):
 
 ```bash
+deploy/scripts/preflight-env.sh   # OK/MISSING per required .env variable; never prints values
 docker compose -f deploy/compose/docker-compose.backend.yml up -d --build
 ```
 
+Run the preflight before every build or redeploy: both images read settings
+only from the root `.env` (the frontend image no longer bakes
+`frontend/.env.local`), and it exits non-zero if a required variable is missing.
 The backend image installs only `requirements-backend.txt` and serves as uid
 10001 (its entrypoint chowns the existing volumes on start); use
 `docker compose exec -u app backend ...` for one-off commands. See

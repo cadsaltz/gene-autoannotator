@@ -15,7 +15,8 @@ RUN groupadd --system --gid 10001 app \
 WORKDIR /app
 
 COPY requirements-backend.txt ./
-RUN pip install --no-cache-dir -r requirements-backend.txt
+COPY deploy/docker/constraints-backend.txt ./
+RUN pip install --no-cache-dir -r requirements-backend.txt -c constraints-backend.txt
 
 COPY autoannotation/ autoannotation/
 COPY backend/ backend/

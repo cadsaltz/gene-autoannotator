@@ -40,6 +40,9 @@ test("content security policy keeps browser traffic same-origin", () => {
     "script-src": "'self' 'unsafe-inline'",
     "connect-src": "'self'",
     "frame-ancestors": "'none'",
+    "base-uri": "'self'",
+    "form-action": "'self'",
+    "object-src": "'none'",
   });
 });
 

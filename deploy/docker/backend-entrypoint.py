@@ -15,19 +15,24 @@ def _data_dirs():
     return [path for path in raw.split(":") if path]
 
 
+def _chown_entry(name, uid, gid, dir_fd=None):
+    try:
+        stat = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return 0
+    if stat.st_uid == uid and stat.st_gid == gid:
+        return 0
+    os.chown(name, uid, gid, dir_fd=dir_fd, follow_symlinks=False)
+    return 1
+
+
 def _chown_tree(root, uid, gid):
-    changed = 0
-    for dirpath, dirnames, filenames in os.walk(root):
-        # Real subdirs are chowned when walked as dirpath; walk skips dir symlinks.
-        links = [name for name in dirnames if os.path.islink(os.path.join(dirpath, name))]
-        for path in [dirpath, *(os.path.join(dirpath, name) for name in links + filenames)]:
-            try:
-                stat = os.lstat(path)
-            except FileNotFoundError:
-                continue
-            if stat.st_uid != uid or stat.st_gid != gid:
-                os.lchown(path, uid, gid)
-                changed += 1
+    # Every entry is chowned once, relative to its parent's fd, so a symlink
+    # swapped into the tree mid-walk can never redirect a chown outside it.
+    changed = _chown_entry(root, uid, gid)
+    for _dirpath, dirnames, filenames, dir_fd in os.fwalk(root, follow_symlinks=False):
+        for name in dirnames + filenames:
+            changed += _chown_entry(name, uid, gid, dir_fd=dir_fd)
     return changed
 
 

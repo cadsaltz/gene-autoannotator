@@ -310,7 +310,25 @@ are stored locally under `data/profiles` (mount or set `PROFILES_DIR` if
 needed). The frontend proxy uses `BACKEND_API_BASE_URL=http://backend:8000`
 inside the compose network.
 
-The backend image installs only `requirements-backend.txt` (no torch, CUDA,
+Both containers read their runtime settings only from the root `.env` (the
+frontend image no longer contains `frontend/.env.local`; `.dockerignore` keeps
+every `.env*` file out of the build). Before each build or redeploy, check it:
+
+```bash
+deploy/scripts/preflight-env.sh            # or: deploy/scripts/preflight-env.sh /path/to/.env
+docker compose -f deploy/compose/docker-compose.backend.yml build
+docker compose -f deploy/compose/docker-compose.backend.yml up -d
+```
+
+The preflight prints `OK NAME` or `MISSING NAME` (never values) for
+`MONGO_URI` (or `MONGODB_URI`; the frontend's annotation routes need it too),
+`WORKER_API_TOKEN`, `REQUIRE_WORKER_API_TOKEN`, `SESSION_COOKIE_SECURE`,
+`EMAIL_BACKEND`, and, when `EMAIL_BACKEND=resend`, `RESEND_API_KEY` and
+`EMAIL_FROM`. It exits non-zero if any is missing or empty; fix `.env` before
+building.
+
+The backend image installs only `requirements-backend.txt`, pinned by
+`deploy/docker/constraints-backend.txt` (no torch, CUDA,
 transformers, or spaCy; the annotation pipeline runs on workers). The server
 runs as the unprivileged user `app` (uid/gid 10001). The container starts as
 root only long enough for its entrypoint to chown the `/state/backend` and
