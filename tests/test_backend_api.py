@@ -8,6 +8,7 @@ from backend.api import create_app
 from backend.job_store import JobStore
 from backend.profile_store import LocalProfileStore
 from backend import regex_gen
+from tests.auth_helpers import admin_client as _admin_client
 from tests.auth_helpers import authed_client as _authed_client
 from tests.auth_helpers import sign_in as _sign_in
 
@@ -32,7 +33,7 @@ def isolate_profile_and_mongo_env(tmp_path, monkeypatch):
 
 def test_health_endpoint(tmp_path):
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = _authed_client(app)
+    client = _admin_client(app)
 
     response = client.get("/health")
 
@@ -153,7 +154,7 @@ def test_profile_crud_allows_builtin_update(tmp_path):
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         profile_store=LocalProfileStore(tmp_path / "profiles"),
     )
-    client = _authed_client(app)
+    client = _admin_client(app)
 
     response = client.put(
         "/profiles/mtb-h37rv",
@@ -173,7 +174,7 @@ def test_profile_crud_allows_builtin_update(tmp_path):
 def test_profile_creation_works_without_mongo(tmp_path, monkeypatch):
     monkeypatch.setenv("PROFILES_DIR", str(tmp_path / "env-profiles"))
     app = create_app(job_store=JobStore(tmp_path / "jobs.sqlite3"))
-    client = _authed_client(app)
+    client = _admin_client(app)
 
     response = client.post(
         "/profiles",
@@ -194,7 +195,7 @@ def test_profile_crud_creates_reads_updates_and_deletes_user_profile(tmp_path):
         job_store=JobStore(tmp_path / "jobs.sqlite3"),
         profile_store=LocalProfileStore(tmp_path / "profiles"),
     )
-    client = _authed_client(app)
+    client = _admin_client(app)
 
     create_response = client.post(
         "/profiles",
@@ -796,7 +797,7 @@ def test_delete_jobs_history_clears_only_finished_jobs(tmp_path):
         run_jobs_inline=False,
         start_worker=False,
     )
-    client = _authed_client(app)
+    client = _admin_client(app)
     completed = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0001"})
     failed = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0002"})
     queued = store.create_job({"profile": "mtb-h37rv", "locus": "Rv0003"})
@@ -1033,7 +1034,7 @@ def _regex_app(tmp_path):
 
 
 def test_regex_from_examples_endpoint_returns_pattern(tmp_path):
-    client = _authed_client(_regex_app(tmp_path))
+    client = _admin_client(_regex_app(tmp_path))
 
     response = client.post(
         "/regex/from-examples",
@@ -1047,7 +1048,7 @@ def test_regex_from_examples_endpoint_returns_pattern(tmp_path):
 
 
 def test_regex_from_examples_endpoint_rejects_empty(tmp_path):
-    client = _authed_client(_regex_app(tmp_path))
+    client = _admin_client(_regex_app(tmp_path))
 
     response = client.post("/regex/from-examples", json={"examples": ["  "]})
 
@@ -1064,7 +1065,7 @@ def test_regex_from_description_endpoint_returns_pattern(tmp_path, monkeypatch):
             "matched": [],
         },
     )
-    client = _authed_client(_regex_app(tmp_path))
+    client = _admin_client(_regex_app(tmp_path))
 
     response = client.post(
         "/regex/from-description",
@@ -1080,7 +1081,7 @@ def test_regex_from_description_endpoint_reports_model_failure(tmp_path, monkeyp
         raise regex_gen.RegexGenerationError("regex model is unavailable")
 
     monkeypatch.setattr(regex_gen, "regex_from_description", _boom)
-    client = _authed_client(_regex_app(tmp_path))
+    client = _admin_client(_regex_app(tmp_path))
 
     response = client.post("/regex/from-description", json={"description": "anything"})
 
@@ -1088,7 +1089,7 @@ def test_regex_from_description_endpoint_reports_model_failure(tmp_path, monkeyp
 
 
 def test_regex_from_description_endpoint_requires_description(tmp_path):
-    client = _authed_client(_regex_app(tmp_path))
+    client = _admin_client(_regex_app(tmp_path))
 
     response = client.post("/regex/from-description", json={"description": "   "})
 
@@ -1484,7 +1485,7 @@ def test_health_includes_worker_summary():
     client, _ = _make_worker_client()
     headers = {"Authorization": "Bearer test-token"}
     client.post("/workers/register", json=_register_body(), headers=headers)
-    health = client.get("/health").json()
+    health = _admin_client(client.app).get("/health").json()
     assert "workers" in health
     assert health["workers"]["total"] == 1
 

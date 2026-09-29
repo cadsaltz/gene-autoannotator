@@ -5,11 +5,12 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.access import BOOTSTRAP_ADMIN_EMAIL
 from backend.annotation_store import InMemoryAnnotationStore
 from backend.api import DEFAULT_LEASE_SECONDS, create_app
 from backend.job_store import JobStore
 from backend.worker_registry import WorkerRegistry
-from tests.auth_helpers import sign_in
+from tests.auth_helpers import second_client, sign_in
 
 
 @pytest.fixture(autouse=True)
@@ -144,7 +145,8 @@ def test_deregister_removes_worker_from_fleet(tmp_path):
     response = client.delete(f"/workers/{worker_id}", headers=headers)
 
     assert response.status_code == 204
-    assert client.get("/workers").json()["workers"] == []
+    admin = second_client(client, BOOTSTRAP_ADMIN_EMAIL)
+    assert admin.get("/workers").json()["workers"] == []
     assert client.delete(f"/workers/{worker_id}", headers=headers).status_code == 404
 
 

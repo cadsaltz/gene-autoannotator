@@ -397,3 +397,5 @@ class AuthMeResponse(BaseModel):
     email: str
     username: str | None
     email_verified: bool
+    role: str
+    status: str

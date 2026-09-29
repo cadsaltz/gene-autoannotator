@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from autoannotation import batch_parse, batch_resolution, gene_names, organisms, targets
 from autoannotation.batch_parse import BatchParseError
 
+from .access import is_admin
 from .annotation_store import AnnotationStoreUnavailable, annotation_store_from_env
 from .auth import (
     OTP_TTL_SECONDS,
@@ -651,35 +652,9 @@ def create_app(
             ortholog_override=request.ortholog_override,
         )
 
-    @app.get("/health")
-    def health():
-        try:
-            job_store_health = store.health()
-        except Exception as exc:  # noqa: BLE001 - health reports failures.
-            job_store_health = {"status": "unavailable", "message": str(exc)}
-
-        try:
-            annotation_health = annotations.health()
-        except Exception as exc:  # noqa: BLE001 - health reports failures.
-            annotation_health = {"status": "unavailable", "message": str(exc)}
-
-        try:
-            profile_health = profiles_store.health()
-        except Exception as exc:  # noqa: BLE001 - health reports failures.
-            profile_health = {"status": "unavailable", "message": str(exc)}
-
-        return {
-            "status": "ok",
-            "stores": {
-                "jobs": job_store_health,
-                "annotations": annotation_health,
-                "profiles": profile_health,
-            },
-            "queue": store.queue_summary(),
-            "workers": workers.summary(offline_after_seconds=offline_after_seconds),
-            "resources": resource_snapshot(),
-            "regex_model": _regex_model_health(),
-        }
+    @app.get("/healthz")
+    def healthz():
+        return {"status": "ok"}
 
     def _session_cookie_secure():
         return _env_flag("SESSION_COOKIE_SECURE", False)
@@ -728,23 +703,66 @@ def create_app(
         user = auth.get_session_user(token_hash)
         if user is None or not user["email_verified"]:
             raise HTTPException(status_code=401, detail="Authentication required")
+        if user["status"] != "active":
+            raise HTTPException(status_code=403, detail="Account suspended")
         auth.touch_session(token_hash, _auth_expires_at(SESSION_TTL_SECONDS))
         # Refresh browser Max-Age so sliding 90-day sessions stay in sync with SQLite.
         _set_session_cookie(response, token)
         return user
 
+    def require_admin(user: dict = Depends(require_user)) -> dict:
+        if not is_admin(user):
+            raise HTTPException(status_code=403, detail="Admin access required")
+        return user
+
+    @app.get("/health")
+    def health(_user: dict = Depends(require_admin)):
+        try:
+            job_store_health = store.health()
+        except Exception as exc:  # noqa: BLE001 - health reports failures.
+            job_store_health = {"status": "unavailable", "message": str(exc)}
+
+        try:
+            annotation_health = annotations.health()
+        except Exception as exc:  # noqa: BLE001 - health reports failures.
+            annotation_health = {"status": "unavailable", "message": str(exc)}
+
+        try:
+            profile_health = profiles_store.health()
+        except Exception as exc:  # noqa: BLE001 - health reports failures.
+            profile_health = {"status": "unavailable", "message": str(exc)}
+
+        return {
+            "status": "ok",
+            "stores": {
+                "jobs": job_store_health,
+                "annotations": annotation_health,
+                "profiles": profile_health,
+            },
+            "queue": store.queue_summary(),
+            "workers": workers.summary(offline_after_seconds=offline_after_seconds),
+            "resources": resource_snapshot(),
+            "regex_model": _regex_model_health(),
+        }
+
+    # Signup and login answer 200 either way so responses never reveal whether
+    # an address is registered or suspended.
     @app.post("/auth/signup", response_model=AuthOkResponse)
     def auth_signup(body: AuthSignupRequest):
         email = str(body.email)
-        if auth.get_user_by_email(email) is None:
-            auth.create_user(email=email, username=body.username)
+        user = auth.get_user_by_email(email)
+        if user is None:
+            user = auth.create_user(email=email, username=body.username)
+        if user["status"] != "active":
+            return AuthOkResponse()
         _issue_login_code(email=email, purpose="signup")
         return AuthOkResponse()
 
     @app.post("/auth/login", response_model=AuthOkResponse)
     def auth_login(body: AuthLoginRequest):
         email = str(body.email)
-        if auth.get_user_by_email(email) is None:
+        user = auth.get_user_by_email(email)
+        if user is None or user["status"] != "active":
             return AuthOkResponse()
         _issue_login_code(email=email, purpose="login")
         return AuthOkResponse()
@@ -760,6 +778,8 @@ def create_app(
         user = auth.get_user_by_email(email)
         if user is None:
             raise HTTPException(status_code=401, detail="Invalid or expired code")
+        if user["status"] != "active":
+            raise HTTPException(status_code=403, detail="Account suspended")
         auth.mark_email_verified(user["id"])
         token = new_session_token()
         client_ip = request.client.host if request.client else None
@@ -769,6 +789,7 @@ def create_app(
             expires_at=_auth_expires_at(SESSION_TTL_SECONDS),
             ip=client_ip,
         )
+        auth.mark_login(user["id"])
         _set_session_cookie(response, token)
         return AuthOkResponse()
 
@@ -779,6 +800,8 @@ def create_app(
             email=_user["email"],
             username=_user["username"],
             email_verified=_user["email_verified"],
+            role=_user["role"],
+            status=_user["status"],
         )
 
     @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -800,7 +823,7 @@ def create_app(
         response_model=ProfileDetailResponse,
         status_code=status.HTTP_201_CREATED,
     )
-    def create_profile(request: ProfilePayload, _user: dict = Depends(require_user)):
+    def create_profile(request: ProfilePayload, _user: dict = Depends(require_admin)):
         try:
             return profiles_store.create_user_profile(request.model_dump())
         except DuplicateProfileError as exc:
@@ -822,7 +845,7 @@ def create_app(
 
     @app.put("/profiles/{profile_id}", response_model=ProfileDetailResponse)
     def update_profile(
-        profile_id: str, request: ProfilePayload, _user: dict = Depends(require_user)
+        profile_id: str, request: ProfilePayload, _user: dict = Depends(require_admin)
     ):
         try:
             profile = profiles_store.update_user_profile(profile_id, request.model_dump())
@@ -835,7 +858,7 @@ def create_app(
         return profile
 
     @app.delete("/profiles/{profile_id}")
-    def delete_profile(profile_id: str, _user: dict = Depends(require_user)):
+    def delete_profile(profile_id: str, _user: dict = Depends(require_admin)):
         try:
             deleted = profiles_store.delete_user_profile(profile_id)
         except InvalidProfileError as exc:
@@ -853,7 +876,7 @@ def create_app(
 
     @app.post("/regex/from-examples")
     def regex_from_examples_endpoint(
-        request: RegexFromExamplesRequest, _user: dict = Depends(require_user)
+        request: RegexFromExamplesRequest, _user: dict = Depends(require_admin)
     ):
         try:
             return regex_gen.regex_from_examples(request.examples)
@@ -862,7 +885,7 @@ def create_app(
 
     @app.post("/regex/from-description")
     def regex_from_description_endpoint(
-        request: RegexFromDescriptionRequest, _user: dict = Depends(require_user)
+        request: RegexFromDescriptionRequest, _user: dict = Depends(require_admin)
     ):
         try:
             return regex_gen.regex_from_description(request.description)
@@ -991,7 +1014,7 @@ def create_app(
         }
 
     @app.delete("/jobs/history")
-    def clear_jobs_history(_user: dict = Depends(require_user)):
+    def clear_jobs_history(_user: dict = Depends(require_admin)):
         return {"deleted": store.clear_finished_jobs()}
 
     @app.get("/jobs/queue-summary")
@@ -1153,11 +1176,11 @@ def create_app(
         return Response(status_code=204)
 
     @app.get("/workers")
-    def list_workers(_user: dict = Depends(require_user)):
+    def list_workers(_user: dict = Depends(require_admin)):
         return {"workers": workers.list_workers(offline_after_seconds=offline_after_seconds)}
 
     @app.get("/backend-info")
-    def backend_info():
+    def backend_info(_user: dict = Depends(require_admin)):
         return {
             "worker_url": os.getenv("BACKEND_PUBLIC_URL"),
             "version": os.getenv("APP_VERSION", "dev"),

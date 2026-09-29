@@ -7,6 +7,7 @@ from backend.worker_registry import WorkerRegistry
 from worker import agent
 from worker.client import BackendClient
 from worker.config import WorkerConfig
+from tests.auth_helpers import admin_client
 
 
 def _config():
@@ -40,7 +41,7 @@ def test_worker_registers_and_appears_in_health(tmp_path):
     http, _ = _client_and_store(tmp_path)
     client = BackendClient(_config(), http_client=http)
     client.register()
-    health = http.get("/health").json()
+    health = admin_client(http.app).get("/health").json()
     assert health["workers"]["total"] == 1
     assert health["workers"]["connected"] == 1
 
