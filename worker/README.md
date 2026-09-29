@@ -471,7 +471,7 @@ Expect `Registered worker <hostname> (<N> slots)` after fleet setup.
 **Verify connection:**
 
 ```bash
-curl -s http://127.0.0.1:8000/health | python -m json.tool
+curl -s http://127.0.0.1:8000/healthz
 ```
 
 **Submit a job:**
@@ -506,7 +506,7 @@ Scripts live under `deploy/scripts/`:
 | Script | Purpose |
 | --- | --- |
 | `generate-worker-token.sh` | Emit a random hex token for `WORKER_API_TOKEN`. |
-| `test-backend-reachability.sh` | Verify LAN connectivity to the backend (`curl` `/health`). |
+| `test-backend-reachability.sh` | Verify LAN connectivity to the backend (`curl` `/healthz`). |
 | `install-worker.sh` | Create `.venv`, install dependencies, write `worker.env`. |
 | `update-worker.sh` | Drain active jobs, `git pull`, restart the worker. |
 

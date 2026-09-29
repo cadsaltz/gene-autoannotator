@@ -427,7 +427,8 @@ cp backend.env.example .env   # edit token / public URL / Mongo as needed
 uvicorn backend.api:app --host 0.0.0.0 --port 8000
 ```
 
-Health check: `curl http://127.0.0.1:8000/health`
+Health check: `curl http://127.0.0.1:8000/healthz` (public liveness; the
+detailed `/health` and `/backend-info` require an admin session)
 
 Compose (frontend + backend):
 

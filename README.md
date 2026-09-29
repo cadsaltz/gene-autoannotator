@@ -204,7 +204,8 @@ Some comparison/model tests may need HuggingFace model downloads and local Ollam
 
 ## Web API Summary
 
-- `GET /health`: job store, annotation store, profile store, queue, and process resource status.
+- `GET /healthz`: public liveness probe (`{"status": "ok"}`).
+- `GET /health` (admin-only): job store, annotation store, profile store, queue, and process resource status. `GET /backend-info` is also admin-only.
 - `GET /profiles`: local organism profiles (`PROFILES_DIR` / `data/profiles`).
 - `POST /profiles`, `GET /profiles/{profile_id}`, `PUT /profiles/{profile_id}`, `DELETE /profiles/{profile_id}`: create, read, update, and delete local profile files.
 - `POST /validate`: target preflight for a profile or ad hoc organism plus name, locus, or both. It returns the resolved profile, submitted/resolved identifiers, primary identifier, and warnings.

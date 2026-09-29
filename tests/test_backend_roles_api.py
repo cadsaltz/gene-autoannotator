@@ -3,6 +3,7 @@ from unittest import mock
 
 from backend import email_sender
 from backend.access import BOOTSTRAP_ADMIN_EMAIL
+from backend.auth import SESSION_COOKIE_NAME
 from tests.auth_helpers import (
     make_client,
     second_client,
@@ -126,7 +127,8 @@ def test_verify_rejects_suspended_user_with_outstanding_code(tmp_path):
     store.set_status(store.get_user_by_email("u@example.com")["id"], "suspended")
     response = client.post("/auth/verify", json={"email": "u@example.com", "code": code})
     assert response.status_code == 403
-    assert "ga_session" not in response.cookies
+    assert response.json() == {"detail": "Account suspended"}
+    assert SESSION_COOKIE_NAME not in response.cookies
 
 
 def test_verify_marks_last_login(tmp_path):

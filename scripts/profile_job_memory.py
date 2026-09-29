@@ -127,7 +127,20 @@ def recommend_job_memory_gb(peak_incremental_bytes: int, *, safety_factor: float
 def preflight(backend_url: str, token: str) -> dict:
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     with httpx.Client(base_url=backend_url, headers=headers, timeout=30.0) as client:
-        health = client.get("/health").json()
+        resp = client.get("/health")
+        if resp.status_code in (401, 403):
+            print(
+                f"/health is admin-only (HTTP {resp.status_code}); falling back to "
+                "/healthz liveness and skipping worker/store preflight checks.",
+                flush=True,
+            )
+            liveness = client.get("/healthz")
+            liveness.raise_for_status()
+            health = liveness.json()
+            if health.get("status") != "ok":
+                raise RuntimeError(f"Backend unhealthy: {health}")
+            return health
+        health = resp.json()
         if health.get("status") != "ok":
             raise RuntimeError(f"Backend unhealthy: {health}")
         workers = health.get("workers", {})

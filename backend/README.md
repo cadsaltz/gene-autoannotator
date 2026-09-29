@@ -50,8 +50,11 @@ enabled.
 Check that it is reachable:
 
 ```bash
-curl http://10.158.45.197:8000/health
+curl http://10.158.45.197:8000/healthz
 ```
+
+`/healthz` is the public liveness probe. The detailed `/health` and
+`/backend-info` endpoints require an admin session.
 
 Annotation history writes use MongoDB. Put your local connection string in the
 project root `.env` file so completed backend jobs can be saved:
@@ -135,11 +138,11 @@ Environment variables:
 - `MAX_ATTEMPTS` (default `3`): maximum number of times a job is retried before it
   is marked failed.
 - `WORKER_OFFLINE_SECONDS` (default `60`): a worker with no heartbeat within this
-  window is reported as offline in `/health` and `/workers`.
+  window is reported as offline in `/health` and `/workers` (both admin-only).
 - `REQUIRED_WORKER_VERSION` (optional): if set, returned to workers on heartbeat
   so out-of-date agents can be told to update.
 - `BACKEND_PUBLIC_URL` / `APP_VERSION`: surfaced by `GET /backend-info`
-  so workers can discover the backend URL and version.
+  (admin-only) so operators can see the backend URL and version.
 
 Start the backend:
 
@@ -152,8 +155,9 @@ slots, unless `WORKER_CAPACITY_REQUIRED=0`.
 
 ## Endpoint Summary
 
-- `GET /health`: API, SQLite job store, Mongo annotation store, local profile
-  store, queue, and process resource health.
+- `GET /healthz`: public liveness probe; returns `{"status": "ok"}` only.
+- `GET /health` (admin-only): API, SQLite job store, Mongo annotation store,
+  local profile store, queue, and process resource health.
 - `GET /profiles`: lists local organism profiles (JSON files under
   `PROFILES_DIR`, default `data/profiles`).
 - `POST /profiles`: creates a local profile file.
