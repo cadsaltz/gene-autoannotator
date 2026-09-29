@@ -146,9 +146,12 @@ Environment variables:
 - `TERMS_VERSION` (default `draft-2026-09`): `POST /auth/signup` requires
   `"accept_terms": true` (422 otherwise), and a new account is created with
   this value in `terms_version` and the creation time in `terms_accepted_at`.
-  Keep it in sync with `TERMS_VERSION` in `frontend/lib/legal.js`. Accounts
-  created before consent was required keep null values (shown read-only in
-  `GET /admin/users`); they are not asked to re-consent.
+  When you change it, bump the `TERMS_VERSION` constant in
+  `frontend/lib/legal.js` in the same change (the legal pages display that
+  constant). Accounts created before consent was required keep null values
+  (shown read-only in `GET /admin/users`) until they verify a code from a new
+  signup request, which records the current version; they are not otherwise
+  asked to re-consent.
 - Admin alerts: every `ALERT_CHECK_SECONDS` (default `300`, capped at `86400`;
   `0` disables) the
   backend emails all active admins through `EMAIL_BACKEND` (`console` logs

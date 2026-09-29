@@ -10,7 +10,7 @@ export const metadata = {
 
 export default function TermsPage() {
   return (
-    <AppShell>
+    <AppShell publicPage>
       <LegalPlaceholder {...legalDocument} />
     </AppShell>
   );

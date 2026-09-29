@@ -4,7 +4,7 @@ import AppShell from "../components/AppShell";
 
 export default function Home() {
   return (
-    <AppShell>
+    <AppShell publicPage>
       <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
         <div className="workbench-card p-7">
           <p className="workbench-kicker">

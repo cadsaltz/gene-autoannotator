@@ -959,6 +959,11 @@ def create_app(
         if user["status"] != "active":
             raise HTTPException(status_code=403, detail="Account suspended")
         auth.mark_email_verified(user["id"])
+        # Signup codes are only issued after accept_terms, so verifying one
+        # proves the address owner consented; accounts created before consent
+        # was required get it recorded here.
+        if consumed["purpose"] == "signup" and not user["terms_version"]:
+            auth.record_terms_acceptance(user["id"], terms_version)
         token = new_session_token()
         auth.create_session(
             user_id=user["id"],

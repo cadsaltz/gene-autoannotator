@@ -44,7 +44,7 @@ test("each legal page renders LegalPlaceholder with its document", async () => {
     assert.match(page, /import LegalPlaceholder from "[./]+components\/LegalPlaceholder"/, file);
     assert.match(page, /<LegalPlaceholder/, file);
     assert.match(page, new RegExp(`LEGAL_DOCUMENTS\\[["']${key}["']\\]`), file);
-    assert.match(page, /<AppShell>/, file);
+    assert.match(page, /<AppShell publicPage>/, file);
   }
 });
 
@@ -146,6 +146,25 @@ test("SiteFooter links the legal routes, data sources, and contact placeholder",
 
 test("contact placeholder stays an obvious placeholder", () => {
   assert.equal(CONTACT_PLACEHOLDER, "[contact email]");
+});
+
+test("AppShell renders public pages without waiting on the session check", async () => {
+  const shell = await readProjectFile("components/AppShell.js");
+  assert.match(shell, /export default function AppShell\(\{ children, publicPage = false \}\)/);
+  assert.match(shell, /\{publicPage\s*\?\s*children\s*:\s*loading \?/);
+});
+
+test("homepage is a public page", async () => {
+  const home = await readProjectFile("app/page.js");
+  assert.match(home, /<AppShell publicPage>/);
+});
+
+test("signup explains why Continue is disabled", async () => {
+  const forms = await readProjectFile("components/AuthForms.js");
+  assert.match(forms, /id="signup-terms-hint"/);
+  const described = forms.match(/aria-describedby=\{?"?[^\n]*signup-terms-hint/g) || [];
+  assert.ok(described.length >= 2, "checkbox and Continue button reference the hint");
+  assert.match(forms, /Check the box above to continue/);
 });
 
 test("AppShell renders the footer outside the session gate", async () => {

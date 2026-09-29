@@ -77,6 +77,61 @@ def test_repeat_signup_does_not_rewrite_existing_consent(tmp_path, monkeypatch):
     assert user["terms_accepted_at"] is None
 
 
+def _verify_last_code(client, email):
+    code = email_sender._CONSOLE_OUTBOX[-1]["code"]
+    return client.post("/auth/verify", json={"email": email, "code": code})
+
+
+def test_verifying_signup_code_records_consent_for_pre_consent_account(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMAIL_BACKEND", "console")
+    monkeypatch.setenv("TERMS_VERSION", "2027-01")
+    client = make_client(tmp_path)
+    legacy = client.auth_store.create_user(email="old@example.com", username=None)
+
+    _signup(client, {"email": "old@example.com", "accept_terms": True})
+    assert client.auth_store.get_user(legacy["id"])["terms_version"] is None
+    assert _verify_last_code(client, "old@example.com").status_code == 200
+
+    user = client.auth_store.get_user(legacy["id"])
+    assert user["terms_version"] == "2027-01"
+    assert user["terms_accepted_at"]
+
+
+def test_verifying_signup_code_keeps_existing_consent(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMAIL_BACKEND", "console")
+    client = make_client(tmp_path)
+    _signup(client, {"email": "a@example.com", "accept_terms": True})
+    before = client.auth_store.get_user_by_email("a@example.com")
+
+    _signup(client, {"email": "a@example.com", "accept_terms": True})
+    assert _verify_last_code(client, "a@example.com").status_code == 200
+
+    after = client.auth_store.get_user_by_email("a@example.com")
+    assert after["terms_version"] == before["terms_version"]
+    assert after["terms_accepted_at"] == before["terms_accepted_at"]
+
+
+def test_verifying_login_code_does_not_record_consent(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMAIL_BACKEND", "console")
+    client = make_client(tmp_path)
+    legacy = client.auth_store.create_user(email="old@example.com", username=None)
+
+    email_sender._CONSOLE_OUTBOX.clear()
+    client.post("/auth/login", json={"email": "old@example.com"})
+    assert _verify_last_code(client, "old@example.com").status_code == 200
+
+    assert client.auth_store.get_user(legacy["id"])["terms_version"] is None
+
+
+def test_rejected_consent_does_not_consume_ip_signup_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMAIL_BACKEND", "console")
+    monkeypatch.setenv("IP_SIGNUPS_PER_DAY", "1")
+    client = make_client(tmp_path)
+
+    assert _signup(client, {"email": "a@example.com"}).status_code == 422
+    assert _signup(client, {"email": "a@example.com", "accept_terms": True}).status_code == 200
+
+
 def test_admin_users_list_exposes_terms_fields(tmp_path, monkeypatch):
     monkeypatch.setenv("EMAIL_BACKEND", "console")
     client = make_client(tmp_path)

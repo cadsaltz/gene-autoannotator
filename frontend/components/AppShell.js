@@ -32,7 +32,7 @@ function SessionLoading() {
   );
 }
 
-export default function AppShell({ children }) {
+export default function AppShell({ children, publicPage = false }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -127,7 +127,7 @@ export default function AppShell({ children }) {
       </header>
 
       <div className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
-        {loading ? <SessionLoading /> : suspended ? <SuspendedCard /> : children}
+        {publicPage ? children : loading ? <SessionLoading /> : suspended ? <SuspendedCard /> : children}
       </div>
       <SiteFooter />
     </main>

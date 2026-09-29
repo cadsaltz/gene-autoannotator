@@ -10,7 +10,7 @@ export const metadata = {
 
 export default function DisclaimerPage() {
   return (
-    <AppShell>
+    <AppShell publicPage>
       <LegalPlaceholder {...legalDocument} />
     </AppShell>
   );

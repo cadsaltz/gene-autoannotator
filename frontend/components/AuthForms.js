@@ -115,6 +115,7 @@ export function SignupForm() {
             onChange={(event) => setAcceptTerms(event.target.checked)}
             className="mt-1 h-4 w-4"
             required
+            aria-describedby={acceptTerms ? undefined : "signup-terms-hint"}
           />
           <span>
             I agree to the{" "}
@@ -138,11 +139,18 @@ export function SignupForm() {
             .
           </span>
         </label>
+        {acceptTerms ? null : (
+          <p id="signup-terms-hint" className="workbench-muted text-xs">
+            Check the box above to continue. An account requires agreeing to the
+            Terms of Service and Acceptable Use Policy.
+          </p>
+        )}
         <ErrorText message={error} />
         <button
           type="submit"
           className="workbench-button workbench-button-primary min-h-11 px-5 disabled:cursor-not-allowed disabled:opacity-50"
           disabled={submitting || !acceptTerms}
+          aria-describedby={acceptTerms ? undefined : "signup-terms-hint"}
         >
           {submitting ? "Sending code…" : "Continue"}
         </button>
