@@ -41,6 +41,7 @@ tests/
 # Paper experiment unit tests live under experiments/ (root tests/ stays ignored).
 !experiments/paper/tests/
 !experiments/paper/tests/**
+experiments/paper/tests/__pycache__/
 
 # Live/dry-run experiment outputs stay local.
 experiments/paper/results/*/
