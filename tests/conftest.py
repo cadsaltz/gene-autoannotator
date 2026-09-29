@@ -15,3 +15,9 @@ def generous_rate_limits(monkeypatch):
     for name, value in GENEROUS_RATE_LIMITS.items():
         monkeypatch.setenv(name, value)
     monkeypatch.delenv("TRUST_FORWARDED_FOR", raising=False)
+
+
+# App lifespans would otherwise start an alert thread that outlives the test.
+@pytest.fixture(autouse=True)
+def alerts_disabled(monkeypatch):
+    monkeypatch.setenv("ALERT_CHECK_SECONDS", "0")

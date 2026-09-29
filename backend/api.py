@@ -14,6 +14,7 @@ from autoannotation import batch_parse, batch_resolution, gene_names, organisms,
 from autoannotation.batch_parse import BatchParseError
 
 from .access import is_admin
+from .alerts import AlertConfig, AlertLoop
 from .annotation_store import AnnotationStoreUnavailable, annotation_store_from_env
 from .audit_store import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, AuditStore
 from .auth import (
@@ -393,14 +394,32 @@ def create_app(
 
         reaper = threading.Thread(target=reaper_loop, daemon=True)
         reaper.start()
+
+        alert_config = AlertConfig.from_env(offline_after_seconds=offline_after_seconds)
+        alert_loop = None
+        if alert_config.enabled:
+            alert_loop = AlertLoop(
+                store=store,
+                workers=workers,
+                recipients=auth.list_active_admin_emails,
+                config=alert_config,
+            )
+            alert_loop.start()
+        else:
+            log.info("Admin alerts disabled (ALERT_CHECK_SECONDS<=0)")
+        app.state.alert_loop = alert_loop
+
         _maybe_run_jobs_inline()
         try:
             yield
         finally:
             stop_reaper.set()
+            if alert_loop is not None:
+                alert_loop.stop(timeout=5)
 
     app = FastAPI(title="Gene Autoannotator API", lifespan=lifespan)
     app.state.audit_store = audit
+    app.state.alert_loop = None
     cors_origins = [
         origin.strip()
         for origin in os.getenv("CORS_ORIGINS", ",".join(DEFAULT_CORS_ORIGINS)).split(",")

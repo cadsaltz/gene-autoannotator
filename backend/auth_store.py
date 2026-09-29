@@ -232,6 +232,14 @@ class AuthStore:
                 "SELECT COUNT(*) FROM users WHERE role = 'admin' AND status = 'active'"
             ).fetchone()[0]
 
+    def list_active_admin_emails(self) -> list[str]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT email FROM users WHERE role = 'admin' AND status = 'active' "
+                "ORDER BY created_at ASC"
+            ).fetchall()
+        return [row[0] for row in rows]
+
     def revoke_sessions(self, user_id: str) -> int:
         with self._connect() as connection:
             cursor = connection.execute(

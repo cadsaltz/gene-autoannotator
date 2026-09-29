@@ -143,6 +143,16 @@ Environment variables:
   so out-of-date agents can be told to update.
 - `BACKEND_PUBLIC_URL` / `APP_VERSION`: surfaced by `GET /backend-info`
   (admin-only) so operators can see the backend URL and version.
+- Admin alerts: every `ALERT_CHECK_SECONDS` (default `300`; `0` disables) the
+  backend emails all active admins through `EMAIL_BACKEND` (`console` logs
+  them) when a rule trips. Each alert repeats at most every 6 hours while it
+  persists. A threshold of `0` disables that rule; invalid values fall back to
+  the default with a logged warning.
+  - `ALERT_QUEUE_DEPTH` (default `50`): jobs queued.
+  - `ALERT_NO_WORKER_MINUTES` (default `15`): jobs queued with no online worker
+    for this long.
+  - `ALERT_FAILURE_RATE` (default `0.5`): failed / (completed + failed) over
+    the last hour, once at least 5 jobs have finished.
 
 Start the backend:
 
