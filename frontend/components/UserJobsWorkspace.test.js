@@ -3,7 +3,14 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-import { describeSubmitError, formatQueuedCount, formatUsage } from "../lib/queueStatus.js";
+import {
+  describeSubmitError,
+  describeUserSubmitError,
+  formatQueuedCount,
+  formatUsage,
+} from "../lib/queueStatus.js";
+
+const FLEET_OR_HEALTH = /getHealth|getWorkers|getAnnotationHealth|\/fleet/;
 
 const projectRoot = process.cwd();
 
@@ -26,6 +33,57 @@ test("UserJobsWorkspace reads queue status and own jobs, never fleet or health d
   assert.doesNotMatch(workspace, /JobsHealthBanner|healthFormat/);
 });
 
+test("components rendered on the user jobs page never touch fleet or health data", async () => {
+  for (const file of [
+    "components/SingleJobForm.js",
+    "components/BatchJobForm.js",
+    "components/QueuePlaceholder.js",
+  ]) {
+    assert.doesNotMatch(await readProjectFile(file), FLEET_OR_HEALTH, file);
+  }
+});
+
+test("UserJobsWorkspace describes submit errors with the user variant", async () => {
+  const workspace = await readProjectFile("components/UserJobsWorkspace.js");
+
+  assert.match(workspace, /describeUserSubmitError/);
+  assert.match(workspace, /<SingleJobForm[\s\S]*?describeError=\{describeUserSubmitError\}/);
+  assert.match(workspace, /<BatchJobForm[\s\S]*?describeError=\{describeUserSubmitError\}/);
+});
+
+test("submit forms accept describeError and default to the admin description", async () => {
+  for (const file of ["components/SingleJobForm.js", "components/BatchJobForm.js"]) {
+    const component = await readProjectFile(file);
+    assert.match(component, /describeError = describeSubmitError/, file);
+    assert.match(component, /setStatusMessage\(describeError\(error\)\)/, file);
+  }
+});
+
+test("UserJobsWorkspace shows a generic message for failed jobs instead of worker errors", async () => {
+  const workspace = await readProjectFile("components/UserJobsWorkspace.js");
+
+  assert.match(workspace, /This job failed\. You can resubmit it\./);
+  assert.doesNotMatch(workspace, /job\.error/);
+  assert.doesNotMatch(workspace, /annotation_error/);
+});
+
+test("UserJobsWorkspace skips overlapping polls and state updates after unmount", async () => {
+  const workspace = await readProjectFile("components/UserJobsWorkspace.js");
+
+  assert.match(workspace, /const refreshInFlight = useRef\(false\)/);
+  assert.match(workspace, /const mountedRef = useRef\(false\)/);
+  assert.match(workspace, /if \(refreshInFlight\.current\)/);
+  assert.match(workspace, /if \(!mountedRef\.current\)/);
+  assert.match(workspace, /mountedRef\.current = false;/);
+});
+
+test("UserJobsWorkspace explains paused submissions when queue status fails to load", async () => {
+  const workspace = await readProjectFile("components/UserJobsWorkspace.js");
+
+  assert.match(workspace, /queueStatusFailed && !queueStatus/);
+  assert.match(workspace, /Submissions are paused until the queue status loads/);
+});
+
 test("UserJobsWorkspace reuses the shared single and batch submit forms", async () => {
   const workspace = await readProjectFile("components/UserJobsWorkspace.js");
 
@@ -41,16 +99,16 @@ test("UserJobsWorkspace polls every 15 seconds and refreshes after submit and ca
   assert.match(workspace, /window\.setInterval\(refresh, 15000\)/);
   assert.match(workspace, /window\.clearInterval\(/);
   assert.match(workspace, /await cancelJob\(job\.id\);\s*await refresh\(\);/);
-  assert.match(workspace, /queueSingleJob\(form\)[\s\S]*?await refresh\(\);/);
+  assert.match(workspace, /onJobQueued=\{refresh\}/);
   assert.match(workspace, /onBatchSubmitted=\{[\s\S]*?refresh\(\);/);
 });
 
 test("UserJobsWorkspace disables submission while the queue is not accepting", async () => {
   const workspace = await readProjectFile("components/UserJobsWorkspace.js");
 
-  assert.match(workspace, /queueStatus\?\.accepting === true/);
+  assert.match(workspace, /const accepting = queueStatus\?\.accepting === true;/);
   assert.match(workspace, /Submissions are paused/);
-  assert.match(workspace, /describeSubmitError\(error\)/);
+  assert.match(workspace, /canSubmit=\{accepting\}/);
 });
 
 test("UserJobsWorkspace shows the queue placeholder, usage, and a private jobs table", async () => {
@@ -117,11 +175,36 @@ test("describeSubmitError falls back to a code-specific message when detail is m
   assert.match(describeSubmitError(generic(null)), /try again/i);
 });
 
-test("BatchJobForm surfaces quota errors through describeSubmitError", async () => {
+test("describeSubmitError hides service-unavailable detail from non-admins", () => {
+  const unavailable = Object.assign(new Error("No workers connected with job capacity."), {
+    status: 503,
+    code: null,
+  });
+
+  assert.equal(describeSubmitError(unavailable), "No workers connected with job capacity.");
+  assert.equal(
+    describeSubmitError(unavailable, { admin: true }),
+    "No workers connected with job capacity.",
+  );
+  for (const message of [
+    describeSubmitError(unavailable, { admin: false }),
+    describeUserSubmitError(unavailable),
+  ]) {
+    assert.doesNotMatch(message, /worker/i);
+    assert.match(message, /try again later/i);
+  }
+
+  const quota = Object.assign(new Error("You can submit at most 5 jobs per 24 hours."), {
+    status: 429,
+    code: "daily_limit",
+  });
+  assert.equal(describeUserSubmitError(quota), "You can submit at most 5 jobs per 24 hours.");
+});
+
+test("BatchJobForm imports the admin describeSubmitError as its default", async () => {
   const component = await readProjectFile("components/BatchJobForm.js");
 
   assert.match(component, /import \{ describeSubmitError \} from "\.\.\/lib\/queueStatus";/);
-  assert.match(component, /setStatusMessage\(describeSubmitError\(error\)\)/);
 });
 
 test("jobs page picks the workspace by role on the server", async () => {
@@ -140,6 +223,10 @@ test("admin JobWorkspace can cancel queued and running jobs and counts cancelled
 
   assert.match(workspace, /cancelJob/);
   assert.match(workspace, /isCancellable\(job\)/);
+  assert.match(workspace, /const \[cancellingId, setCancellingId\] = useState\(null\)/);
+  assert.match(workspace, /cancelling=\{cancellingId === job\.id\}/);
+  assert.match(workspace, /disabled=\{cancelling\}/);
+  assert.match(workspace, /finally \{\s*setCancellingId\(null\);/);
   assert.match(workspace, />\s*Cancel\s*</);
   assert.match(workspace, /cancelled: 0/);
   assert.match(workspace, /queue\.cancelled/);

@@ -62,6 +62,7 @@ export default function BatchJobForm({
   canSubmit,
   onBatchSubmitted,
   setStatusMessage,
+  describeError = describeSubmitError,
 }) {
   const [geneListText, setGeneListText] = useState("");
   const [preview, setPreview] = useState(null);
@@ -85,7 +86,7 @@ export default function BatchJobForm({
       setPreview(result);
     } catch (error) {
       setPreview(null);
-      setStatusMessage(describeSubmitError(error));
+      setStatusMessage(describeError(error));
     } finally {
       setIsValidating(false);
     }
@@ -150,7 +151,7 @@ export default function BatchJobForm({
       setPreview(null);
       setSelectedLoci({});
     } catch (error) {
-      setStatusMessage(describeSubmitError(error));
+      setStatusMessage(describeError(error));
     } finally {
       setIsSubmitting(false);
     }

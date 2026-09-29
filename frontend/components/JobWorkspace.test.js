@@ -37,7 +37,8 @@ test("JobWorkspace renders the shared single-job form", async () => {
 
   assert.match(workspace, /import SingleJobForm, \{[^}]*useJobForm[^}]*\} from "\.\/SingleJobForm";/);
   assert.match(workspace, /<SingleJobForm/);
-  assert.match(workspace, /queueSingleJob\(form\)/);
+  assert.match(workspace, /onJobQueued=\{\(\) => refreshJobs\(\{ updateStatusOnError: false \}\)\}/);
+  assert.doesNotMatch(workspace, /describeError=/);
 });
 
 test("single-job form preserves the admin submit copy and hydration guard", async () => {
@@ -47,7 +48,8 @@ test("single-job form preserves the admin submit copy and hydration guard", asyn
   assert.match(form, /profile: searchParams\.get\("profile"\) \|\| "mtb-h37rv"/);
   assert.match(form, /Queued job \$\{created\.job_id\}\. It will run when earlier jobs finish\.\$\{warningText\}/);
   assert.match(form, /Gene name or locus is required\./);
-  assert.match(form, /disabled=\{!canSubmit\}/);
+  assert.match(form, /disabled=\{!canSubmit \|\| isSubmitting\}/);
+  assert.match(form, /setStatusMessage\(await queueSingleJob\(form\)\);\s*await onJobQueued\(\);/);
   assert.match(form, /suppressHydrationWarning/);
   assert.match(form, /Queue annotation job/);
 });

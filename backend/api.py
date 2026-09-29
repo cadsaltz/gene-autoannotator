@@ -241,6 +241,13 @@ def _owned_or_admin(record: dict, user: dict) -> bool:
     return is_admin(user) or record.get("submitted_by_user_id") == user["id"]
 
 
+class SubmissionsUnavailable(Exception):
+    """Non-admin view of a missing worker fleet; must not reveal fleet state."""
+
+    code = "unavailable"
+    message = "The service isn't accepting new jobs right now. Please try again later."
+
+
 def create_app(
     *,
     job_store=None,
@@ -284,11 +291,13 @@ def create_app(
     # demoting each other concurrently could otherwise both pass it.
     admin_lock = threading.Lock()
 
-    def _require_worker_fleet():
+    def _require_worker_fleet(user: dict):
         if not capacity_required or run_jobs_inline:
             return
         summary = workers.summary(offline_after_seconds=offline_after_seconds)
         if summary["connected"] == 0 or summary["total_slots"] == 0:
+            if not is_admin(user):
+                raise SubmissionsUnavailable()
             raise HTTPException(
                 status_code=503,
                 detail="No workers connected with job capacity.",
@@ -410,6 +419,10 @@ def create_app(
     @app.exception_handler(QuotaExceeded)
     async def quota_exceeded_handler(_request: Request, exc: QuotaExceeded):
         return JSONResponse(status_code=429, content={"detail": exc.message, "code": exc.code})
+
+    @app.exception_handler(SubmissionsUnavailable)
+    async def submissions_unavailable_handler(_request: Request, exc: SubmissionsUnavailable):
+        return JSONResponse(status_code=503, content={"detail": exc.message, "code": exc.code})
 
     def _rate_check(bucket, key, window_seconds, env_name, message):
         return (bucket, key or "unknown", window_seconds, rate_limit_from_env(env_name), message)
@@ -1058,7 +1071,7 @@ def create_app(
             raise HTTPException(status_code=422, detail="No ready entries to queue.")
 
         _reject_unresolvable_ortholog_override(request.ortholog_override)
-        _require_worker_fleet()
+        _require_worker_fleet(_user)
 
         skipped = [entry for entry in entries if entry["status"] != "ready"]
         stored_requests = []
@@ -1146,7 +1159,7 @@ def create_app(
         target = _resolve_target_for_request(request)
         _reject_invalid_target(target)
         stored_request = _stored_request_for_target(request, target)
-        _require_worker_fleet()
+        _require_worker_fleet(_user)
         with submission_lock:
             check_submission(user=_user, job_count=1, store=store, config=QuotaConfig.from_env())
             _enforce_submit_limit(http_request, _user)

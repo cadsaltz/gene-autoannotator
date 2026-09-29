@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 
 import BatchJobForm from "./BatchJobForm";
-import SingleJobForm, { queueSingleJob, useJobForm } from "./SingleJobForm";
+import SingleJobForm, { useJobForm } from "./SingleJobForm";
 import {
   cancelJob,
   clearFinishedJobHistory,
@@ -27,7 +27,6 @@ import {
 } from "../lib/jobQueue";
 import { buildJobsHealthDisplay } from "../lib/healthFormat";
 import { formatJobStepLabel, progressPercent } from "../lib/jobProgress";
-import { describeSubmitError } from "../lib/queueStatus";
 
 function JobsHealthBanner({ health, annotationHealth }) {
   const display = buildJobsHealthDisplay(health, annotationHealth);
@@ -151,7 +150,7 @@ function BatchSummaryCard({ batchId, batchDetail, queueCounts, batchFilterActive
   );
 }
 
-function JobTile({ job, onCancel }) {
+function JobTile({ job, onCancel, cancelling }) {
   const elapsed = formatJobElapsed(job);
   const request = job.request || {};
   const annotationQuery = getAnnotationQuery(job);
@@ -185,7 +184,8 @@ function JobTile({ job, onCancel }) {
             <button
               type="button"
               onClick={() => onCancel(job)}
-              className="workbench-button workbench-button-secondary"
+              disabled={cancelling}
+              className="workbench-button workbench-button-secondary disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancel
             </button>
@@ -254,11 +254,11 @@ export default function JobWorkspace() {
   const [activeBatchId, setActiveBatchId] = useState(null);
   const [batchFilterActive, setBatchFilterActive] = useState(false);
   const [batchDetail, setBatchDetail] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cancellingId, setCancellingId] = useState(null);
   const { form, updateForm, selectedProfile, isCustomProfile } = useJobForm(profiles);
 
   const apiAvailable = health?.status === "ok";
-  const canSubmit = health !== null && apiAvailable && !isSubmitting;
+  const canSubmit = health !== null && apiAvailable;
   const queueJobs =
     activeBatchId && batchFilterActive ? filterJobsByBatch(jobs, activeBatchId) : jobs;
   const batchQueueCounts = useMemo(() => {
@@ -341,34 +341,24 @@ export default function JobWorkspace() {
     };
   }, [activeBatchId]);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setStatusMessage("");
-    setIsSubmitting(true);
-
-    try {
-      setStatusMessage(await queueSingleJob(form));
-      await refreshJobs({ updateStatusOnError: false });
-    } catch (error) {
-      setStatusMessage(describeSubmitError(error));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
   async function handleCancel(job) {
     const confirmed = window.confirm(`Cancel the job for ${getJobDisplayName(job)}?`);
     if (!confirmed) {
       return;
     }
 
+    setCancellingId(job.id);
     try {
       await cancelJob(job.id);
       setStatusMessage(`Cancelled job ${job.id}.`);
     } catch (error) {
       setStatusMessage(error.message);
     }
-    await refreshJobs({ updateStatusOnError: false });
+    try {
+      await refreshJobs({ updateStatusOnError: false });
+    } finally {
+      setCancellingId(null);
+    }
   }
 
   async function handleClearHistory() {
@@ -469,9 +459,9 @@ export default function JobWorkspace() {
               selectedProfile={selectedProfile}
               isCustomProfile={isCustomProfile}
               canSubmit={canSubmit}
-              isSubmitting={isSubmitting}
               statusMessage={statusMessage}
-              onSubmit={handleSubmit}
+              setStatusMessage={setStatusMessage}
+              onJobQueued={() => refreshJobs({ updateStatusOnError: false })}
             />
           ) : (
             <div className="mt-6 grid gap-4">
@@ -550,7 +540,14 @@ export default function JobWorkspace() {
 
           <div className="mt-6 grid gap-4">
             {queueJobs.length > 0 ? (
-              visibleJobs.map((job) => <JobTile key={job.id} job={job} onCancel={handleCancel} />)
+              visibleJobs.map((job) => (
+                <JobTile
+                  key={job.id}
+                  job={job}
+                  onCancel={handleCancel}
+                  cancelling={cancellingId === job.id}
+                />
+              ))
             ) : (
               <div className="workbench-muted rounded-2xl border border-dashed workbench-border p-8 text-center">
                 {activeBatchId && batchFilterActive

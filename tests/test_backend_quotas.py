@@ -5,7 +5,7 @@ import pytest
 from backend.access import BOOTSTRAP_ADMIN_EMAIL
 from backend.api import MAX_BATCH_SIZE
 from backend.quotas import QuotaConfig, effective_limits
-from tests.auth_helpers import second_client, signed_in_client
+from tests.auth_helpers import make_client, second_client, sign_in, signed_in_client
 
 JOB = {"profile": "mtb-h37rv", "locus": "Rv0001"}
 QUOTA_ENV = (
@@ -242,3 +242,26 @@ def test_queue_status_for_admin_is_unlimited(tmp_path, monkeypatch):
     assert body["your_daily_limit"] is None
     assert body["batch_limit"] == MAX_BATCH_SIZE
     assert body["accepting"] is True
+
+
+def _no_worker_clients(tmp_path):
+    user = sign_in(make_client(tmp_path, worker_capacity_required=True), email="alice@example.com")
+    admin = second_client(user, BOOTSTRAP_ADMIN_EMAIL)
+    return user, admin
+
+
+def test_user_submit_without_workers_hides_fleet_state(tmp_path):
+    user, _admin = _no_worker_clients(tmp_path)
+    for response in (user.post("/jobs", json=JOB), user.post("/batches", json=_batch(2))):
+        assert response.status_code == 503
+        body = response.json()
+        assert body["code"] == "unavailable"
+        assert "worker" not in body["detail"].lower()
+        assert "try again later" in body["detail"].lower()
+
+
+def test_admin_submit_without_workers_keeps_detailed_reason(tmp_path):
+    _user, admin = _no_worker_clients(tmp_path)
+    for response in (admin.post("/jobs", json=JOB), admin.post("/batches", json=_batch(2))):
+        assert response.status_code == 503
+        assert response.json()["detail"] == "No workers connected with job capacity."

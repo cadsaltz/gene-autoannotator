@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 
 import { createJob, validateJob } from "../lib/api";
 import { buildJobPayload } from "../lib/form";
+import { describeSubmitError } from "../lib/queueStatus";
 
 const emptyCustomFields = {
   organism: "",
@@ -80,12 +81,30 @@ export default function SingleJobForm({
   selectedProfile,
   isCustomProfile,
   canSubmit,
-  isSubmitting,
   statusMessage,
-  onSubmit,
+  setStatusMessage,
+  onJobQueued,
+  describeError = describeSubmitError,
 }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setStatusMessage("");
+    setIsSubmitting(true);
+
+    try {
+      setStatusMessage(await queueSingleJob(form));
+      await onJobQueued();
+    } catch (error) {
+      setStatusMessage(describeError(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
-    <form className="mt-6 grid gap-4" onSubmit={onSubmit}>
+    <form className="mt-6 grid gap-4" onSubmit={handleSubmit}>
       <label className="grid gap-2 text-sm font-medium">
         Profile
         <select
@@ -290,7 +309,7 @@ export default function SingleJobForm({
 
       <button
         type="submit"
-        disabled={!canSubmit}
+        disabled={!canSubmit || isSubmitting}
         suppressHydrationWarning
         className="workbench-button workbench-button-primary min-h-11 px-5 disabled:cursor-not-allowed disabled:opacity-50"
       >

@@ -1496,7 +1496,7 @@ def test_create_job_rejects_without_workers_when_capacity_required(tmp_path):
         start_worker=False,
         worker_capacity_required=True,
     )
-    client = _authed_client(app)
+    client = _admin_client(app)
 
     response = client.post(
         "/jobs",

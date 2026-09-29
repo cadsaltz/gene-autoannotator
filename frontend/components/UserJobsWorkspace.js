@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import BatchJobForm from "./BatchJobForm";
 import QueuePlaceholder from "./QueuePlaceholder";
-import SingleJobForm, { queueSingleJob, useJobForm } from "./SingleJobForm";
+import SingleJobForm, { useJobForm } from "./SingleJobForm";
 import { cancelJob, getProfiles, getQueueStatus, listJobs } from "../lib/api";
 import { formatJobStepLabel } from "../lib/jobProgress";
 import { getAnnotationQuery, getJobDisplayName, isCancellable } from "../lib/jobQueue";
-import { describeSubmitError, formatUsage } from "../lib/queueStatus";
+import { describeUserSubmitError, formatUsage } from "../lib/queueStatus";
 
 const stepLabels = {
   queued: "Waiting in queue",
@@ -51,8 +51,8 @@ function StatusCell({ job }) {
         {job.status}
       </span>
       {detail ? <span className="workbench-muted text-xs">{detail}</span> : null}
-      {job.status === "failed" && job.error ? (
-        <span className="workbench-red text-xs">{job.error}</span>
+      {job.status === "failed" ? (
+        <span className="workbench-red text-xs">This job failed. You can resubmit it.</span>
       ) : null}
     </div>
   );
@@ -98,21 +98,27 @@ export default function UserJobsWorkspace() {
   const [statusMessage, setStatusMessage] = useState("");
   const [jobsMessage, setJobsMessage] = useState("");
   const [submitMode, setSubmitMode] = useState("single");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [cancellingId, setCancellingId] = useState(null);
+  const [queueStatusFailed, setQueueStatusFailed] = useState(false);
+  const refreshInFlight = useRef(false);
+  const refreshRequested = useRef(false);
+  const mountedRef = useRef(false);
   const { form, updateForm, selectedProfile, isCustomProfile } = useJobForm(profiles);
 
   const accepting = queueStatus?.accepting === true;
-  const canSubmit = accepting && !isSubmitting;
 
-  async function refresh() {
+  async function loadOnce() {
     const [statusResult, jobsResult] = await Promise.allSettled([
       getQueueStatus(),
       listJobs("newest"),
     ]);
+    if (!mountedRef.current) {
+      return;
+    }
     if (statusResult.status === "fulfilled") {
       setQueueStatus(statusResult.value);
     }
+    setQueueStatusFailed(statusResult.status === "rejected");
     if (jobsResult.status === "fulfilled") {
       setJobs(jobsResult.value.jobs || []);
     }
@@ -120,13 +126,36 @@ export default function UserJobsWorkspace() {
     setLoadError(failure ? failure.reason?.message || "Could not load your jobs." : "");
   }
 
+  async function refresh() {
+    // A refresh requested mid-flight (e.g. right after a submit) reruns once the current one ends.
+    if (refreshInFlight.current) {
+      refreshRequested.current = true;
+      return;
+    }
+    refreshInFlight.current = true;
+    try {
+      do {
+        refreshRequested.current = false;
+        await loadOnce();
+      } while (refreshRequested.current && mountedRef.current);
+    } finally {
+      refreshInFlight.current = false;
+    }
+  }
+
   useEffect(() => {
+    mountedRef.current = true;
+
     async function loadInitialData() {
       try {
         const payload = await getProfiles();
-        setProfiles(payload.profiles || []);
+        if (mountedRef.current) {
+          setProfiles(payload.profiles || []);
+        }
       } catch (error) {
-        setStatusMessage(error.message);
+        if (mountedRef.current) {
+          setStatusMessage(error.message);
+        }
       }
       await refresh();
     }
@@ -134,24 +163,10 @@ export default function UserJobsWorkspace() {
     loadInitialData();
     const timer = window.setInterval(refresh, 15000);
     return () => {
+      mountedRef.current = false;
       window.clearInterval(timer);
     };
   }, []);
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setStatusMessage("");
-    setIsSubmitting(true);
-
-    try {
-      setStatusMessage(await queueSingleJob(form));
-      await refresh();
-    } catch (error) {
-      setStatusMessage(describeSubmitError(error));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
 
   async function handleCancel(job) {
     const confirmed = window.confirm(`Cancel the job for ${getJobDisplayName(job)}?`);
@@ -215,6 +230,12 @@ export default function UserJobsWorkspace() {
             </p>
           ) : null}
 
+          {queueStatusFailed && !queueStatus ? (
+            <p className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+              Submissions are paused until the queue status loads. Use Refresh to try again.
+            </p>
+          ) : null}
+
           <div
             className="mt-6 inline-flex rounded-xl border workbench-border p-1"
             role="group"
@@ -253,10 +274,11 @@ export default function UserJobsWorkspace() {
               profiles={profiles}
               selectedProfile={selectedProfile}
               isCustomProfile={isCustomProfile}
-              canSubmit={canSubmit}
-              isSubmitting={isSubmitting}
+              canSubmit={accepting}
               statusMessage={statusMessage}
-              onSubmit={handleSubmit}
+              setStatusMessage={setStatusMessage}
+              onJobQueued={refresh}
+              describeError={describeUserSubmitError}
             />
           ) : (
             <div className="mt-6 grid gap-4">
@@ -266,11 +288,12 @@ export default function UserJobsWorkspace() {
                 profiles={profiles}
                 selectedProfile={selectedProfile}
                 isCustomProfile={isCustomProfile}
-                canSubmit={canSubmit}
+                canSubmit={accepting}
                 setStatusMessage={setStatusMessage}
                 onBatchSubmitted={() => {
                   refresh();
                 }}
+                describeError={describeUserSubmitError}
               />
 
               {statusMessage ? (

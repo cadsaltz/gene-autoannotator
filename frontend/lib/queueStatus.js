@@ -20,9 +20,14 @@ const QUOTA_FALLBACK_MESSAGES = {
 };
 
 const GENERIC_429 = "Too many submissions right now. Please try again later.";
+const GENERIC_UNAVAILABLE =
+  "The service isn't accepting new jobs right now. Please try again later.";
 
-export function describeSubmitError(error) {
+export function describeSubmitError(error, { admin = true } = {}) {
   const message = error?.message || "";
+  if (!admin && error?.status === 503) {
+    return GENERIC_UNAVAILABLE;
+  }
   if (error?.status !== 429) {
     return message || "Something went wrong.";
   }
@@ -30,4 +35,8 @@ export function describeSubmitError(error) {
     return message;
   }
   return QUOTA_FALLBACK_MESSAGES[error.code] || GENERIC_429;
+}
+
+export function describeUserSubmitError(error) {
+  return describeSubmitError(error, { admin: false });
 }
