@@ -1,0 +1,18 @@
+# Runtime deps of the backend API image only (deploy/docker/Dockerfile.backend).
+# Workers and the annotation pipeline use requirements.txt instead; nothing here
+# may pull in torch, CUDA, transformers, sentence-transformers, or spaCy.
+fastapi==0.136.3
+uvicorn[standard]==0.48.0
+pydantic==2.13.4
+email-validator==2.3.0
+httpx==0.28.1
+pymongo==4.17.0
+python-dotenv==1.2.2
+psutil==7.2.2
+grex==1.0.2
+resend==2.46.0
+ollama==0.6.2
+# autoannotation.gene_names / autoannotation.http_, imported by backend.api at startup.
+pandas==3.0.3
+requests==2.34.2
+cloudscraper==1.2.71

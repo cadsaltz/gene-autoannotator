@@ -1,14 +1,39 @@
 FROM python:3.12-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    APP_UID=10001 \
+    APP_GID=10001 \
+    APP_HOME=/home/app \
+    PROFILES_DIR=/app/data/profiles \
+    APP_DATA_DIRS=/state/backend:/app/data/profiles
+
+RUN groupadd --system --gid 10001 app \
+    && useradd --system --uid 10001 --gid app --home-dir /home/app --create-home --shell /usr/sbin/nologin app
+
 WORKDIR /app
 
-COPY requirements.txt requirements-web.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -r requirements-web.txt
+COPY requirements-backend.txt ./
+RUN pip install --no-cache-dir -r requirements-backend.txt
 
 COPY autoannotation/ autoannotation/
 COPY backend/ backend/
 COPY shared/ shared/
+COPY deploy/docker/backend-entrypoint.py /usr/local/bin/backend-entrypoint.py
+
+# New named volumes copy this ownership; existing root-owned ones are fixed by
+# the entrypoint, which is why the container starts as root and drops to app.
+RUN chmod 0755 /usr/local/bin/backend-entrypoint.py \
+    && mkdir -p /state/backend /app/data/profiles \
+    && chown -R app:app /state /app/data
+
+# The SQLite path is relative to the cwd (backend/jobs.sqlite3 -> /state/backend).
+WORKDIR /state
 
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/usr/local/bin/backend-entrypoint.py"]
+# client_ip.py handles X-Forwarded-For (TRUST_FORWARDED_FOR); uvicorn must not
+# rewrite request.client, since port 8000 is reachable without the proxy.
+CMD ["uvicorn", "backend.api:app", "--app-dir", "/app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

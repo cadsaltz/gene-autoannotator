@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Allow: /legal/
+Disallow: /jobs
+Disallow: /profiles
+Disallow: /annotations
+Disallow: /fleet
+Disallow: /admin
+Disallow: /api/
+Disallow: /auth/

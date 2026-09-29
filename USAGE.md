@@ -436,6 +436,11 @@ Compose (frontend + backend):
 docker compose -f deploy/compose/docker-compose.backend.yml up -d --build
 ```
 
+The backend image installs only `requirements-backend.txt` and serves as uid
+10001 (its entrypoint chowns the existing volumes on start); use
+`docker compose exec -u app backend ...` for one-off commands. See
+`backend/README.md` § Docker Compose.
+
 ### Key env vars (`backend.env.example` → `.env`)
 
 | Variable | Purpose | Default / notes |
@@ -836,7 +841,7 @@ Browser calls go through same-origin `/api/backend` → FastAPI. Set
 |--------|---------|---------|
 | `npm run dev` | `next dev --hostname 0.0.0.0` | Dev server |
 | `npm run build` | `next build` | Production build |
-| `npm run start` | `next start --hostname 0.0.0.0` | Serve production build |
+| `npm run start` | `next start --hostname 0.0.0.0` | Serve production build locally (warns about `output: "standalone"`; the Docker image runs `node server.js`) |
 | `npm run lint` | `eslint` | Lint |
 | `npm run test` | `node --test` | Lightweight tests |
 

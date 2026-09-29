@@ -3,16 +3,9 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.backend
-    working_dir: /state
-    command:
-      - uvicorn
-      - backend.api:app
-      - --app-dir
-      - /app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
+    # The image's CMD runs uvicorn from /state (so the relative SQLite path lands
+    # in the backend-data volume). Its entrypoint starts as root, chowns both
+    # volumes to uid 10001, then runs the server as that user.
     ports:
       - "8000:8000"
     env_file:
@@ -25,7 +18,7 @@ services:
       - profiles-data:/app/data/profiles
     environment:
       PROFILES_DIR: /app/data/profiles
-      # Lets `docker compose exec backend python -m backend.manage ...` import
+      # Lets `docker compose exec -u app backend python -m backend.manage ...` import
       # the app from /state, where the relative DB path must resolve.
       PYTHONPATH: /app
 

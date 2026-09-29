@@ -310,6 +310,28 @@ are stored locally under `data/profiles` (mount or set `PROFILES_DIR` if
 needed). The frontend proxy uses `BACKEND_API_BASE_URL=http://backend:8000`
 inside the compose network.
 
+The backend image installs only `requirements-backend.txt` (no torch, CUDA,
+transformers, or spaCy; the annotation pipeline runs on workers). The server
+runs as the unprivileged user `app` (uid/gid 10001). The container starts as
+root only long enough for its entrypoint to chown the `/state/backend` and
+`/app/data/profiles` volumes to 10001:10001, so volumes created by older,
+root-run images keep working after `up -d --build` with no manual migration.
+If you run the image as a non-root user (`--user`), the entrypoint skips the
+chown and exits with an error naming any data dir it cannot write; fix it once
+with `chown -R 10001:10001` on the volume. The frontend image is Next.js
+`output: "standalone"` and runs as the image's `node` user.
+
+The backend runs uvicorn with `--no-proxy-headers`, so `request.client` is
+always the TCP peer. Client IPs for rate limits come from `X-Forwarded-For`
+only when `TRUST_FORWARDED_FOR=1` (see `backend/client_ip.py`); set it only when
+every request reaches the backend through a proxy that overwrites that header
+and port 8000 is not reachable from outside.
+
+`docker compose exec` bypasses the entrypoint and runs as root, so pass
+`-u app` (as in the commands below) or files it creates in the volumes stay
+root-owned until the next container start. `docker compose run` goes through
+the entrypoint and needs no flag.
+
 ## Account management CLI
 
 `python -m backend.manage` changes accounts directly in SQLite. It is the
@@ -337,7 +359,7 @@ to target another file. With Docker Compose, run it inside the backend
 container so it sees the `/state/backend` volume:
 
 ```bash
-docker compose -f deploy/compose/docker-compose.backend.yml exec backend \
+docker compose -f deploy/compose/docker-compose.backend.yml exec -u app backend \
   python -m backend.manage set-role solavolantes@gmail.com user
 ```
 
