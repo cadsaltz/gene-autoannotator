@@ -1,5 +1,6 @@
 import io
 import logging
+import os
 import sqlite3
 import tarfile
 import threading
@@ -33,18 +34,60 @@ class FakeGridOut:
         return self._data
 
 
+class FakeGridIn:
+    """Mirrors pymongo 4.17 ``GridIn``: chunks land on write, the files doc on close."""
+
+    def __init__(self, fs, *, filename=None, metadata=None):
+        self._fs = fs
+        self._id = ObjectId()
+        self._filename = filename
+        self._metadata = metadata
+        self._buffer = bytearray()
+        self._closed = False
+        self.aborted = False
+
+    def write(self, data):
+        if self._closed:
+            raise ValueError("cannot write to a closed file")
+        self._buffer += data
+        self._fs.chunks[self._id] = bytes(self._buffer)
+
+    def close(self):
+        if self._closed:
+            return
+        if self._fs.fail_on_close:
+            raise gridfs.errors.GridFSError("simulated flush failure")
+        self._fs.files[self._id] = FakeGridOut(
+            self._id, bytes(self._buffer), filename=self._filename, metadata=self._metadata
+        )
+        self._closed = True
+
+    def abort(self):
+        self._fs.chunks.pop(self._id, None)
+        self._fs.files.pop(self._id, None)
+        self._closed = True
+        self.aborted = True
+
+
 class FakeGridFS:
     """The subset of the legacy ``gridfs.GridFS`` API that backups use."""
 
     def __init__(self):
         self.files = {}
+        self.chunks = {}
+        self.fail_on_close = False
+        self.opened = []
 
-    def put(self, data, *, filename=None, metadata=None):
-        file_id = ObjectId()
-        self.files[file_id] = FakeGridOut(
-            file_id, bytes(data), filename=filename, metadata=metadata
-        )
-        return file_id
+    def new_file(self, **kwargs):
+        grid_in = FakeGridIn(self, **kwargs)
+        self.opened.append(grid_in)
+        return grid_in
+
+    def put(self, data, **kwargs):
+        grid_in = self.new_file(**kwargs)
+        grid_in.write(data)
+        grid_in.close()
+        return grid_in._id
 
     def get(self, file_id):
         if file_id not in self.files:
@@ -56,6 +99,7 @@ class FakeGridFS:
 
     def delete(self, file_id):
         self.files.pop(file_id, None)
+        self.chunks.pop(file_id, None)
 
 
 @pytest.fixture
@@ -232,6 +276,86 @@ def test_list_snapshots_newest_first_with_sizes(grid, source):
     assert [item["id"] for item in listed] == [second, first]
     assert listed[0]["size"] == len(payload)
     assert listed[0]["created_at"] >= listed[1]["created_at"]
+
+
+def test_upload_streams_through_new_file(grid, source):
+    payload = backup.create_snapshot(source["db"], source["profiles"])
+    snapshot_id = backup.upload_snapshot(grid, payload, keep=5)
+    [grid_in] = grid.opened
+    assert str(grid_in._id) == snapshot_id
+    assert grid_in._closed and not grid_in.aborted
+
+
+def test_failed_upload_aborts_and_leaves_no_chunks(grid, source):
+    payload = backup.create_snapshot(source["db"], source["profiles"])
+    older = backup.upload_snapshot(grid, payload, keep=5)
+    grid.fail_on_close = True
+
+    with pytest.raises(gridfs.errors.GridFSError):
+        backup.upload_snapshot(grid, payload, keep=1)
+
+    assert grid.opened[-1].aborted
+    assert set(grid.files) == {ObjectId(older)}
+    assert set(grid.chunks) == {ObjectId(older)}
+
+
+def test_keep_never_deletes_the_new_snapshot_under_clock_skew(grid, source, monkeypatch):
+    payload = backup.create_snapshot(source["db"], source["profiles"])
+    future = [backup.upload_snapshot(grid, payload, keep=10) for _ in range(3)]
+    for day, file_id in enumerate(future, start=1):
+        metadata = grid.files[ObjectId(file_id)].metadata
+        metadata["created_at"] = f"2999-01-0{day}T00:00:00+00:00"
+
+    new_id = backup.upload_snapshot(grid, payload, keep=2)
+
+    assert set(map(str, grid.files)) == {new_id, future[2]}
+
+
+def test_summary_created_at_fallback_is_utc_aware(grid):
+    file_id = ObjectId()
+    item = FakeGridOut(file_id, b"x", filename=None, metadata=None)
+    item.upload_date = datetime(2026, 1, 2, 3, 4, 5)
+    grid.files[file_id] = item
+
+    [listed] = backup.list_snapshots(grid)
+
+    assert listed["created_at"] == "2026-01-02T03:04:05+00:00"
+
+
+def test_backup_mongo_client_has_overall_timeout(monkeypatch):
+    monkeypatch.setenv("MONGO_URI", "mongodb://localhost:1")
+    with backup.mongo_database_from_env() as mongo_db:
+        assert mongo_db.client.options.timeout == 120
+        assert mongo_db.name == "gene_autoannotator"
+
+
+def test_restore_fsyncs_staged_database_before_swap(tmp_path, grid, source, monkeypatch):
+    snapshot_id = backup.upload_snapshot(
+        grid, backup.create_snapshot(source["db"], source["profiles"]), keep=5
+    )
+    db_path, profiles_dir = _targets(tmp_path)
+    events = []
+    real_fsync, real_replace = backup.os.fsync, backup.os.replace
+
+    def fsync(fd):
+        events.append(("fsync", os.readlink(f"/proc/self/fd/{fd}")))
+        return real_fsync(fd)
+
+    def replace(src, dst):
+        events.append(("replace", str(src)))
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(backup.os, "fsync", fsync)
+    monkeypatch.setattr(backup.os, "replace", replace)
+
+    backup.restore_snapshot(
+        grid, snapshot_id, db_path=db_path, profiles_dir=profiles_dir, force=False
+    )
+
+    staged = next(
+        path for kind, path in events if kind == "replace" and path.endswith(backup.DB_MEMBER)
+    )
+    assert events.index(("fsync", staged)) < events.index(("replace", staged))
 
 
 def test_upload_rejects_payload_without_database(grid):
@@ -553,6 +677,11 @@ def test_config_clamps_interval_and_keep(monkeypatch):
     config = backup.BackupConfig.from_env()
     assert config.interval_seconds == 7 * 86400
     assert config.keep == 1
+
+
+def test_config_clamps_retention_days(monkeypatch):
+    monkeypatch.setenv("JOB_RETENTION_DAYS", "1e9")
+    assert backup.BackupConfig.from_env().retention_days == 36500
 
 
 def test_config_enabled_needs_interval_and_mongo(monkeypatch):

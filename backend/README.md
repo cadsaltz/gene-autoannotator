@@ -167,10 +167,12 @@ Environment variables:
   `BACKUP_INTERVAL_SECONDS` (default `21600`, 6 hours, capped at 7 days; `0`
   disables) and `BACKUP_KEEP` (default `28`, minimum `1`). Backups only run
   when `MONGO_URI` is set.
-- `JOB_RETENTION_DAYS` (default `0`, keep forever): once a day, delete
-  completed, failed, and cancelled jobs that finished more than this many days
-  ago, plus batches older than that with no jobs left. Queued and running jobs
-  are never purged. Each purge that deletes something records a `jobs_purged`
+- `JOB_RETENTION_DAYS` (default `0`, keep forever; capped at `36500`): once a
+  day, delete completed, failed, and cancelled jobs that finished more than this
+  many days ago, plus batches older than that with no jobs left. Queued and
+  running jobs are never purged. Only the SQLite rows are removed: result files
+  on disk referenced by a job's `output_path` and annotation history in MongoDB
+  are left in place. Each purge that deletes something records a `jobs_purged`
   audit event (no actor, `"source": "system"`) with the counts.
 
 Invalid backup and retention values fall back to the default with a logged

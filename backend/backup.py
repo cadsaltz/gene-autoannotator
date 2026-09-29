@@ -34,6 +34,11 @@ DEFAULT_RETENTION_DAYS = 0
 RETENTION_INTERVAL_SECONDS = 86400
 FIRST_RUN_DELAY_SECONDS = 60
 MONGO_SERVER_SELECTION_TIMEOUT_MS = 10000
+# Bounds each client operation so a stalled Atlas connection can't hang the
+# backup thread or the CLI forever.
+MONGO_OPERATION_TIMEOUT_MS = 120000
+# Beyond this timedelta(days=...) overflows; 100 years is effectively forever.
+MAX_RETENTION_DAYS = 36500
 # A leftover journal or WAL next to a restored file would be replayed into it.
 _SQLITE_SIDECARS = ("-wal", "-shm", "-journal")
 
@@ -80,7 +85,9 @@ class BackupConfig:
                 MAX_INTERVAL_SECONDS,
             ),
             keep=keep,
-            retention_days=_env_number("JOB_RETENTION_DAYS", DEFAULT_RETENTION_DAYS),
+            retention_days=min(
+                _env_number("JOB_RETENTION_DAYS", DEFAULT_RETENTION_DAYS), MAX_RETENTION_DAYS
+            ),
             mongo_configured=bool(mongo_uri_from_env()),
         )
 
@@ -182,8 +189,7 @@ def upload_snapshot(mongo_db, payload: bytes, *, keep: int) -> str:
     db_bytes = _db_member_size(payload)
     grid = _grid(mongo_db)
     created = _now()
-    file_id = grid.put(
-        payload,
+    grid_in = grid.new_file(
         filename=f"control-plane-{created.strftime('%Y%m%dT%H%M%SZ')}.tar.gz",
         metadata={
             "created_at": created.isoformat(),
@@ -191,7 +197,20 @@ def upload_snapshot(mongo_db, payload: bytes, *, keep: int) -> str:
             "db_bytes": db_bytes,
         },
     )
-    for stale in _newest_first(grid)[max(1, keep):]:
+    try:
+        grid_in.write(payload)
+        grid_in.close()
+    except Exception:
+        # Chunks are written before the files doc; without abort they are orphaned.
+        try:
+            grid_in.abort()
+        except Exception:  # noqa: BLE001 - keep the original upload error.
+            log.warning("Failed to clean up aborted control-plane backup", exc_info=True)
+        raise
+    file_id = grid_in._id
+    # By id, not created_at: a skewed clock must never prune the new snapshot.
+    others = [item for item in _newest_first(grid) if item._id != file_id]
+    for stale in others[max(1, keep) - 1:]:
         try:
             grid.delete(stale._id)
         except Exception:  # noqa: BLE001 - a failed prune must not fail the new backup.
@@ -199,11 +218,16 @@ def upload_snapshot(mongo_db, payload: bytes, *, keep: int) -> str:
     return str(file_id)
 
 
+def _as_utc(value: datetime) -> datetime:
+    # pymongo returns naive UTC datetimes unless the client is tz_aware.
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
 def _summary(item) -> dict:
     metadata = item.metadata or {}
     return {
         "id": str(item._id),
-        "created_at": metadata.get("created_at") or item.upload_date.isoformat(),
+        "created_at": metadata.get("created_at") or _as_utc(item.upload_date).isoformat(),
         "size": item.length,
         "app_version": metadata.get("app_version"),
         "db_bytes": metadata.get("db_bytes"),
@@ -285,6 +309,14 @@ def _check_database(path: Path) -> None:
         raise BackupError(f"backup database failed its integrity check: {result}")
 
 
+def _fsync(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def _aside_suffix(db_path: Path, profiles_dir: Path) -> str:
     stamp = _now().strftime("%Y%m%dT%H%M%SZ")
     suffix, attempt = f".pre-restore-{stamp}", 1
@@ -345,6 +377,7 @@ def restore_snapshot(mongo_db, snapshot_id, *, db_path, profiles_dir, force: boo
         profile_names = _extract(payload, staging)
         staged_db = staging / DB_MEMBER
         _check_database(staged_db)
+        _fsync(staged_db)
         suffix = _aside_suffix(db_path, profiles_dir)
         moved = _move_database_aside(db_path, suffix)
         os.replace(staged_db, db_path)
@@ -367,7 +400,11 @@ def mongo_database_from_env():
         raise BackupUnavailable("MONGO_URI is not configured")
     from pymongo import MongoClient
 
-    client = MongoClient(uri, serverSelectionTimeoutMS=MONGO_SERVER_SELECTION_TIMEOUT_MS)
+    client = MongoClient(
+        uri,
+        serverSelectionTimeoutMS=MONGO_SERVER_SELECTION_TIMEOUT_MS,
+        timeoutMS=MONGO_OPERATION_TIMEOUT_MS,
+    )
     try:
         yield client[MONGO_DATABASE_NAME]
     finally:
