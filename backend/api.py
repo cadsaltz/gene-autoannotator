@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from autoannotation import batch_parse, batch_resolution, gene_names, organisms, targets
 from autoannotation.batch_parse import BatchParseError
@@ -26,6 +27,7 @@ from .auth_store import AuthStore
 from .batch_store import BatchStore
 from . import email_sender
 from .job_store import JobStore
+from .quotas import QuotaConfig, QuotaExceeded, check_batch_size, check_submission, effective_limits
 from .profile_store import (
     DuplicateProfileError,
     InvalidProfileError,
@@ -265,6 +267,9 @@ def create_app(
     )
     profiles_store = profile_store or profile_store_from_env()
     worker_lock = threading.Lock()
+    # Quota checks count existing rows, so check-then-insert must be atomic or
+    # concurrent submissions can all pass the same check.
+    submission_lock = threading.Lock()
 
     def _require_worker_fleet():
         if not capacity_required or run_jobs_inline:
@@ -387,6 +392,10 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(QuotaExceeded)
+    async def quota_exceeded_handler(_request: Request, exc: QuotaExceeded):
+        return JSONResponse(status_code=429, content={"detail": exc.message, "code": exc.code})
 
     def resource_snapshot():
         try:
@@ -608,13 +617,14 @@ def create_app(
             excluded_species_patterns=request.excluded_species_patterns,
         )
 
-    def _preview_batch(request):
+    def _preview_batch(request, user):
         entry_inputs = _entries_from_request(request)
         if len(entry_inputs) > MAX_BATCH_SIZE:
             raise HTTPException(
                 status_code=422,
                 detail=f"Batch exceeds maximum size of {MAX_BATCH_SIZE}.",
             )
+        check_batch_size(user=user, entry_count=len(entry_inputs), config=QuotaConfig.from_env())
         profile = _resolve_batch_profile(request)
         entries = []
         for line_number, entry_input in enumerate(entry_inputs, start=1):
@@ -913,7 +923,7 @@ def create_app(
     @app.post("/batches/validate", response_model=BatchValidateResponse)
     def validate_batch(request: BatchValidateRequest, _user: dict = Depends(require_user)):
         try:
-            entries, summary = _preview_batch(request)
+            entries, summary = _preview_batch(request, _user)
         except BatchParseError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {"summary": summary, "entries": entries}
@@ -930,7 +940,7 @@ def create_app(
     ):
         request = request.model_copy(update=_SERVER_PATH_UPDATES)
         try:
-            entries, summary = _preview_batch(request)
+            entries, summary = _preview_batch(request, _user)
         except BatchParseError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -942,32 +952,40 @@ def create_app(
         _require_worker_fleet()
 
         skipped = [entry for entry in entries if entry["status"] != "ready"]
-        batch = batches.create_batch(
-            profile=request.profile,
-            organism=request.organism,
-            strain=request.strain,
-            options=_batch_options_from_request(request),
-            input_summary=summary,
-            submitted_by_user_id=_user["id"],
-        )
-
-        job_ids = []
+        stored_requests = []
         for entry in ready_entries:
             job_request = _job_request_for_batch_entry(request, entry)
             target = _resolve_target_for_request(job_request)
-            invalid_target_detail = _invalid_target_detail(target)
-            if invalid_target_detail is not None:
+            if _invalid_target_detail(target) is not None:
                 continue
-            stored_request = _stored_request_for_target(job_request, target)
-            job = store.create_job(
-                stored_request,
-                batch_id=batch["id"],
-                submitted_by_user_id=batch["submitted_by_user_id"],
-            )
-            job_ids.append(job["id"])
+            stored_requests.append(_stored_request_for_target(job_request, target))
 
-        if not job_ids:
+        if not stored_requests:
             raise HTTPException(status_code=422, detail="No ready entries to queue.")
+
+        with submission_lock:
+            check_submission(
+                user=_user,
+                job_count=len(stored_requests),
+                store=store,
+                config=QuotaConfig.from_env(),
+            )
+            batch = batches.create_batch(
+                profile=request.profile,
+                organism=request.organism,
+                strain=request.strain,
+                options=_batch_options_from_request(request),
+                input_summary=summary,
+                submitted_by_user_id=_user["id"],
+            )
+            job_ids = [
+                store.create_job(
+                    stored_request,
+                    batch_id=batch["id"],
+                    submitted_by_user_id=batch["submitted_by_user_id"],
+                )["id"]
+                for stored_request in stored_requests
+            ]
 
         _maybe_run_jobs_inline()
 
@@ -1010,7 +1028,9 @@ def create_app(
         _reject_invalid_target(target)
         stored_request = _stored_request_for_target(request, target)
         _require_worker_fleet()
-        job = store.create_job(stored_request, submitted_by_user_id=_user["id"])
+        with submission_lock:
+            check_submission(user=_user, job_count=1, store=store, config=QuotaConfig.from_env())
+            job = store.create_job(stored_request, submitted_by_user_id=_user["id"])
         _maybe_run_jobs_inline()
         if run_jobs_inline:
             job = store.get_job(job["id"])
@@ -1054,15 +1074,19 @@ def create_app(
 
     @app.get("/jobs/queue-status", response_model=QueueStatusResponse)
     def queue_status(_user: dict = Depends(require_user)):
+        config = QuotaConfig.from_env()
+        limits = effective_limits(_user, config)
+        queued = store.count_queued_jobs()
         since = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
+        max_batch = limits["max_batch"]
         return {
-            "queued": store.count_queued_jobs(),
-            "accepting": True,
+            "queued": queued,
+            "accepting": is_admin(_user) or config.accepting(queued),
             "your_active": store.count_active_for_user(_user["id"]),
-            "your_active_limit": None,
+            "your_active_limit": limits["max_active"],
             "your_today": store.count_created_since_for_user(_user["id"], since),
-            "your_daily_limit": None,
-            "batch_limit": MAX_BATCH_SIZE,
+            "your_daily_limit": limits["max_per_day"],
+            "batch_limit": MAX_BATCH_SIZE if max_batch is None else min(max_batch, MAX_BATCH_SIZE),
         }
 
     @app.get(

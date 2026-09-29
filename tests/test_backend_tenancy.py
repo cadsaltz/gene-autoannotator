@@ -183,7 +183,11 @@ def test_queue_status_hides_job_details(tmp_path):
     assert after == {**before, "queued": 2}
 
 
-def test_queue_status_counts_only_the_callers_jobs(tmp_path):
+def test_queue_status_counts_only_the_callers_jobs(tmp_path, monkeypatch):
+    monkeypatch.setenv("MAX_QUEUED_JOBS", "200")
+    monkeypatch.setenv("USER_MAX_ACTIVE_JOBS", "20")
+    monkeypatch.setenv("USER_MAX_JOBS_PER_DAY", "50")
+    monkeypatch.setenv("USER_MAX_BATCH_SIZE", "25")
     alice = signed_in_client(tmp_path, email="alice@example.com")
     bob = second_client(alice, email="bob@example.com")
     alice.post("/jobs", json=JOB)
@@ -194,10 +198,10 @@ def test_queue_status_counts_only_the_callers_jobs(tmp_path):
         "queued": 3,
         "accepting": True,
         "your_active": 2,
-        "your_active_limit": None,
+        "your_active_limit": 20,
         "your_today": 2,
-        "your_daily_limit": None,
-        "batch_limit": MAX_BATCH_SIZE,
+        "your_daily_limit": 50,
+        "batch_limit": min(25, MAX_BATCH_SIZE),
     }
 
 
