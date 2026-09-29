@@ -46,4 +46,6 @@ experiments/paper/tests/__pycache__/
 # Live/dry-run experiment outputs stay local.
 experiments/paper/results/*/
 
-worker-serve.log
+*.log
+/log*.txt
+/run_log.txt
