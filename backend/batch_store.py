@@ -35,6 +35,14 @@ class BatchStore:
                 )
                 """
             )
+            columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(annotation_batches)").fetchall()
+            }
+            if "submitted_by_user_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE annotation_batches ADD COLUMN submitted_by_user_id TEXT"
+                )
 
     def create_batch(
         self,
@@ -45,6 +53,7 @@ class BatchStore:
         options: dict[str, Any] | None = None,
         input_summary: dict[str, Any] | None = None,
         status: str = "queued",
+        submitted_by_user_id: str | None = None,
     ):
         batch_id = str(uuid.uuid4())
         created_at = _now_iso()
@@ -53,8 +62,8 @@ class BatchStore:
                 """
                 INSERT INTO annotation_batches (
                     id, status, profile, organism, strain,
-                    options_json, input_summary_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    options_json, input_summary_json, submitted_by_user_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     batch_id,
@@ -64,6 +73,7 @@ class BatchStore:
                     strain,
                     json.dumps(options or {}),
                     json.dumps(input_summary or {}),
+                    submitted_by_user_id,
                     created_at,
                 ),
             )
@@ -89,5 +99,6 @@ class BatchStore:
             "strain": row["strain"],
             "options": json.loads(row["options_json"]),
             "input_summary": json.loads(row["input_summary_json"]),
+            "submitted_by_user_id": row["submitted_by_user_id"],
             "created_at": row["created_at"],
         }

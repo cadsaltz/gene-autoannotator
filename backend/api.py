@@ -64,6 +64,7 @@ from .schemas import (
     JobCreateResponse,
     JobsListResponse,
     JobRecordResponse,
+    QueueStatusResponse,
     ProfileDetailResponse,
     ProfilePayload,
     ProfilesResponse,
@@ -226,6 +227,10 @@ def _server_owned_job_request(request: AnnotationJobRequest) -> AnnotationJobReq
 
 def _auth_expires_at(ttl_seconds: int) -> str:
     return (datetime.now(UTC) + timedelta(seconds=ttl_seconds)).isoformat()
+
+
+def _job_visible_to(job: dict, user: dict) -> bool:
+    return is_admin(user) or job.get("submitted_by_user_id") == user["id"]
 
 
 def create_app(
@@ -560,13 +565,23 @@ def create_app(
                 detail=f"Unknown ortholog override profile: {profile_id}",
             ) from exc
 
-    def _public_job_record(job):
+    def _public_job_record(job, user):
         public_job = dict(job)
         public_request = dict(public_job.get("request") or {})
         public_request.pop("profile_config", None)
         public_request.pop("ortholog_profile_catalog", None)
         public_job["request"] = public_request
+        if not is_admin(user):
+            public_job.pop("submitted_by_user_id", None)
         return public_job
+
+    def _visible_job_or_404(job_id, user):
+        # 404 rather than 403 so job ids owned by others are indistinguishable
+        # from ids that do not exist.
+        job = store.get_job(job_id)
+        if job is None or not _job_visible_to(job, user):
+            raise HTTPException(status_code=404, detail="Job not found")
+        return job
 
     def _entries_from_request(request):
         if request.entries:
@@ -932,6 +947,7 @@ def create_app(
             strain=request.strain,
             options=_batch_options_from_request(request),
             input_summary=summary,
+            submitted_by_user_id=_user["id"],
         )
 
         job_ids = []
@@ -942,7 +958,11 @@ def create_app(
             if invalid_target_detail is not None:
                 continue
             stored_request = _stored_request_for_target(job_request, target)
-            job = store.create_job(stored_request, batch_id=batch["id"])
+            job = store.create_job(
+                stored_request,
+                batch_id=batch["id"],
+                submitted_by_user_id=batch["submitted_by_user_id"],
+            )
             job_ids.append(job["id"])
 
         if not job_ids:
@@ -960,7 +980,7 @@ def create_app(
     @app.get("/batches/{batch_id}", response_model=BatchDetailResponse)
     def get_batch(batch_id: str, _user: dict = Depends(require_user)):
         batch = batches.get_batch(batch_id)
-        if batch is None:
+        if batch is None or not _job_visible_to(batch, _user):
             raise HTTPException(status_code=404, detail="Batch not found")
         return {
             "id": batch["id"],
@@ -989,13 +1009,19 @@ def create_app(
         _reject_invalid_target(target)
         stored_request = _stored_request_for_target(request, target)
         _require_worker_fleet()
-        job = store.create_job(stored_request)
+        job = store.create_job(stored_request, submitted_by_user_id=_user["id"])
         _maybe_run_jobs_inline()
         if run_jobs_inline:
             job = store.get_job(job["id"])
         return {"job_id": job["id"], "status": job["status"]}
 
-    @app.get("/jobs", response_model=JobsListResponse)
+    # Exclude unset fields so the owner id, popped for non-admins, is omitted
+    # rather than serialized as null.
+    @app.get(
+        "/jobs",
+        response_model=JobsListResponse,
+        response_model_exclude_unset=True,
+    )
     def list_jobs(
         order: str = "newest",
         batch_id: str | None = None,
@@ -1004,10 +1030,11 @@ def create_app(
         normalized_order = order if order in {"newest", "queue"} else "newest"
         return {
             "jobs": [
-                _public_job_record(job)
+                _public_job_record(job, _user)
                 for job in store.list_jobs(
                     order=normalized_order,
                     batch_id=batch_id,
+                    user_id=None if is_admin(_user) else _user["id"],
                 )
             ],
             "queue": store.queue_summary(),
@@ -1023,18 +1050,30 @@ def create_app(
         _require_worker_token(authorization)
         return {"queued": store.count_queued_jobs()}
 
-    @app.get("/jobs/{job_id}", response_model=JobRecordResponse)
+    @app.get("/jobs/queue-status", response_model=QueueStatusResponse)
+    def queue_status(_user: dict = Depends(require_user)):
+        since = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
+        return {
+            "queued": store.count_queued_jobs(),
+            "accepting": True,
+            "your_active": store.count_active_for_user(_user["id"]),
+            "your_active_limit": None,
+            "your_today": store.count_created_since_for_user(_user["id"], since),
+            "your_daily_limit": None,
+            "batch_limit": MAX_BATCH_SIZE,
+        }
+
+    @app.get(
+        "/jobs/{job_id}",
+        response_model=JobRecordResponse,
+        response_model_exclude_unset=True,
+    )
     def get_job(job_id: str, _user: dict = Depends(require_user)):
-        job = store.get_job(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Job not found")
-        return _public_job_record(job)
+        return _public_job_record(_visible_job_or_404(job_id, _user), _user)
 
     @app.get("/jobs/{job_id}/result")
     def get_job_result(job_id: str, _user: dict = Depends(require_user)):
-        job = store.get_job(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Job not found")
+        job = _visible_job_or_404(job_id, _user)
         if job["status"] != "completed":
             raise HTTPException(status_code=409, detail="Job is not completed")
         return job["result"]

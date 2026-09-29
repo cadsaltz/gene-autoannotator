@@ -67,6 +67,11 @@ class JobStore:
             self._ensure_column(connection, "sections_done", "INTEGER")
             self._ensure_column(connection, "sections_total", "INTEGER")
             self._ensure_column(connection, "pass_name", "TEXT")
+            self._ensure_column(connection, "submitted_by_user_id", "TEXT")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jobs_owner "
+                "ON annotation_jobs(submitted_by_user_id, created_at)"
+            )
 
     def _ensure_column(self, connection, column_name, column_type):
         columns = {
@@ -78,17 +83,26 @@ class JobStore:
                 f"ALTER TABLE annotation_jobs ADD COLUMN {column_name} {column_type}"
             )
 
-    def create_job(self, request: dict[str, Any], batch_id=None):
+    def create_job(self, request: dict[str, Any], batch_id=None, submitted_by_user_id=None):
         job_id = str(uuid.uuid4())
         created_at = _now_iso()
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO annotation_jobs (
-                    id, status, current_step, request_json, batch_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    id, status, current_step, request_json, batch_id,
+                    submitted_by_user_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (job_id, "queued", "queued", json.dumps(request), batch_id, created_at),
+                (
+                    job_id,
+                    "queued",
+                    "queued",
+                    json.dumps(request),
+                    batch_id,
+                    submitted_by_user_id,
+                    created_at,
+                ),
             )
         return self.get_job(job_id)
 
@@ -390,7 +404,7 @@ class JobStore:
                 )
             connection.commit()
 
-    def list_jobs(self, order="newest", limit=100, batch_id=None):
+    def list_jobs(self, order="newest", limit=100, batch_id=None, *, user_id=None):
         if order == "queue":
             order_clause = """
                 CASE status
@@ -405,11 +419,15 @@ class JobStore:
         else:
             order_clause = "created_at DESC"
 
-        where_clause = ""
+        conditions = []
         params: list[Any] = []
         if batch_id is not None:
-            where_clause = "WHERE batch_id = ?"
+            conditions.append("batch_id = ?")
             params.append(batch_id)
+        if user_id is not None:
+            conditions.append("submitted_by_user_id = ?")
+            params.append(user_id)
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         params.append(limit)
 
         with self._connect() as connection:
@@ -451,6 +469,28 @@ class JobStore:
             ).fetchone()
         return int(row[0])
 
+    def count_active_for_user(self, user_id) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) FROM annotation_jobs
+                WHERE submitted_by_user_id = ? AND status IN ('queued', 'running')
+                """,
+                (user_id,),
+            ).fetchone()
+        return int(row[0])
+
+    def count_created_since_for_user(self, user_id, since_iso) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) FROM annotation_jobs
+                WHERE submitted_by_user_id = ? AND created_at >= ?
+                """,
+                (user_id, since_iso),
+            ).fetchone()
+        return int(row[0])
+
     def queue_summary(self):
         with self._connect() as connection:
             rows = connection.execute(
@@ -484,6 +524,7 @@ class JobStore:
             "sections_total": row["sections_total"],
             "pass_name": row["pass_name"],
             "batch_id": row["batch_id"],
+            "submitted_by_user_id": row["submitted_by_user_id"],
             "worker_id": row["worker_id"],
             "lease_expires_at": row["lease_expires_at"],
             "attempts": row["attempts"],

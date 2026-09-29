@@ -321,6 +321,7 @@ class JobRecordResponse(BaseModel):
     finished_at: str | None = None
     result_available: bool = False
     queue_position: int | None = None
+    submitted_by_user_id: str | None = None
 
 
 class QueueSummaryResponse(BaseModel):
@@ -328,6 +329,16 @@ class QueueSummaryResponse(BaseModel):
     running: int
     completed: int
     failed: int
+
+
+class QueueStatusResponse(BaseModel):
+    queued: int
+    accepting: bool
+    your_active: int
+    your_active_limit: int | None
+    your_today: int
+    your_daily_limit: int | None
+    batch_limit: int
 
 
 class BatchDetailResponse(BaseModel):

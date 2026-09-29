@@ -1465,7 +1465,7 @@ def test_report_progress_persists_structured_fields():
     assert job["sections_total"] == 12
     assert job["pass_name"] == "target"
 
-    listed = client.get("/jobs", headers=headers).json()["jobs"]
+    listed = _admin_client(client.app).get("/jobs").json()["jobs"]
     listed_job = next(item for item in listed if item["id"] == job_id)
     assert listed_job["progress_phase"] == "extracting"
     assert listed_job["sections_done"] == 3
