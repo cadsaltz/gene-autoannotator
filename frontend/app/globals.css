@@ -238,3 +238,139 @@ textarea {
   border-left-color: var(--line);
   background: var(--surface-muted);
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+.guide :where(a, button, summary):focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+.guide-hero {
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 88% 12%, rgb(85 120 100 / 42%), transparent 46%),
+    linear-gradient(135deg, var(--nav), var(--nav-soft));
+  color: #f5f0e6;
+}
+
+.guide-hero .workbench-kicker {
+  color: #a9c7b3;
+}
+
+.guide-hero :where(a, button):focus-visible {
+  outline-color: #f3eee4;
+}
+
+.guide-kicker-amber {
+  color: #7a5a2b;
+}
+
+.guide-hero-muted {
+  color: #c3cfc5;
+}
+
+.guide-hero-stat {
+  border-top: 1px solid rgb(255 255 255 / 14%);
+}
+
+.guide-button-light {
+  background: #f3eee4;
+  color: var(--foreground);
+}
+
+.guide-button-light:hover {
+  background: white;
+}
+
+.guide-button-outline {
+  border: 1px solid rgb(255 255 255 / 28%);
+  color: #f5f0e6;
+}
+
+.guide-button-outline:hover {
+  border-color: rgb(255 255 255 / 55%);
+  color: white;
+}
+
+.guide-toc-link {
+  border: 1px solid var(--line);
+  color: var(--foreground);
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+@media (min-width: 64rem) {
+  .guide-toc-link {
+    border-color: transparent;
+  }
+}
+
+.guide-toc-link:hover {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--line));
+  background: var(--green-soft);
+}
+
+.guide-step-badge {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--nav);
+  color: #f5f0e6;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.guide-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  padding: 0.125rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: #3d463f;
+}
+
+.guide-chip-green {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
+  background: var(--green-soft);
+  color: #2d4a38;
+}
+
+.guide-chip-amber {
+  border-color: color-mix(in srgb, var(--amber) 40%, var(--line));
+  background: var(--amber-soft);
+  color: #5f4b2e;
+}
+
+.guide-faq summary {
+  list-style: none;
+}
+
+.guide-faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.guide-faq summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--green);
+  font-weight: 800;
+}
+
+.guide-faq[open] summary::after {
+  content: "–";
+}
