@@ -18,6 +18,7 @@ from .access import is_admin
 from .alerts import AlertConfig, AlertLoop
 from .annotation_store import AnnotationStoreUnavailable, annotation_store_from_env
 from .audit_store import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, AuditStore
+from .backup import BackupConfig, backup_task, retention_task
 from .auth import (
     OTP_TTL_SECONDS,
     SESSION_COOKIE_NAME,
@@ -42,6 +43,7 @@ from .quotas import (
     effective_limits,
 )
 from .profile_store import (
+    DEFAULT_PROFILES_DIR,
     DuplicateProfileError,
     InvalidProfileError,
     ProfileStoreUnavailable,
@@ -434,17 +436,43 @@ def create_app(
             log.info("Admin alerts disabled (ALERT_CHECK_SECONDS<=0)")
         app.state.alert_loop = alert_loop
 
+        backup_config = BackupConfig.from_env()
+        backup_loop = None
+        if backup_config.backups_enabled:
+            backup_loop = backup_task(
+                config=backup_config,
+                db_path=store.db_path,
+                profiles_dir=getattr(profiles_store, "directory", None)
+                or os.getenv("PROFILES_DIR")
+                or DEFAULT_PROFILES_DIR,
+            )
+            backup_loop.start()
+        elif backup_config.interval_seconds <= 0:
+            log.info("Control-plane backups disabled (BACKUP_INTERVAL_SECONDS<=0)")
+        else:
+            log.info("Control-plane backups disabled (MONGO_URI is not set)")
+        app.state.backup_loop = backup_loop
+
+        retention_loop = None
+        if backup_config.retention_enabled:
+            retention_loop = retention_task(config=backup_config, store=store, audit=audit)
+            retention_loop.start()
+        app.state.retention_loop = retention_loop
+
         _maybe_run_jobs_inline()
         try:
             yield
         finally:
             stop_reaper.set()
-            if alert_loop is not None:
-                await asyncio.to_thread(alert_loop.stop, timeout=5)
+            for loop in (alert_loop, backup_loop, retention_loop):
+                if loop is not None:
+                    await asyncio.to_thread(loop.stop, timeout=5)
 
     app = FastAPI(title="Gene Autoannotator API", lifespan=lifespan)
     app.state.audit_store = audit
     app.state.alert_loop = None
+    app.state.backup_loop = None
+    app.state.retention_loop = None
     app.state.submission_lock = submission_lock
     cors_origins = [
         origin.strip()

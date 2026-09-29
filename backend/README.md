@@ -163,6 +163,18 @@ Environment variables:
     or provisioning worker (draining workers don't count) for this long.
   - `ALERT_FAILURE_RATE` (default `0.5`): failed / (completed + failed) over
     the last hour, once at least 5 jobs have finished.
+- Control-plane backups (see [Backups and restore](#backups-and-restore)):
+  `BACKUP_INTERVAL_SECONDS` (default `21600`, 6 hours, capped at 7 days; `0`
+  disables) and `BACKUP_KEEP` (default `28`, minimum `1`). Backups only run
+  when `MONGO_URI` is set.
+- `JOB_RETENTION_DAYS` (default `0`, keep forever): once a day, delete
+  completed, failed, and cancelled jobs that finished more than this many days
+  ago, plus batches older than that with no jobs left. Queued and running jobs
+  are never purged. Each purge that deletes something records a `jobs_purged`
+  audit event (no actor, `"source": "system"`) with the counts.
+
+Invalid backup and retention values fall back to the default with a logged
+warning.
 
 Start the backend:
 
@@ -329,3 +341,63 @@ docker compose -f deploy/compose/docker-compose.backend.yml exec backend \
 
 Emails match case-insensitively. Exit codes: `0` success, `1` unknown email,
 invalid role/status, or missing database, `2` usage error.
+
+## Backups and restore
+
+The backend's control plane is one SQLite file (`backend/jobs.sqlite3`: users,
+sessions, sign-in codes, jobs, batches, workers, audit log, rate limits) plus
+the profiles directory (`PROFILES_DIR`). With `MONGO_URI` set, the backend
+uploads a snapshot of both every `BACKUP_INTERVAL_SECONDS` (first one about a
+minute after startup) to the GridFS bucket `control_plane_backups` in the same
+MongoDB database as annotation history, and deletes all but the newest
+`BACKUP_KEEP`. A failed backup is logged and retried at the next interval; it
+never stops the backend. Without `MONGO_URI` backups are off (logged at
+startup).
+
+A snapshot is a `.tar.gz` holding `control-plane.sqlite3` (a consistent copy
+made with SQLite's online backup API, safe while the backend is writing) and
+`profiles/<file>` for each top-level file in the profiles directory. Its
+metadata is only `created_at`, `app_version`, and `db_bytes`. **Backups are as
+sensitive as the database**: they contain account emails, session and sign-in
+code hashes, and the audit log, so protect the MongoDB credentials
+accordingly. Budget storage for `BACKUP_KEEP` snapshots.
+
+```bash
+python -m backend.manage backup                     # upload one now; prints id and size
+python -m backend.manage list-backups               # ID, CREATED_AT, SIZE (bytes), newest first
+python -m backend.manage restore [--id ID|latest] [--force]
+```
+
+`backup` and `restore` use `--db` and `--profiles-dir` (default
+`$PROFILES_DIR`, else `data/profiles`) like the API. Both are recorded in the
+audit log (`backup_created`, `backup_restored`; `restore` writes into the
+restored database).
+
+**Restore requires the backend to be stopped**: a running backend keeps
+writing to the old database file and can overwrite restored state. Without
+`--force`, `restore` refuses if the database (or a leftover `-wal`/`-shm`/
+`-journal` file) exists or if the profiles directory contains any files. With
+`--force` nothing is deleted: the database and its sidecar files are renamed
+to `jobs.sqlite3.pre-restore-<timestamp>` (with `-wal`/`-shm` appended, so the
+moved copy still opens with its WAL), and the existing profile files are moved
+into `<profiles dir>/.pre-restore-<timestamp>/` (inside the directory because
+it is a volume mount in Compose). The profiles directory then holds exactly the
+snapshot's files. The archive is validated before anything is moved: only a
+regular `control-plane.sqlite3` and regular `profiles/<name>` files are
+accepted (no absolute paths, `..`, links, or nested directories), and the
+database must pass `PRAGMA quick_check`. The new database is swapped in with an
+atomic rename.
+
+With Docker Compose, restore in a one-off container that mounts the same
+volumes, then start the backend again:
+
+```bash
+docker compose -f deploy/compose/docker-compose.backend.yml stop backend
+docker compose -f deploy/compose/docker-compose.backend.yml run --rm backend \
+  python -m backend.manage list-backups
+docker compose -f deploy/compose/docker-compose.backend.yml run --rm backend \
+  python -m backend.manage restore --id latest --force
+docker compose -f deploy/compose/docker-compose.backend.yml start backend
+```
+
+Delete the `*.pre-restore-*` copies once the restored backend looks right.

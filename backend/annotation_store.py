@@ -8,6 +8,13 @@ from typing import Any
 
 from autoannotation import organisms
 
+# The Next.js server reads the same database (frontend/lib/annotationStore.js).
+MONGO_DATABASE_NAME = "gene_autoannotator"
+
+
+def mongo_uri_from_env():
+    return os.getenv("MONGO_URI") or os.getenv("MONGODB_URI")
+
 
 class AnnotationStoreUnavailable(RuntimeError):
     """Raised when annotation storage is not configured or reachable."""
@@ -290,7 +297,7 @@ class MongoAnnotationStore:
         self,
         mongo_uri,
         *,
-        database_name="gene_autoannotator",
+        database_name=MONGO_DATABASE_NAME,
         collection_name="annotations",
     ):
         self.mongo_uri = mongo_uri
@@ -355,7 +362,7 @@ class MongoAnnotationStore:
 
 
 def annotation_store_from_env():
-    mongo_uri = os.getenv("MONGO_URI") or os.getenv("MONGODB_URI")
+    mongo_uri = mongo_uri_from_env()
     if not mongo_uri:
         return DisabledAnnotationStore()
     return MongoAnnotationStore(mongo_uri)

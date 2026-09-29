@@ -17,7 +17,10 @@ def generous_rate_limits(monkeypatch):
     monkeypatch.delenv("TRUST_FORWARDED_FOR", raising=False)
 
 
-# App lifespans would otherwise start an alert thread that outlives the test.
+# App lifespans would otherwise start alert, backup, and retention threads that
+# outlive the test (a developer .env may set MONGO_URI).
 @pytest.fixture(autouse=True)
-def alerts_disabled(monkeypatch):
+def background_loops_disabled(monkeypatch):
     monkeypatch.setenv("ALERT_CHECK_SECONDS", "0")
+    monkeypatch.setenv("BACKUP_INTERVAL_SECONDS", "0")
+    monkeypatch.setenv("JOB_RETENTION_DAYS", "0")

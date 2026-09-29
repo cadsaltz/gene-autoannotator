@@ -113,6 +113,9 @@ class JobStore:
                 "CREATE INDEX IF NOT EXISTS idx_jobs_finished "
                 "ON annotation_jobs(finished_at, status)"
             )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jobs_batch ON annotation_jobs(batch_id)"
+            )
 
     def _ensure_column(self, connection, column_name, column_type):
         columns = {
@@ -310,6 +313,43 @@ class JobStore:
                 WHERE status IN (?, ?, ?)
                 """,
                 ("completed", "failed", "cancelled"),
+            )
+            return cursor.rowcount
+
+    def purge_finished_before(self, cutoff_iso) -> int:
+        """Delete completed, failed, and cancelled jobs that finished before `cutoff_iso`."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM annotation_jobs
+                WHERE status IN ('completed', 'failed', 'cancelled')
+                  AND finished_at IS NOT NULL AND finished_at < ?
+                """,
+                (cutoff_iso,),
+            )
+            return cursor.rowcount
+
+    def purge_empty_batches_before(self, cutoff_iso) -> int:
+        """Delete batches created before `cutoff_iso` that no longer have any jobs.
+
+        The age cutoff spares a new batch whose jobs are still being inserted.
+        """
+        with self._connect() as connection:
+            has_batches = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'annotation_batches'"
+            ).fetchone()
+            if not has_batches:
+                return 0
+            cursor = connection.execute(
+                """
+                DELETE FROM annotation_batches
+                WHERE created_at < ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM annotation_jobs job
+                      WHERE job.batch_id = annotation_batches.id
+                  )
+                """,
+                (cutoff_iso,),
             )
             return cursor.rowcount
 
