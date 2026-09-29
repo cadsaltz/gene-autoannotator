@@ -52,7 +52,7 @@ from .rate_limits import (
 from .runner import run_annotation_job
 from . import regex_gen
 from .worker_registry import WorkerRegistry
-from shared.redact import redact_url_secrets
+from shared.redact import redact_secrets_in, redact_url_secrets
 from shared.worker_contract import (
     ClaimRequest,
     HeartbeatResponse,
@@ -344,7 +344,7 @@ def create_app(
                     invalid_target_detail = _invalid_target_detail(target)
                     if invalid_target_detail is not None:
                         raise ValueError(invalid_target_detail)
-                    result = run_job(request)
+                    result = redact_secrets_in(run_job(request))
                     store.mark_step(job["id"], "saving_result")
                     output_path = result.get("output_path") if result else None
                     store.mark_completed(job["id"], result or {}, output_path=output_path)
@@ -655,7 +655,7 @@ def create_app(
         if not is_admin(user):
             public_job.pop("submitted_by_user_id", None)
             public_job.pop("output_path", None)
-        return public_job
+        return redact_secrets_in(public_job)
 
     def _visible_job_or_404(job_id, user):
         # 404 rather than 403 so job ids owned by others are indistinguishable
@@ -1191,7 +1191,7 @@ def create_app(
         job = _visible_job_or_404(job_id, _user)
         if job["status"] != "completed":
             raise HTTPException(status_code=409, detail="Job is not completed")
-        return job["result"]
+        return redact_secrets_in(job["result"])
 
     @app.get("/annotations/search", response_model=AnnotationSearchResponse)
     def search_annotations(
@@ -1203,7 +1203,7 @@ def create_app(
             matches = annotations.search(query, limit=limit)
         except Exception as exc:  # noqa: BLE001 - surface storage outages as 503s.
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        return {"query": query, "matches": matches}
+        return {"query": query, "matches": redact_secrets_in(matches)}
 
     @app.get("/annotations/{annotation_id}", response_model=AnnotationDetailResponse)
     def get_annotation(annotation_id: str, _user: dict = Depends(require_user)):
@@ -1213,7 +1213,7 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         if annotation is None:
             raise HTTPException(status_code=404, detail="Annotation not found")
-        return annotation
+        return redact_secrets_in(annotation)
 
     @app.get(
         "/annotations/{annotation_id}/versions",
@@ -1226,7 +1226,7 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         if versions is None:
             raise HTTPException(status_code=404, detail="Annotation not found")
-        return {"annotation_id": annotation_id, "versions": versions}
+        return {"annotation_id": annotation_id, "versions": redact_secrets_in(versions)}
 
     @app.post("/workers/register", response_model=WorkerRegisterResponse)
     def register_worker(request: WorkerRegister, authorization: str | None = Header(default=None)):
@@ -1305,9 +1305,11 @@ def create_app(
         job_id: str, request: JobComplete, authorization: str | None = Header(default=None)
     ):
         _require_worker_token(authorization)
-        output_path = request.result.get("output_path")
+        # Workers older than the NCBI key redaction fix can still send key-bearing URLs.
+        result = redact_secrets_in(request.result)
+        output_path = result.get("output_path")
         if store.complete_if_running(
-            job_id, request.result, output_path=output_path, worker_id=request.worker_id
+            job_id, result, output_path=output_path, worker_id=request.worker_id
         ):
             persist_completed_annotation(store.get_job(job_id))
         else:
