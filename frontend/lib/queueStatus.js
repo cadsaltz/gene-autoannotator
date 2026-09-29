@@ -22,16 +22,24 @@ const QUOTA_FALLBACK_MESSAGES = {
 const GENERIC_429 = "Too many submissions right now. Please try again later.";
 const GENERIC_UNAVAILABLE =
   "The service isn't accepting new jobs right now. Please try again later.";
+const PAUSED_FALLBACK = "New submissions are paused. Please try again later.";
+
+function isGenericHttpMessage(message) {
+  return /^Backend returned HTTP \d+$/.test(message);
+}
 
 export function describeSubmitError(error, { admin = true } = {}) {
   const message = error?.message || "";
+  if (error?.status === 503 && error?.code === "paused") {
+    return message && !isGenericHttpMessage(message) ? message : PAUSED_FALLBACK;
+  }
   if (!admin && error?.status === 503) {
     return GENERIC_UNAVAILABLE;
   }
   if (error?.status !== 429) {
     return message || "Something went wrong.";
   }
-  if (message && !/^Backend returned HTTP \d+$/.test(message)) {
+  if (message && !isGenericHttpMessage(message)) {
     return message;
   }
   return QUOTA_FALLBACK_MESSAGES[error.code] || GENERIC_429;

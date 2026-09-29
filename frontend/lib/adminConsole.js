@@ -15,6 +15,7 @@ export const AUDIT_ACTIONS = [
   "job_submit",
   "batch_submit",
   "job_cancel",
+  "jobs_cancelled",
   "profile_create",
   "profile_update",
   "profile_delete",

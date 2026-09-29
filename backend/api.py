@@ -250,6 +250,15 @@ class SubmissionsUnavailable(Exception):
     message = "The service isn't accepting new jobs right now. Please try again later."
 
 
+class SubmissionsPaused(SubmissionsUnavailable):
+    code = "paused"
+    message = "New submissions are paused. Please try again later."
+
+
+def _submissions_paused() -> bool:
+    return _env_flag("SUBMISSIONS_PAUSED", False)
+
+
 def create_app(
     *,
     job_store=None,
@@ -292,6 +301,10 @@ def create_app(
     # The last-admin guard counts admins before mutating, so two admins
     # demoting each other concurrently could otherwise both pass it.
     admin_lock = threading.Lock()
+
+    def _reject_if_paused(user: dict):
+        if _submissions_paused() and not is_admin(user):
+            raise SubmissionsPaused()
 
     def _require_worker_fleet(user: dict):
         if not capacity_required or run_jobs_inline:
@@ -678,14 +691,20 @@ def create_app(
                 detail=f"Unknown ortholog override profile: {profile_id}",
             ) from exc
 
-    def _public_job_record(job, user):
+    def _public_job_record(job, user, emails=None):
         public_job = dict(job)
         public_request = dict(public_job.get("request") or {})
         public_request.pop("profile_config", None)
         public_request.pop("ortholog_profile_catalog", None)
         public_job["request"] = public_request
-        if not is_admin(user):
+        if is_admin(user):
+            owner = public_job.get("submitted_by_user_id")
+            if emails is None:
+                emails = auth.emails_by_ids([owner])
+            public_job["submitted_by_email"] = emails.get(owner)
+        else:
             public_job.pop("submitted_by_user_id", None)
+            public_job.pop("submitted_by_email", None)
             public_job.pop("output_path", None)
         return redact_secrets_in(public_job)
 
@@ -1080,6 +1099,7 @@ def create_app(
         http_request: Request,
         _user: dict = Depends(require_user),
     ):
+        _reject_if_paused(_user)
         request = request.model_copy(update=_SERVER_PATH_UPDATES)
         try:
             entries, summary = _preview_batch(request, _user)
@@ -1174,6 +1194,7 @@ def create_app(
         http_request: Request,
         _user: dict = Depends(require_user),
     ):
+        _reject_if_paused(_user)
         request = _server_owned_job_request(request)
         _reject_unresolvable_ortholog_override(request.ortholog_override)
         target = _resolve_target_for_request(request)
@@ -1204,15 +1225,14 @@ def create_app(
     ):
         normalized_order = order if order in {"newest", "queue"} else "newest"
         owner_filter = None if is_admin(_user) else _user["id"]
+        jobs = store.list_jobs(order=normalized_order, batch_id=batch_id, user_id=owner_filter)
+        emails = (
+            auth.emails_by_ids(job.get("submitted_by_user_id") for job in jobs)
+            if is_admin(_user)
+            else None
+        )
         return {
-            "jobs": [
-                _public_job_record(job, _user)
-                for job in store.list_jobs(
-                    order=normalized_order,
-                    batch_id=batch_id,
-                    user_id=owner_filter,
-                )
-            ],
+            "jobs": [_public_job_record(job, _user, emails) for job in jobs],
             "queue": store.queue_summary(user_id=owner_filter),
         }
 
@@ -1232,9 +1252,11 @@ def create_app(
         limits = effective_limits(_user, config)
         queued = store.count_queued_jobs()
         max_batch = limits["max_batch"]
+        paused = _submissions_paused()
         return {
             "queued": queued,
-            "accepting": is_admin(_user) or config.accepting(queued),
+            "accepting": is_admin(_user) or (not paused and config.accepting(queued)),
+            "paused": paused,
             "your_active": store.count_active_for_user(_user["id"]),
             "your_active_limit": limits["max_active"],
             "your_today": store.count_created_since_for_user(_user["id"], daily_window_start()),
@@ -1494,7 +1516,10 @@ def create_app(
                 audit_change("role_change", {"from": target["role"], "to": role})
             if new_status != target["status"]:
                 auth.set_status(user_id, new_status)
-                audit_change("status_change", {"from": target["status"], "to": new_status})
+                details = {"from": target["status"], "to": new_status}
+                if new_status == "suspended":
+                    details["cancelled_jobs"] = store.cancel_active_for_user(user_id)
+                audit_change("status_change", details)
                 if new_status == "suspended":
                     audit_change("sessions_revoked", {"count": auth.revoke_sessions(user_id)})
             quota_changes = {

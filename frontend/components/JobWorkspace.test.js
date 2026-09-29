@@ -258,3 +258,10 @@ test("progressPercent falls back to coarse heuristic without structured fields",
   assert.equal(progressPercent({ status: "running" }), 5);
   assert.equal(progressPercent({ status: "running", current_step: "saving_result" }), 85);
 });
+
+test("admin job tiles show the submitter email", async () => {
+  const workspace = await readProjectFile("components/JobWorkspace.js");
+
+  assert.match(workspace, />Submitter</);
+  assert.match(workspace, /job\.submitted_by_email \|\| "Unknown"/);
+});

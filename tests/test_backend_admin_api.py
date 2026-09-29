@@ -148,7 +148,9 @@ def test_suspend_revokes_sessions_and_reactivate_allows_sign_in(alice, admin):
     assert alice.get("/auth/me").status_code in (401, 403)
 
     status_events = _events(admin, action="status_change")
-    assert [e["details"] for e in status_events] == [{"from": "active", "to": "suspended"}]
+    assert [e["details"] for e in status_events] == [
+        {"from": "active", "to": "suspended", "cancelled_jobs": 0}
+    ]
     revoked = _events(admin, action="sessions_revoked")
     assert [e["target_id"] for e in revoked] == [alice_id]
     assert revoked[0]["details"] == {"count": 1}
@@ -156,6 +158,70 @@ def test_suspend_revokes_sessions_and_reactivate_allows_sign_in(alice, admin):
     assert admin.patch(f"/admin/users/{alice_id}", json={"status": "active"}).status_code == 200
     sign_in(alice, email="alice@example.com")
     assert alice.get("/auth/me").status_code == 200
+    assert _events(admin, action="status_change")[0]["details"] == {
+        "from": "suspended", "to": "active"
+    }
+
+
+def test_suspend_cancels_queued_and_running_jobs(alice, admin, store):
+    alice_id = _id(alice, "alice@example.com")
+    job_ids = [alice.post("/jobs", json=JOB).json()["job_id"] for _ in range(4)]
+    done = store.claim_next_queued_job()
+    store.mark_completed(done["id"], {})
+    running = store.claim_next_queued_job()
+    admin_job = admin.post("/jobs", json=JOB).json()["job_id"]
+
+    response = admin.patch(f"/admin/users/{alice_id}", json={"status": "suspended"})
+
+    assert response.status_code == 200
+    assert response.json()["active_jobs"] == 0
+    statuses = {job_id: store.get_job(job_id)["status"] for job_id in job_ids}
+    assert statuses == {
+        done["id"]: "completed",
+        running["id"]: "cancelled",
+        job_ids[2]: "cancelled",
+        job_ids[3]: "cancelled",
+    }
+    assert store.get_job(running["id"])["error"] == "Cancelled by admin"
+    assert store.get_job(admin_job)["status"] == "queued"
+    [event] = _events(admin, action="status_change")
+    assert event["details"] == {"from": "active", "to": "suspended", "cancelled_jobs": 3}
+    progress = admin.patch(
+        f"/jobs/{running['id']}/progress", headers=worker_headers(), json={"current_step": "x"}
+    )
+    assert progress.status_code == 409
+
+
+def test_cancel_active_for_user_store(store):
+    queued = store.create_job({}, submitted_by_user_id="u1")
+    running = store.create_job({}, submitted_by_user_id="u1")
+    other = store.create_job({}, submitted_by_user_id="u2")
+    store.mark_running(running["id"])
+    done = store.create_job({}, submitted_by_user_id="u1")
+    store.mark_completed(done["id"], {})
+
+    assert store.cancel_active_for_user("u1", by="cli") == 2
+
+    assert store.get_job(queued["id"])["status"] == "cancelled"
+    assert store.get_job(running["id"])["status"] == "cancelled"
+    assert store.get_job(running["id"])["error"] == "Cancelled by cli"
+    assert store.get_job(running["id"])["lease_expires_at"] is None
+    assert store.get_job(done["id"])["status"] == "completed"
+    assert store.get_job(other["id"])["status"] == "queued"
+    assert store.cancel_active_for_user("u1") == 0
+
+
+def test_admin_job_list_shows_submitter_email(alice, admin):
+    alice_job = alice.post("/jobs", json=JOB).json()["job_id"]
+    admin_job = admin.post("/jobs", json=JOB).json()["job_id"]
+
+    listed = {job["id"]: job for job in admin.get("/jobs").json()["jobs"]}
+    assert listed[alice_job]["submitted_by_email"] == "alice@example.com"
+    assert listed[admin_job]["submitted_by_email"] == BOOTSTRAP_ADMIN_EMAIL
+    assert admin.get(f"/jobs/{alice_job}").json()["submitted_by_email"] == "alice@example.com"
+
+    for job in [alice.get(f"/jobs/{alice_job}").json(), *alice.get("/jobs").json()["jobs"]]:
+        assert "submitted_by_email" not in job
 
 
 def test_quota_overrides_round_trip(alice, admin):
@@ -402,7 +468,8 @@ def test_overview(alice, admin, store, monkeypatch):
         "total_memory_bytes": 1, "dedicated_memory_bytes": 1, "max_slots": 1,
         "ollama_models": [],
     })
-    admin.patch(f"/admin/users/{_id(alice, 'alice@example.com')}", json={"status": "suspended"})
+    # Set directly: suspending through the API would also cancel alice's jobs.
+    admin.auth_store.set_status(_id(alice, "alice@example.com"), "suspended")
 
     response = admin.get("/admin/overview")
     assert response.status_code == 200

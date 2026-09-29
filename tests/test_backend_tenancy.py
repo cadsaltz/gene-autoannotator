@@ -174,7 +174,7 @@ def test_queue_status_hides_job_details(tmp_path):
     before = alice.get("/jobs/queue-status").json()
     assert before["queued"] == 1
     assert set(before) == {
-        "queued", "accepting", "your_active", "your_active_limit",
+        "queued", "accepting", "paused", "your_active", "your_active_limit",
         "your_today", "your_daily_limit", "batch_limit",
     }
 
@@ -197,6 +197,7 @@ def test_queue_status_counts_only_the_callers_jobs(tmp_path, monkeypatch):
     assert body == {
         "queued": 3,
         "accepting": True,
+        "paused": False,
         "your_active": 2,
         "your_active_limit": 20,
         "your_today": 2,

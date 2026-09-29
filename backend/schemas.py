@@ -332,6 +332,7 @@ class JobRecordResponse(BaseModel):
     result_available: bool = False
     queue_position: int | None = None
     submitted_by_user_id: str | None = None
+    submitted_by_email: str | None = None
 
 
 class QueueSummaryResponse(BaseModel):
@@ -345,6 +346,7 @@ class QueueSummaryResponse(BaseModel):
 class QueueStatusResponse(BaseModel):
     queued: int
     accepting: bool
+    paused: bool
     your_active: int
     your_active_limit: int | None
     your_today: int

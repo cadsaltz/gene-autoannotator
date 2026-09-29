@@ -206,7 +206,11 @@ function JobTile({ job, onCancel, cancelling }) {
         />
       </div>
 
-      <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+      <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-4">
+        <div className="border-t workbench-border pt-2">
+          <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Submitter</dt>
+          <dd className="mt-1 break-all text-[#3d463f]">{job.submitted_by_email || "Unknown"}</dd>
+        </div>
         <div className="border-t workbench-border pt-2">
           <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Step</dt>
           <dd className="mt-1 text-[#3d463f]">{step}</dd>

@@ -232,3 +232,29 @@ test("admin JobWorkspace can cancel queued and running jobs and counts cancelled
   assert.match(workspace, /queue\.cancelled/);
   assert.match(workspace, /job-card-cancelled/);
 });
+
+test("describeUserSubmitError shows the backend detail when submissions are paused", () => {
+  const paused = Object.assign(new Error("New submissions are paused. Please try again later."), {
+    status: 503,
+    code: "paused",
+  });
+  assert.equal(describeUserSubmitError(paused), "New submissions are paused. Please try again later.");
+  assert.equal(describeSubmitError(paused), "New submissions are paused. Please try again later.");
+
+  const bare = Object.assign(new Error("Backend returned HTTP 503"), { status: 503, code: "paused" });
+  assert.match(describeUserSubmitError(bare), /paused/i);
+
+  const unavailable = Object.assign(new Error("No workers connected with job capacity."), {
+    status: 503,
+    code: "unavailable",
+  });
+  assert.doesNotMatch(describeUserSubmitError(unavailable), /worker/i);
+});
+
+test("UserJobsWorkspace distinguishes an operator pause from a full queue", async () => {
+  const workspace = await readProjectFile("components/UserJobsWorkspace.js");
+
+  assert.match(workspace, /queueStatus\.paused/);
+  assert.match(workspace, /New submissions are paused/);
+  assert.match(workspace, /Submissions are paused because the shared queue is full/);
+});

@@ -132,6 +132,17 @@ class AuthStore:
             return None
         return self._row_to_user(row)
 
+    def emails_by_ids(self, user_ids) -> dict[str, str]:
+        ids = sorted({user_id for user_id in user_ids if user_id})
+        if not ids:
+            return {}
+        placeholders = ",".join("?" * len(ids))
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT id, email FROM users WHERE id IN ({placeholders})", ids
+            ).fetchall()
+        return dict(rows)
+
     def get_user(self, user_id: str) -> dict | None:
         with self._connect() as connection:
             connection.row_factory = sqlite3.Row

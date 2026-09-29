@@ -338,7 +338,7 @@ export default function UsersTable({ currentUserId }) {
         <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
           Change roles and status, override per-user quotas, and revoke sessions. Leave a quota
           blank to use the default; 0 means unlimited. Suspending a user signs them out
-          everywhere.
+          everywhere and cancels their queued and running jobs.
         </p>
         <form onSubmit={handleSearch} className="mt-6 flex flex-wrap gap-2">
           <label className="sr-only" htmlFor="admin-user-search">

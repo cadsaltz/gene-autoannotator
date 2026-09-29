@@ -225,8 +225,9 @@ export default function UserJobsWorkspace() {
 
           {queueStatus && !accepting ? (
             <p className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
-              Submissions are paused because the shared queue is full. Your existing jobs keep
-              running; please try again later.
+              {queueStatus.paused
+                ? "New submissions are paused. Your existing jobs keep running; please try again later."
+                : "Submissions are paused because the shared queue is full. Your existing jobs keep running; please try again later."}
             </p>
           ) : null}
 

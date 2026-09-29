@@ -12,6 +12,7 @@ from .access import ROLES, STATUSES
 from .audit_store import AuditStore
 from .auth_store import AuthStore
 from .db_path import DEFAULT_DB_PATH, migrate_legacy_db_if_needed
+from .job_store import JobStore
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -31,7 +32,7 @@ def _positive_int(value: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m backend.manage",
-        description="Manage backend user accounts (roles, status, sessions).",
+        description="Manage backend user accounts (roles, status, sessions, jobs).",
     )
     parser.add_argument(
         "--db",
@@ -51,13 +52,17 @@ def build_parser() -> argparse.ArgumentParser:
     set_role.add_argument("value", metavar="{" + ",".join(ROLES) + "}")
 
     set_status = commands.add_parser(
-        "set-status", help="Change a user's status (suspending also revokes sessions)"
+        "set-status",
+        help="Change a user's status (suspending also revokes sessions and cancels jobs)",
     )
     set_status.add_argument("email")
     set_status.add_argument("value", metavar="{" + ",".join(STATUSES) + "}")
 
     revoke = commands.add_parser("revoke-sessions", help="Sign a user out everywhere")
     revoke.add_argument("email")
+
+    cancel = commands.add_parser("cancel-jobs", help="Cancel a user's queued and running jobs")
+    cancel.add_argument("email")
     return parser
 
 
@@ -124,16 +129,20 @@ def _set_role(auth: AuthStore, audit: AuditStore, args) -> None:
     _warn_if_no_admins(auth)
 
 
-def _set_status(auth: AuthStore, audit: AuditStore, args) -> None:
+def _set_status(auth: AuthStore, audit: AuditStore, jobs: JobStore, args) -> None:
     status = _require_choice(args.value, STATUSES, "status")
     user = _require_user(auth, args.email)
     if user["status"] == status:
         print(f"{user['email']}: status is already {status}")
         return
     auth.set_status(user["id"], status)
-    _audit(audit, "status_change", user, {"from": user["status"], "to": status})
+    details = {"from": user["status"], "to": status}
+    if status == "suspended":
+        details["cancelled_jobs"] = jobs.cancel_active_for_user(user["id"], by="cli")
+    _audit(audit, "status_change", user, details)
     print(f"{user['email']}: status {user['status']} -> {status}")
     if status == "suspended":
+        print(f"{user['email']}: cancelled {details['cancelled_jobs']} job(s)")
         revoked = auth.revoke_sessions(user["id"])
         _audit(audit, "sessions_revoked", user, {"count": revoked})
         print(f"{user['email']}: revoked {revoked} session(s)")
@@ -147,18 +156,28 @@ def _revoke_sessions(auth: AuthStore, audit: AuditStore, args) -> None:
     print(f"{user['email']}: revoked {revoked} session(s)")
 
 
+def _cancel_jobs(auth: AuthStore, audit: AuditStore, jobs: JobStore, args) -> None:
+    user = _require_user(auth, args.email)
+    cancelled = jobs.cancel_active_for_user(user["id"], by="cli")
+    _audit(audit, "jobs_cancelled", user, {"cancelled_jobs": cancelled})
+    print(f"{user['email']}: cancelled {cancelled} job(s)")
+
+
 def run(args, db_path: Path) -> int:
     auth = AuthStore(db_path)
     audit = AuditStore(db_path)
+    jobs = JobStore(db_path)
     try:
         if args.command == "list-users":
             _list_users(auth, args)
         elif args.command == "set-role":
             _set_role(auth, audit, args)
         elif args.command == "set-status":
-            _set_status(auth, audit, args)
+            _set_status(auth, audit, jobs, args)
         elif args.command == "revoke-sessions":
             _revoke_sessions(auth, audit, args)
+        elif args.command == "cancel-jobs":
+            _cancel_jobs(auth, audit, jobs, args)
     except CommandError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR

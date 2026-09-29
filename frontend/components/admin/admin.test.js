@@ -202,7 +202,9 @@ test("formatAuditTarget joins type and id", () => {
 });
 
 test("AUDIT_ACTIONS lists the admin actions for the filter", () => {
-  for (const action of ["role_change", "status_change", "quota_change", "user_delete", "login"]) {
+  for (const action of [
+    "role_change", "status_change", "quota_change", "user_delete", "login", "jobs_cancelled",
+  ]) {
     assert.ok(AUDIT_ACTIONS.includes(action), action);
   }
 });

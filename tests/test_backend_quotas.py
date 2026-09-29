@@ -13,7 +13,9 @@ QUOTA_ENV = (
     "USER_MAX_ACTIVE_JOBS",
     "USER_MAX_JOBS_PER_DAY",
     "USER_MAX_BATCH_SIZE",
+    "SUBMISSIONS_PAUSED",
 )
+PAUSED_BODY = {"detail": "New submissions are paused. Please try again later.", "code": "paused"}
 
 
 def _batch(count: int) -> dict:
@@ -217,6 +219,7 @@ def test_queue_status_reports_user_limits(tmp_path, monkeypatch):
     assert alice.get("/jobs/queue-status").json() == {
         "queued": 1,
         "accepting": True,
+        "paused": False,
         "your_active": 1,
         "your_active_limit": 4,
         "your_today": 1,
@@ -265,3 +268,34 @@ def test_admin_submit_without_workers_keeps_detailed_reason(tmp_path):
     for response in (admin.post("/jobs", json=JOB), admin.post("/batches", json=_batch(2))):
         assert response.status_code == 503
         assert response.json()["detail"] == "No workers connected with job capacity."
+
+
+def test_paused_submissions_reject_users(tmp_path, monkeypatch):
+    alice = signed_in_client(tmp_path, email="alice@example.com")
+    assert alice.get("/jobs/queue-status").json()["paused"] is False
+    monkeypatch.setenv("SUBMISSIONS_PAUSED", "1")
+
+    for response in (alice.post("/jobs", json=JOB), alice.post("/batches", json=_batch(2))):
+        assert response.status_code == 503
+        assert response.json() == PAUSED_BODY
+    status = alice.get("/jobs/queue-status").json()
+    assert (status["accepting"], status["paused"], status["queued"]) == (False, True, 0)
+
+    monkeypatch.setenv("SUBMISSIONS_PAUSED", "0")
+    assert alice.post("/jobs", json=JOB).status_code == 201
+    assert alice.get("/jobs/queue-status").json()["accepting"] is True
+
+
+def test_paused_takes_precedence_over_missing_workers(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUBMISSIONS_PAUSED", "1")
+    user, _admin = _no_worker_clients(tmp_path)
+    assert user.post("/jobs", json=JOB).json() == PAUSED_BODY
+
+
+def test_admin_bypasses_paused_submissions(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUBMISSIONS_PAUSED", "1")
+    admin = signed_in_client(tmp_path, email=BOOTSTRAP_ADMIN_EMAIL)
+    assert admin.post("/jobs", json=JOB).status_code == 201
+    assert admin.post("/batches", json=_batch(2)).status_code == 201
+    status = admin.get("/jobs/queue-status").json()
+    assert (status["accepting"], status["paused"]) == (True, True)

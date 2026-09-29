@@ -261,6 +261,20 @@ class JobStore:
             )
             return cursor.rowcount
 
+    def cancel_active_for_user(self, user_id, *, by="admin") -> int:
+        """Cancel a user's queued and running jobs, like ``cancel_job`` for each."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE annotation_jobs
+                SET status = 'cancelled', current_step = 'cancelled', error = ?,
+                    finished_at = ?, lease_expires_at = NULL
+                WHERE submitted_by_user_id = ? AND status IN ('queued', 'running')
+                """,
+                (f"Cancelled by {by}", _now_iso(), user_id),
+            )
+            return cursor.rowcount
+
     def clear_finished_jobs(self):
         with self._connect() as connection:
             cursor = connection.execute(

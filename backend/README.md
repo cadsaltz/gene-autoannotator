@@ -164,6 +164,14 @@ WORKER_API_TOKEN=dev-token uvicorn backend.api:app --host 0.0.0.0 --port 8000
 Job submission returns **503** when no workers are connected with available
 slots, unless `WORKER_CAPACITY_REQUIRED=0`.
 
+Set `SUBMISSIONS_PAUSED=1` to stop new job and batch submissions from
+non-admins (restart the backend after changing it; with Compose, recreate the
+container).
+They get **503** `{"detail": "New submissions are paused. Please try again
+later.", "code": "paused"}`, and `GET /jobs/queue-status` reports
+`"accepting": false, "paused": true`. Admins can still submit; queued and
+running jobs are unaffected.
+
 ## Endpoint Summary
 
 - `GET /healthz`: public liveness probe; returns `{"status": "ok"}` only.
@@ -179,7 +187,8 @@ slots, unless `WORKER_CAPACITY_REQUIRED=0`.
   name, locus, or both. The response includes the resolved profile, submitted and
   resolved identifiers, primary identifier, and warnings such as missing locus,
   missing gene name, locus schema mismatch, or ad hoc profile usage.
-- `GET /jobs`: lists shared jobs with queue positions.
+- `GET /jobs`: lists shared jobs with queue positions (non-admins see only
+  their own). Admins also get `submitted_by_user_id` and `submitted_by_email`.
 - `DELETE /jobs/history`: clears completed and failed job history while leaving
   queued and running jobs untouched.
 - `POST /jobs`: runs the same target preflight, stores it as
@@ -289,9 +298,15 @@ a warning instead). Every change is written to the audit log with no actor and
 ```bash
 python -m backend.manage list-users [--query alice] [--limit 200]
 python -m backend.manage set-role EMAIL {user,admin}
-python -m backend.manage set-status EMAIL {active,suspended}  # suspending also revokes sessions
+python -m backend.manage set-status EMAIL {active,suspended}  # suspending also revokes sessions and cancels jobs
 python -m backend.manage revoke-sessions EMAIL
+python -m backend.manage cancel-jobs EMAIL  # cancel queued + running jobs, keep the account
 ```
+
+Suspending a user (here or with `PATCH /admin/users/{id}`) cancels their queued
+and running jobs; running jobs stop on the worker's next progress report. The
+count is recorded as `cancelled_jobs` in the `status_change` audit event.
+`cancel-jobs` records a `jobs_cancelled` event.
 
 Run it from the repo root locally; it uses the same default database as the API
 (`backend/jobs.sqlite3`, relative to the working directory). Pass `--db PATH`

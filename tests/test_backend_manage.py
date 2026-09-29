@@ -7,6 +7,7 @@ import pytest
 from backend import db_path, manage
 from backend.audit_store import AuditStore
 from backend.auth_store import AuthStore
+from backend.job_store import JobStore
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -119,11 +120,81 @@ def test_suspend_revokes_sessions_and_audits(db, auth):
     assert auth.get_user(user["id"])["status"] == "suspended"
     assert auth.get_session_user("t1") is None
     [status_event] = _events(db, "status_change")
-    assert status_event["details"] == {"from": "active", "to": "suspended", "source": "cli"}
+    assert status_event["details"] == {
+        "from": "active", "to": "suspended", "cancelled_jobs": 0, "source": "cli"
+    }
     assert status_event["actor_user_id"] is None
     [revoke_event] = _events(db, "sessions_revoked")
     assert revoke_event["details"] == {"count": 2, "source": "cli"}
     assert revoke_event["target_id"] == user["id"]
+
+
+def _jobs_for(db, user_id):
+    """Queued, running, completed jobs for user_id plus one queued job for someone else."""
+    store = JobStore(db)
+    queued = store.create_job({}, submitted_by_user_id=user_id)
+    running = store.create_job({}, submitted_by_user_id=user_id)
+    store.mark_running(running["id"])
+    done = store.create_job({}, submitted_by_user_id=user_id)
+    store.mark_completed(done["id"], {})
+    other = store.create_job({}, submitted_by_user_id="someone-else")
+    return store, {"queued": queued, "running": running, "done": done, "other": other}
+
+
+def _statuses(store, jobs):
+    return {name: store.get_job(job["id"])["status"] for name, job in jobs.items()}
+
+
+def test_suspend_cancels_queued_and_running_jobs(db, auth, capsys):
+    user = auth.create_user(email="a@example.com", username=None)
+    store, jobs = _jobs_for(db, user["id"])
+
+    assert manage.main(["--db", str(db), "set-status", "a@example.com", "suspended"]) == 0
+
+    assert _statuses(store, jobs) == {
+        "queued": "cancelled", "running": "cancelled", "done": "completed", "other": "queued",
+    }
+    [status_event] = _events(db, "status_change")
+    assert status_event["details"]["cancelled_jobs"] == 2
+    assert "cancelled 2 job(s)" in capsys.readouterr().out
+
+
+def test_reactivate_does_not_cancel_jobs(db, auth):
+    user = auth.create_user(email="a@example.com", username=None, status="suspended")
+    store = JobStore(db)
+    job = store.create_job({}, submitted_by_user_id=user["id"])
+
+    assert manage.main(["--db", str(db), "set-status", "a@example.com", "active"]) == 0
+
+    assert store.get_job(job["id"])["status"] == "queued"
+    [status_event] = _events(db, "status_change")
+    assert "cancelled_jobs" not in status_event["details"]
+
+
+def test_cancel_jobs_command(db, auth, capsys):
+    user = auth.create_user(email="a@example.com", username=None)
+    store, jobs = _jobs_for(db, user["id"])
+
+    assert manage.main(["--db", str(db), "cancel-jobs", "A@example.com"]) == 0
+
+    assert _statuses(store, jobs) == {
+        "queued": "cancelled", "running": "cancelled", "done": "completed", "other": "queued",
+    }
+    assert store.get_job(jobs["running"]["id"])["error"] == "Cancelled by cli"
+    assert auth.get_user(user["id"])["status"] == "active"
+    [event] = _events(db, "jobs_cancelled")
+    assert event["actor_user_id"] is None
+    assert event["target_type"] == "user"
+    assert event["target_id"] == user["id"]
+    assert event["details"] == {"cancelled_jobs": 2, "source": "cli"}
+    assert "a@example.com: cancelled 2 job(s)" in capsys.readouterr().out
+
+
+def test_cancel_jobs_unknown_email_exits_1(db, auth, capsys):
+    assert manage.main(["--db", str(db), "cancel-jobs", "nobody@example.com"]) == 1
+
+    assert "no user" in capsys.readouterr().err.lower()
+    assert _events(db) == []
 
 
 def test_reactivate_does_not_revoke_sessions(db, auth):
