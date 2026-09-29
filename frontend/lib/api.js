@@ -65,7 +65,10 @@ async function apiFetchFrom(baseUrl, path, options = {}) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = formatErrorDetail(payload?.detail, `Backend returned HTTP ${response.status}`);
-    throw new Error(detail);
+    const error = new Error(detail);
+    error.status = response.status;
+    error.code = payload?.code ?? null;
+    throw error;
   }
   return payload;
 }
@@ -150,6 +153,58 @@ export async function clearFinishedJobHistory() {
   return apiFetch("/jobs/history", {
     method: "DELETE",
   });
+}
+
+export async function getQueueStatus() {
+  return apiFetch("/jobs/queue-status");
+}
+
+export async function cancelJob(jobId) {
+  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+  });
+}
+
+function queryString(params) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") {
+      search.set(key, String(value));
+    }
+  }
+  const encoded = search.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+export async function adminListUsers(query = "") {
+  return apiFetch(`/admin/users${queryString({ query })}`);
+}
+
+export async function adminUpdateUser(userId, patch) {
+  return apiFetch(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function adminRevokeSessions(userId) {
+  return apiFetch(`/admin/users/${encodeURIComponent(userId)}/revoke-sessions`, {
+    method: "POST",
+  });
+}
+
+export async function adminDeleteUser(userId) {
+  return apiFetch(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function adminOverview() {
+  return apiFetch("/admin/overview");
+}
+
+export async function adminAudit({ limit, action, user_id } = {}) {
+  return apiFetch(`/admin/audit${queryString({ limit, action, user_id })}`);
 }
 
 export async function validateBatch(payload) {

@@ -3,19 +3,22 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
+import { navItemsFor } from "../lib/navItems.js";
+
 const projectRoot = process.cwd();
 
 async function readProjectFile(relativePath) {
   return readFile(path.join(projectRoot, relativePath), "utf8");
 }
 
-test("profiles page is reachable from the workbench navigation", async () => {
-  const appShell = await readProjectFile("components/AppShell.js");
-
-  assert.match(
-    appShell,
-    /const navItems = \[\s*\{ href: "\/", label: "Guide" \},\s*\{ href: "\/jobs", label: "Jobs" \},\s*\{ href: "\/fleet", label: "Fleet & Health" \},\s*\{ href: "\/profiles", label: "Profiles" \},\s*\{ href: "\/annotations", label: "Annotations" \},\s*\];/s,
-  );
+test("profiles page is reachable from the workbench navigation", () => {
+  for (const role of ["user", "admin"]) {
+    assert.ok(
+      navItemsFor({ role, status: "active" }).some(
+        (item) => item.href === "/profiles" && item.label === "Profiles",
+      ),
+    );
+  }
 });
 
 test("profiles route renders the profile workspace in the app shell", async () => {

@@ -5,25 +5,29 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { getMe, logout } from "../lib/authApi";
+import { navItemsFor } from "../lib/navItems";
 
-const navItems = [
-  { href: "/", label: "Guide" },
-  { href: "/jobs", label: "Jobs" },
-  { href: "/fleet", label: "Fleet & Health" },
-  { href: "/profiles", label: "Profiles" },
-  { href: "/annotations", label: "Annotations" },
-];
-
-const guestNavItems = [
-  { href: "/", label: "Guide" },
-  { href: "/login", label: "Sign in" },
-  { href: "/signup", label: "Sign up" },
-];
+function SuspendedCard() {
+  return (
+    <section className="mx-auto max-w-md">
+      <div className="workbench-card p-7">
+        <p className="workbench-kicker">Account</p>
+        <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+          This account is suspended
+        </h1>
+        <p className="mt-4 text-sm workbench-muted">
+          Contact the site administrators if you think this is a mistake.
+        </p>
+      </div>
+    </section>
+  );
+}
 
 export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [suspended, setSuspended] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,11 +36,13 @@ export default function AppShell({ children }) {
       .then((me) => {
         if (!cancelled) {
           setUser(me);
+          setSuspended(false);
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
           setUser(null);
+          setSuspended(error?.status === 403);
         }
       })
       .finally(() => {
@@ -50,7 +56,7 @@ export default function AppShell({ children }) {
   }, []);
 
   const signedIn = Boolean(user);
-  const visibleNavItems = signedIn ? navItems : guestNavItems;
+  const visibleNavItems = suspended ? navItemsFor(null).slice(0, 1) : navItemsFor(user);
 
   async function handleSignOut() {
     try {
@@ -59,6 +65,7 @@ export default function AppShell({ children }) {
       // Clear local state even if logout request fails.
     }
     setUser(null);
+    setSuspended(false);
     router.push("/login");
     router.refresh();
   }
@@ -93,9 +100,9 @@ export default function AppShell({ children }) {
               ))}
             </nav>
 
-            {signedIn ? (
+            {signedIn || suspended ? (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-[#f5f0e6]">{user.email}</span>
+                {signedIn ? <span className="text-sm text-[#f5f0e6]">{user.email}</span> : null}
                 <button
                   type="button"
                   onClick={handleSignOut}
@@ -110,7 +117,9 @@ export default function AppShell({ children }) {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-6 py-8">{children}</div>
+      <div className="mx-auto max-w-7xl px-6 py-8">
+        {suspended ? <SuspendedCard /> : children}
+      </div>
     </main>
   );
 }

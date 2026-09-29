@@ -5,6 +5,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  adminAudit,
+  adminDeleteUser,
+  adminListUsers,
+  adminOverview,
+  adminRevokeSessions,
+  adminUpdateUser,
+  cancelJob,
   createBatch,
   createProfile,
   deleteProfile,
@@ -14,6 +21,7 @@ import {
   getApiBaseUrl,
   getBatch,
   getProfile,
+  getQueueStatus,
   getWorkers,
   updateProfile,
   validateBatch,
@@ -188,6 +196,88 @@ test("api helpers render FastAPI validation detail arrays as readable error mess
     () => getProfile("mtb-h37rv"),
     /name or locus is required/,
   );
+});
+
+test("api errors expose the HTTP status and backend error code", async () => {
+  process.env.BACKEND_API_BASE_URL = "http://backend.test";
+  mockErrorFetch({ detail: "Daily job limit reached", code: "daily_limit" }, 429);
+
+  await assert.rejects(
+    () => getQueueStatus(),
+    (error) =>
+      error.message === "Daily job limit reached" &&
+      error.status === 429 &&
+      error.code === "daily_limit",
+  );
+});
+
+test("job helpers call queue-status and encoded cancel endpoints", async () => {
+  process.env.BACKEND_API_BASE_URL = "http://backend.test";
+  const calls = [];
+  mockFetch((url, options) => {
+    calls.push({ url, options });
+  });
+
+  await getQueueStatus();
+  await cancelJob("job/1 a");
+
+  assert.deepEqual(
+    calls.map((call) => [call.url, call.options.method, call.options.body]),
+    [
+      ["http://backend.test/jobs/queue-status", undefined, undefined],
+      ["http://backend.test/jobs/job%2F1%20a/cancel", "POST", undefined],
+    ],
+  );
+});
+
+test("admin user helpers call encoded admin endpoints", async () => {
+  process.env.BACKEND_API_BASE_URL = "http://backend.test";
+  const calls = [];
+  mockFetch((url, options) => {
+    calls.push({ url, options });
+  });
+
+  await adminListUsers();
+  await adminListUsers("a b@example.org");
+  await adminUpdateUser("user/1", { role: "admin", quota_max_active: null });
+  await adminRevokeSessions("user/1");
+  await adminDeleteUser("user/1");
+  await adminOverview();
+
+  assert.deepEqual(
+    calls.map((call) => [call.url, call.options.method, call.options.body]),
+    [
+      ["http://backend.test/admin/users", undefined, undefined],
+      ["http://backend.test/admin/users?query=a+b%40example.org", undefined, undefined],
+      [
+        "http://backend.test/admin/users/user%2F1",
+        "PATCH",
+        JSON.stringify({ role: "admin", quota_max_active: null }),
+      ],
+      ["http://backend.test/admin/users/user%2F1/revoke-sessions", "POST", undefined],
+      ["http://backend.test/admin/users/user%2F1", "DELETE", undefined],
+      ["http://backend.test/admin/overview", undefined, undefined],
+    ],
+  );
+});
+
+test("adminAudit passes only provided filters", async () => {
+  process.env.BACKEND_API_BASE_URL = "http://backend.test";
+  const calls = [];
+  mockFetch((url) => {
+    calls.push(url);
+    return { events: [] };
+  });
+
+  await adminAudit();
+  await adminAudit({ limit: 50, action: "job.cancel", user_id: "user/1" });
+  await adminAudit({ limit: 10, action: "", user_id: null });
+
+  assert.deepEqual(calls, [
+    "http://backend.test/admin/audit",
+    "http://backend.test/admin/audit?limit=50&action=job.cancel&user_id=user%2F1",
+    "http://backend.test/admin/audit?limit=10",
+  ]);
 });
 
 function withBrowserLocation(location, callback) {

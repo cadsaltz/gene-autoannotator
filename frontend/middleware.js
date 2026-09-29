@@ -16,5 +16,11 @@ export function middleware(request) {
 }
 
 export const config = {
-  matcher: ["/jobs/:path*", "/fleet/:path*", "/profiles/:path*", "/annotations/:path*"],
+  matcher: [
+    "/jobs/:path*",
+    "/fleet/:path*",
+    "/profiles/:path*",
+    "/annotations/:path*",
+    "/admin/:path*",
+  ],
 };

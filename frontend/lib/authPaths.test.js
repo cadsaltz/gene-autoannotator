@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isPublicPath, isProtectedPath, sanitizeNextPath } from "./authPaths.js";
+import { isAdminPath, isPublicPath, isProtectedPath, sanitizeNextPath } from "./authPaths.js";
 
 test("guide and auth pages are public", () => {
   assert.equal(isPublicPath("/"), true);
@@ -11,11 +11,33 @@ test("guide and auth pages are public", () => {
   assert.equal(isPublicPath("/auth/verify"), true);
 });
 
+test("legal pages are public", () => {
+  assert.equal(isPublicPath("/legal/terms"), true);
+  assert.equal(isPublicPath("/legal/privacy"), true);
+  assert.equal(isProtectedPath("/legal/terms"), false);
+});
+
 test("workbench pages are protected", () => {
   assert.equal(isProtectedPath("/jobs"), true);
   assert.equal(isProtectedPath("/fleet"), true);
   assert.equal(isProtectedPath("/profiles"), true);
   assert.equal(isProtectedPath("/annotations"), true);
+  assert.equal(isProtectedPath("/admin"), true);
+  assert.equal(isProtectedPath("/admin/users"), true);
+});
+
+test("fleet and admin pages are admin-only", () => {
+  assert.equal(isAdminPath("/fleet"), true);
+  assert.equal(isAdminPath("/admin"), true);
+  assert.equal(isAdminPath("/admin/users"), true);
+  assert.equal(isAdminPath("/jobs"), false);
+  assert.equal(isAdminPath("/profiles"), false);
+  assert.equal(isAdminPath("/administrator"), false);
+});
+
+test("middleware matcher covers admin pages", async () => {
+  const middleware = await readFile(path.join(process.cwd(), "middleware.js"), "utf8");
+  assert.match(middleware, /"\/admin\/:path\*"/);
 });
 
 test("sanitizeNextPath allows same-origin paths and blocks open redirects", () => {
