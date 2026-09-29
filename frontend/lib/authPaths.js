@@ -25,9 +25,26 @@ export function isAdminPath(pathname) {
   return matchesSection(pathname, "/fleet") || matchesSection(pathname, "/admin");
 }
 
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+
+function isSafeRelativePath(value) {
+  if (!value.startsWith("/") || value.startsWith("//")) return false;
+  // Browsers treat "\" as "/" and strip tabs/newlines, so "/\evil" or "/\t/evil" become "//evil".
+  if (value.includes("\\")) return false;
+  if (CONTROL_CHARS.test(value)) return false;
+  return true;
+}
+
 /** Allow only same-origin relative paths; block protocol-relative open redirects. */
 export function sanitizeNextPath(next, fallback = "/jobs") {
   if (typeof next !== "string") return fallback;
-  if (next.startsWith("/") && !next.startsWith("//")) return next;
-  return fallback;
+  if (!isSafeRelativePath(next)) return fallback;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(next);
+  } catch {
+    return fallback;
+  }
+  if (!isSafeRelativePath(decoded)) return fallback;
+  return next;
 }

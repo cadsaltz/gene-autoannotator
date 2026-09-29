@@ -64,6 +64,12 @@ test("fleet page requires an admin before rendering", async () => {
   assert.match(page, /await requireAdminPage\("\/fleet"\)/);
 });
 
+test("AppShell does not mount page content until the session check finishes", async () => {
+  const shell = await readProjectFile("components/AppShell.js");
+  assert.match(shell, /loading \? \(?\s*<SessionLoading \/>/);
+  assert.match(shell, /function SessionLoading\(/);
+});
+
 test("AppShell replaces page content with a suspended card on 403", async () => {
   const shell = await readProjectFile("components/AppShell.js");
   assert.match(shell, /status === 403/);

@@ -23,6 +23,14 @@ function SuspendedCard() {
   );
 }
 
+function SessionLoading() {
+  return (
+    <p className="text-sm workbench-muted" role="status">
+      Loading…
+    </p>
+  );
+}
+
 export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -118,7 +126,7 @@ export default function AppShell({ children }) {
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        {suspended ? <SuspendedCard /> : children}
+        {loading ? <SessionLoading /> : suspended ? <SuspendedCard /> : children}
       </div>
     </main>
   );

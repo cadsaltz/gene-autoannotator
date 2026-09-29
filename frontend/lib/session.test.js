@@ -148,6 +148,30 @@ test("requireAdminPage redirects suspended accounts to /jobs", async () => {
   );
 });
 
+test("requireAdminPage redirects to /jobs when the backend is unavailable", async () => {
+  await assert.rejects(
+    requireAdminPage("/fleet", {
+      cookieSource: requestWithCookie("ga_session=tok"),
+      fetchImpl: async () => {
+        throw new TypeError("fetch failed");
+      },
+      redirectImpl: throwingRedirect,
+    }),
+    (error) => error.location === "/jobs",
+  );
+});
+
+test("requireAdminPage redirects to /jobs when the backend errors", async () => {
+  await assert.rejects(
+    requireAdminPage("/fleet", {
+      cookieSource: requestWithCookie("ga_session=tok"),
+      fetchImpl: fakeFetch(503, { detail: "Backend API is unavailable" }),
+      redirectImpl: throwingRedirect,
+    }),
+    (error) => error.location === "/jobs",
+  );
+});
+
 test("requireAdminPage redirects signed-out visitors to login with next", async () => {
   await assert.rejects(
     requireAdminPage("/admin/users", {

@@ -49,6 +49,23 @@ test("sanitizeNextPath allows same-origin paths and blocks open redirects", () =
   assert.equal(sanitizeNextPath(null), "/jobs");
 });
 
+test("sanitizeNextPath rejects backslash, control, and encoded protocol-relative tricks", () => {
+  assert.equal(sanitizeNextPath("/\\evil.example"), "/jobs");
+  assert.equal(sanitizeNextPath("/jobs\\..\\evil"), "/jobs");
+  assert.equal(sanitizeNextPath("\\\\evil.example"), "/jobs");
+  assert.equal(sanitizeNextPath(" /jobs"), "/jobs");
+  assert.equal(sanitizeNextPath("\t//evil.example"), "/jobs");
+  assert.equal(sanitizeNextPath("/\t/evil.example"), "/jobs");
+  assert.equal(sanitizeNextPath("/\n/evil.example"), "/jobs");
+  assert.equal(sanitizeNextPath("/%5Cevil.example"), "/jobs");
+  assert.equal(sanitizeNextPath("/%5cevil.example"), "/jobs");
+  assert.equal(sanitizeNextPath("/%2Fevil.example"), "/jobs");
+  assert.equal(sanitizeNextPath("/%2F%2Fevil.example"), "/jobs");
+  assert.equal(sanitizeNextPath("/%E0%A4%A"), "/jobs");
+  assert.equal(sanitizeNextPath("/admin/users"), "/admin/users");
+  assert.equal(sanitizeNextPath("/annotations?query=a%20b"), "/annotations?query=a%20b");
+});
+
 test("login and signup forward sanitized next to verify", async () => {
   const authForms = await readFile(
     path.join(process.cwd(), "components/AuthForms.js"),
