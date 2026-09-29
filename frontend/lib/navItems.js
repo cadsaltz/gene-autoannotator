@@ -22,6 +22,12 @@ const adminNavItems = [
   { href: "/admin", label: "Admin" },
 ];
 
+export function isNavItemActive(pathname, href) {
+  if (!pathname) return false;
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function navItemsFor(user) {
   if (!user) return guestNavItems.map((item) => ({ ...item }));
   const items = user.role === "admin" ? adminNavItems : userNavItems;

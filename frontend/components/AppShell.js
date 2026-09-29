@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { getMe, logout } from "../lib/authApi";
-import { navItemsFor } from "../lib/navItems";
+import { isNavItemActive, navItemsFor } from "../lib/navItems";
 
 function SuspendedCard() {
   return (
@@ -98,7 +98,7 @@ export default function AppShell({ children }) {
                   key={item.href}
                   href={item.href}
                   className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                    pathname === item.href
+                    isNavItemActive(pathname, item.href)
                       ? "workbench-nav-link-active"
                       : "workbench-nav-link"
                   }`}

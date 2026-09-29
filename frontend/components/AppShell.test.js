@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-import { navItemsFor } from "../lib/navItems.js";
+import { isNavItemActive, navItemsFor } from "../lib/navItems.js";
 
 const projectRoot = process.cwd();
 
@@ -56,6 +56,28 @@ test("AppShell uses role-aware navigation", async () => {
   const shell = await readProjectFile("components/AppShell.js");
   assert.match(shell, /navItemsFor\(/);
   assert.doesNotMatch(shell, /const navItems = \[/);
+});
+
+test("isNavItemActive highlights a section for its nested paths on segment boundaries", () => {
+  assert.equal(isNavItemActive("/admin", "/admin"), true);
+  assert.equal(isNavItemActive("/admin/users", "/admin"), true);
+  assert.equal(isNavItemActive("/admin/audit/", "/admin"), true);
+  assert.equal(isNavItemActive("/annotations/xyz", "/annotations"), true);
+  assert.equal(isNavItemActive("/administrator", "/admin"), false);
+  assert.equal(isNavItemActive("/jobs", "/admin"), false);
+});
+
+test("isNavItemActive matches the guide only on the exact root path", () => {
+  assert.equal(isNavItemActive("/", "/"), true);
+  assert.equal(isNavItemActive("/jobs", "/"), false);
+  assert.equal(isNavItemActive(null, "/"), false);
+  assert.equal(isNavItemActive(null, "/admin"), false);
+});
+
+test("AppShell highlights nav items with isNavItemActive", async () => {
+  const shell = await readProjectFile("components/AppShell.js");
+  assert.match(shell, /isNavItemActive\(pathname, item\.href\)/);
+  assert.doesNotMatch(shell, /pathname === item\.href/);
 });
 
 test("fleet page requires an admin before rendering", async () => {
