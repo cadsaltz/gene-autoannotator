@@ -329,6 +329,7 @@ class QueueSummaryResponse(BaseModel):
     running: int
     completed: int
     failed: int
+    cancelled: int = 0
 
 
 class QueueStatusResponse(BaseModel):

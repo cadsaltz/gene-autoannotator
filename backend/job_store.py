@@ -148,7 +148,7 @@ class JobStore:
                 UPDATE annotation_jobs
                 SET current_step = ?, progress_phase = ?, sections_done = ?,
                     sections_total = ?, pass_name = ?
-                WHERE id = ?
+                WHERE id = ? AND status != 'cancelled'
                 """,
                 (current_step, phase, sections_done, sections_total, pass_name, job_id),
             )
@@ -216,14 +216,36 @@ class JobStore:
             )
             return cursor.rowcount
 
+    def cancel_job(self, job_id, *, by="user"):
+        """Cancel a queued or running job; return its prior status, or None."""
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT status FROM annotation_jobs WHERE id = ?", (job_id,)
+            ).fetchone()
+            cursor = connection.execute(
+                """
+                UPDATE annotation_jobs
+                SET status = 'cancelled', current_step = 'cancelled', error = ?,
+                    finished_at = ?, lease_expires_at = NULL
+                WHERE id = ? AND status IN ('queued', 'running')
+                """,
+                (f"Cancelled by {by}", _now_iso(), job_id),
+            )
+            connection.commit()
+        if row is None or cursor.rowcount != 1:
+            return None
+        return row["status"]
+
     def clear_finished_jobs(self):
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 DELETE FROM annotation_jobs
-                WHERE status IN (?, ?)
+                WHERE status IN (?, ?, ?)
                 """,
-                ("completed", "failed"),
+                ("completed", "failed", "cancelled"),
             )
             return cursor.rowcount
 
@@ -383,7 +405,7 @@ class JobStore:
             row = connection.execute(
                 "SELECT status, attempts FROM annotation_jobs WHERE id = ?", (job_id,)
             ).fetchone()
-            if row is None or row["status"] in ("completed", "failed"):
+            if row is None or row["status"] in ("completed", "failed", "cancelled"):
                 connection.commit()
                 return
             if retryable and row["attempts"] < max_attempts:
@@ -527,6 +549,7 @@ class JobStore:
             "running": counts.get("running", 0),
             "completed": counts.get("completed", 0),
             "failed": counts.get("failed", 0),
+            "cancelled": counts.get("cancelled", 0),
         }
 
     def health(self):

@@ -722,7 +722,7 @@ def create_app(
         return request.model_dump(exclude={"entries", "raw_text"})
 
     def _batch_queue_summary(batch_id):
-        counts = {"queued": 0, "running": 0, "completed": 0, "failed": 0}
+        counts = {"queued": 0, "running": 0, "completed": 0, "failed": 0, "cancelled": 0}
         for job in store.list_jobs_by_batch(batch_id):
             counts[job["status"]] = counts.get(job["status"], 0) + 1
         return counts
@@ -1173,6 +1173,18 @@ def create_app(
     def get_job(job_id: str, _user: dict = Depends(require_user)):
         return _public_job_record(_visible_job_or_404(job_id, _user), _user)
 
+    @app.post(
+        "/jobs/{job_id}/cancel",
+        response_model=JobRecordResponse,
+        response_model_exclude_unset=True,
+    )
+    def cancel_job(job_id: str, _user: dict = Depends(require_user)):
+        job = _visible_job_or_404(job_id, _user)
+        by = "user" if job.get("submitted_by_user_id") == _user["id"] else "admin"
+        if store.cancel_job(job_id, by=by) is None:
+            raise HTTPException(status_code=409, detail="Job is already finished")
+        return _public_job_record(store.get_job(job_id), _user)
+
     @app.get("/jobs/{job_id}/result")
     def get_job_result(job_id: str, _user: dict = Depends(require_user)):
         job = _visible_job_or_404(job_id, _user)
@@ -1271,6 +1283,11 @@ def create_app(
         job_id: str, request: JobProgress, authorization: str | None = Header(default=None)
     ):
         _require_worker_token(authorization)
+        job = store.get_job(job_id)
+        if job is not None and job["status"] == "cancelled":
+            return JSONResponse(
+                status_code=409, content={"detail": "Job cancelled", "cancelled": True}
+            )
         store.mark_step(
             job_id,
             request.current_step,

@@ -100,10 +100,10 @@ def test_non_admin_queue_summary_counts_only_own_jobs(tmp_path):
     bob.post("/jobs", json=JOB)
 
     assert alice.get("/jobs").json()["queue"] == {
-        "queued": 1, "running": 0, "completed": 0, "failed": 0,
+        "queued": 1, "running": 0, "completed": 0, "failed": 0, "cancelled": 0,
     }
     assert admin.get("/jobs").json()["queue"] == {
-        "queued": 2, "running": 1, "completed": 1, "failed": 0,
+        "queued": 2, "running": 1, "completed": 1, "failed": 0, "cancelled": 0,
     }
 
 
@@ -236,10 +236,10 @@ def test_job_store_filters_and_counts_by_owner(tmp_path):
     assert store.count_created_since_for_user("u1", in_future) == 0
 
     assert store.queue_summary(user_id="u1") == {
-        "queued": 1, "running": 1, "completed": 1, "failed": 0,
+        "queued": 1, "running": 1, "completed": 1, "failed": 0, "cancelled": 0,
     }
     assert store.queue_summary() == {
-        "queued": 3, "running": 1, "completed": 1, "failed": 0,
+        "queued": 3, "running": 1, "completed": 1, "failed": 0, "cancelled": 0,
     }
     positions = {j["id"]: j["queue_position"] for j in store.list_jobs(user_id="u1")}
     assert positions == {mine_queued["id"]: 1, mine_running["id"]: None, mine_done["id"]: None}
