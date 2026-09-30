@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Pin the Ollama *server* (not the Python client in requirements.txt).
 # Keep in sync with worker/ollama_version.py PINNED_OLLAMA_SERVER_VERSION.
 ARG OLLAMA_VERSION=0.33.1
@@ -19,10 +20,8 @@ COPY worker/ worker/
 COPY shared/ shared/
 COPY goresolve/ goresolve/
 COPY data/profiles/ data/profiles/
-COPY deploy/docker/worker-bench-entrypoint.sh /usr/local/bin/worker-bench-entrypoint.sh
-COPY deploy/docker/worker-run-entrypoint.sh /usr/local/bin/worker-run-entrypoint.sh
-RUN chmod +x /usr/local/bin/worker-bench-entrypoint.sh \
-      /usr/local/bin/worker-run-entrypoint.sh
+COPY --chmod=0755 deploy/docker/worker-bench-entrypoint.sh /usr/local/bin/worker-bench-entrypoint.sh
+COPY --chmod=0755 deploy/docker/worker-run-entrypoint.sh /usr/local/bin/worker-run-entrypoint.sh
 
 ENV AUTOANNOTATION_MODEL_MODE=performance \
     OLLAMA_MODELS=/models \

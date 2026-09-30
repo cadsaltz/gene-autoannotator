@@ -1,10 +1,15 @@
 name: Images
 
-# Builds ghcr.io/cadsaltz/gene-autoannotator-{backend,frontend,worker}:sha-<7-char sha>
-# for every master commit whose CI run passed, then moves :prod to that commit if
-# it is still the tip of master. workflow_run only fires once this file is on the
-# default branch. workflow_dispatch builds the selected ref (sha tag only unless
-# it is the tip of master).
+# After every successful CI run of a push to master, publishes (for the commit CI
+# tested):
+#   ghcr.io/cadsaltz/gene-autoannotator-{backend,frontend}:sha-<7-char sha>
+#   ghcr.io/cadsaltz/gene-autoannotator-worker:src-<key> (built only when the key
+#     is new; key = deploy/scripts/worker-image-key.sh), retagged sha-<7-char sha>
+# then moves :prod (backend+frontend together, worker separately) if the commit
+# is still the tip of master, and prunes old versions.
+# workflow_run only fires once this file is on the default branch.
+# workflow_dispatch builds the selected ref without CI gating, so it only pushes
+# sha-/src- tags and never moves :prod; it always rebuilds the worker.
 on:
   workflow_run:
     workflows: [CI]
@@ -25,49 +30,29 @@ env:
   HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
-  build:
+  build-web:
     # push + same repository: a fork PR can have head_branch "master" too.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'master' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
+      github.repository == 'cadsaltz/gene-autoannotator' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'master' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - image: backend
-            dockerfile: deploy/docker/Dockerfile.backend
-            platforms: linux/amd64,linux/arm64
-            cache: type=gha,scope=backend
-          - image: frontend
-            dockerfile: deploy/docker/Dockerfile.frontend
-            platforms: linux/amd64,linux/arm64
-            cache: type=gha,scope=frontend
-          # The worker's torch/CUDA layers would evict everything else from the
-          # 10 GB Actions cache, so its build cache lives in GHCR instead.
-          - image: worker
-            dockerfile: deploy/docker/Dockerfile.worker
-            platforms: linux/amd64
-            cache: type=registry,ref=ghcr.io/cadsaltz/gene-autoannotator-worker:buildcache
+        image: [backend, frontend]
     steps:
-      - name: Free disk space for the worker image
-        if: matrix.image == 'worker'
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          docker system prune -af
-          df -h /
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.HEAD_SHA }}
           persist-credentials: false
-      - id: sha
-        run: echo "short=${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
+      - id: short
+        run: echo "sha=${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v4
-        if: contains(matrix.platforms, 'arm64')
         with:
           platforms: arm64
       - uses: docker/setup-buildx-action@v4
@@ -80,24 +65,25 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
-          tags: type=raw,value=sha-${{ steps.sha.outputs.short }}
+          tags: type=raw,value=sha-${{ steps.short.outputs.sha }}
           labels: org.opencontainers.image.revision=${{ env.HEAD_SHA }}
       # context: . (not the default git context, which would build github.sha,
       # the default branch tip, instead of the commit that passed CI).
       - uses: docker/build-push-action@v7
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
-          platforms: ${{ matrix.platforms }}
+          file: deploy/docker/Dockerfile.${{ matrix.image }}
+          platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: ${{ matrix.cache }}
-          cache-to: ${{ matrix.cache }},mode=max
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
-  promote:
-    needs: build
+  promote-web:
+    needs: build-web
+    if: github.repository == 'cadsaltz/gene-autoannotator' && github.event_name == 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -120,10 +106,141 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Tag the sha images as prod
+      - name: Tag backend and frontend sha images as prod
         if: steps.tip.outputs.promote == 'true'
         run: |
-          for image in backend frontend worker; do
-            docker buildx imagetools create \
+          for image in backend frontend; do
+            docker buildx imagetools create --prefer-index=false \
               -t "$IMAGE_PREFIX-$image:prod" "$IMAGE_PREFIX-$image:sha-${HEAD_SHA:0:7}"
           done
+
+  cleanup-web:
+    needs: promote-web
+    if: github.repository == 'cadsaltz/gene-autoannotator'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          packages: gene-autoannotator-backend,gene-autoannotator-frontend
+          keep-n-tagged: 10
+          exclude-tags: prod
+          delete-untagged: true
+
+  build-worker:
+    if: >-
+      github.repository == 'cadsaltz/gene-autoannotator' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'master' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+    env:
+      WORKER: ghcr.io/cadsaltz/gene-autoannotator-worker
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: key
+        run: |
+          key="$(deploy/scripts/worker-image-key.sh HEAD)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch ]] \
+            && docker buildx imagetools inspect "$WORKER:src-$key" >/dev/null 2>&1; then
+            echo "$WORKER:src-$key exists; not rebuilding"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Free disk space
+        if: steps.key.outputs.build == 'true'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h /
+      - id: meta
+        if: steps.key.outputs.build == 'true'
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.WORKER }}
+          tags: type=raw,value=src-${{ steps.key.outputs.key }}
+          labels: org.opencontainers.image.revision=${{ env.HEAD_SHA }}
+      # The torch/CUDA layers would evict everything else from the 10 GB Actions
+      # cache, so the worker's build cache lives in GHCR.
+      - uses: docker/build-push-action@v7
+        if: steps.key.outputs.build == 'true'
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.worker
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.WORKER }}:buildcache
+          cache-to: type=registry,ref=${{ env.WORKER }}:buildcache,mode=max,ignore-error=true
+      # --prefer-index=false: retag the same manifest instead of wrapping it in a
+      # new index, so every tag of a key stays on one package version.
+      - name: Tag src image with the commit
+        run: |
+          docker buildx imagetools create --prefer-index=false \
+            -t "$WORKER:sha-${HEAD_SHA:0:7}" "$WORKER:src-${{ steps.key.outputs.key }}"
+
+  promote-worker:
+    needs: build-worker
+    if: github.repository == 'cadsaltz/gene-autoannotator' && github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tip="$(gh api "repos/$GITHUB_REPOSITORY/commits/master" --jq .sha)"
+          if [[ "$tip" == "$HEAD_SHA" ]]; then
+            echo "promote=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "master moved on to $tip; leaving :prod alone (its own run promotes it)"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: docker/setup-buildx-action@v4
+        if: steps.tip.outputs.promote == 'true'
+      - uses: docker/login-action@v4
+        if: steps.tip.outputs.promote == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag the worker src image as prod
+        if: steps.tip.outputs.promote == 'true'
+        env:
+          KEY: ${{ needs.build-worker.outputs.key }}
+        run: |
+          docker buildx imagetools create --prefer-index=false \
+            -t "$IMAGE_PREFIX-worker:prod" "$IMAGE_PREFIX-worker:src-$KEY"
+
+  # prod and buildcache are never deleted; hpc-update.sh pulls src-<key> for
+  # the checked-out commit, which is prod or newer.
+  cleanup-worker:
+    needs: promote-worker
+    if: github.repository == 'cadsaltz/gene-autoannotator'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          packages: gene-autoannotator-worker
+          keep-n-tagged: 5
+          exclude-tags: prod,buildcache
+          delete-untagged: true

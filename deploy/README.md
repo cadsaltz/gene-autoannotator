@@ -107,7 +107,7 @@ the old stack's shared `.env`.
 
 ## Images (CI → GHCR)
 
-`.github/workflows/ci.yml` runs on every push and pull request: the tracked
+`.github/workflows/ci.yml` runs on pushes to `master` and on pull requests: the tracked
 Python tests with the backend image's pinned dependencies (no torch/CUDA
 stack), and `npm ci`, `npm test`, `npm run lint`, `npm run build` in
 `frontend/` (no env secrets needed). Five `tests/test_gene_names.py`
@@ -120,14 +120,33 @@ annotation-table tests that already fail on master are deselected there.
 |-------|-----------|------|
 | `ghcr.io/cadsaltz/gene-autoannotator-backend` | amd64, arm64 | `sha-<7-char sha>`, `prod` |
 | `ghcr.io/cadsaltz/gene-autoannotator-frontend` | amd64, arm64 | `sha-<7-char sha>`, `prod` |
-| `ghcr.io/cadsaltz/gene-autoannotator-worker` | amd64 | `sha-<7-char sha>`, `prod` (plus `buildcache`) |
+| `ghcr.io/cadsaltz/gene-autoannotator-worker` | amd64 | `src-<key>`, `sha-<7-char sha>`, `prod` (plus `buildcache`) |
 
-`prod` moves only after all three images built, and only if the commit is
-still the tip of `master` (a newer push promotes itself). The arm64 frontend
-build runs under QEMU and takes the longest (expect 15 to 30 minutes per
-run). The workflow only fires once it is on the default branch; **Run
-workflow** on the Actions tab (`workflow_dispatch`) builds any branch with
-just the `sha-` tag, e.g. for staging.
+The worker image is content-keyed: `deploy/scripts/worker-image-key.sh
+<commit>` hashes the git objects of everything `Dockerfile.worker` copies
+(plus the Dockerfile and `.dockerignore`). If `src-<key>` already exists the
+multi-GB build is skipped and the commit's `sha-` tag is added to that image;
+`hpc-update.sh` pulls by the same key. When you change what the Dockerfile
+copies, update the path list in the key script too
+(`tests/test_worker_image_key.py` fails otherwise).
+
+Backend+frontend and the worker are separate jobs with separate promotion:
+`prod` of backend and frontend moves together once both built, the worker's
+`prod` moves once the worker job succeeded, and a failing worker build does not
+hold back the web images. Either moves only if the commit is still the tip of
+`master` (a newer push promotes itself). The arm64 frontend build runs under
+QEMU and takes the longest (expect 15 to 30 minutes per run). The workflow
+only fires once it is on the default branch. **Run workflow** on the Actions
+tab (`workflow_dispatch`) builds any ref without CI gating, so it pushes only
+`sha-` tags (and always rebuilds `src-<key>` for the worker) and never moves
+`prod`; use it for staging images or to rebuild a worker image.
+
+After each promotion old versions are deleted
+([dataaxiom/ghcr-cleanup-action](https://github.com/dataaxiom/ghcr-cleanup-action),
+multi-arch aware): backend and frontend keep the 10 newest tagged images,
+the worker the 5 newest; `prod` and `buildcache` are never deleted, and
+untagged images are removed. For a rollback further back than that, rebuild
+the commit with **Run workflow**.
 
 GHCR packages start private. The host that pulls them logs in once with a
 classic personal access token that has only `read:packages`, as the user
@@ -153,6 +172,26 @@ docker build -f deploy/docker/Dockerfile.frontend -t ghcr.io/cadsaltz/gene-autoa
 and leave the update cron off until GHCR has the images: `pull` fails
 without them (or without the login), and once they exist it replaces the
 local `:prod` images.
+
+### GHCR visibility and cost
+
+Private packages count against the account's GitHub Packages storage (the
+free tier is small, and the worker image alone is several GB per `src-` key;
+the cleanup above bounds it), and while the repository is private the
+workflows use its Actions minutes (the arm64 build under QEMU and the worker
+build are the long ones). Making the three packages public (**Package
+settings → Change visibility**) removes storage and bandwidth cost and the
+need for the `docker login` on the Pi and `apptainer registry login` on the
+HPC. The images contain the application code and pinned dependencies, no
+secrets (`.dockerignore` keeps env files and databases out). The owner
+decides.
+
+The workflow's `GITHUB_TOKEN` can push to and clean up a package only if the
+package grants this repository access. Packages the workflow creates get that
+automatically. If a package already exists (e.g. pushed by hand), open
+**Package settings → Manage Actions access**, add
+`cadsaltz/gene-autoannotator`, and give it the **Admin** role (Write is
+enough to push; the cleanup jobs need Admin to delete versions).
 
 ## Staging on the Pi (no domain, old stack keeps running)
 
@@ -390,18 +429,23 @@ each Slurm worker-run starts the SIF named by `WORKER_IMAGE` in
 commit:
 
 1. `flock` on `<repo>/.hpc-update.lock`; an overlapping run exits.
-2. `git fetch`, then `apptainer pull` of
-   `ghcr.io/cadsaltz/gene-autoannotator-worker:sha-<7-char sha>` for the
-   upstream tip into `<repo>/sif/worker-sha-<sha>.sif` (skipped if present).
-   If that image isn't there yet (Images still running, CI failed, no
-   registry login) it logs `waiting: ...` and changes nothing.
+2. `git fetch`, computes the worker image key of the upstream tip (with that
+   commit's `worker-image-key.sh`), then `apptainer pull` of
+   `ghcr.io/cadsaltz/gene-autoannotator-worker:src-<key>` into
+   `<repo>/sif/worker-src-<key>.sif`, skipped if present, so commits that
+   don't touch the worker's files download nothing. If that image isn't there
+   yet (Images still running, CI failed, no registry login) it logs
+   `waiting: ...` and changes nothing.
 3. `git merge --ff-only`. A diverged checkout or local edits that conflict
    with the update stop the run with an error in the log.
-4. Reinstalls `requirements.txt` and `requirements-web.txt` into `.venv` when
+4. Points `sif/worker-current.sif` at the SIF (running allocations keep the
+   file they opened; pending ones get the new one).
+5. Reinstalls `requirements.txt` and `requirements-web.txt` into `.venv` when
    their contents changed since the last install.
-5. Points `sif/worker-current.sif` at the new SIF (running allocations keep
-   the file they opened; pending ones get the new one) and deletes older SIFs,
-   keeping the two newest and any whose replacement is under 48 hours old.
+6. Deletes older SIFs, keeping the current one, the two newest, and any whose
+   replacement became current less than 48 hours ago; then
+   `apptainer cache clean --days 14`. The layer cache is `sif/.cache`
+   (`APPTAINER_CACHEDIR`), so pulls of a new key reuse the unchanged layers.
 
 It logs to `<repo>/hpc-update.log`. One-time setup on the login node:
 
@@ -417,7 +461,7 @@ WORKER_IMAGE=/shared/gene-autoannotator/sif/worker-current.sif
 scrontab (`scrontab -e`); scrontab entries run as Slurm jobs, so the node
 they land on needs outbound HTTPS to GitHub and ghcr.io, and converting the image to a SIF needs
 a few CPUs, memory, and roughly twice the image size (about 15 GB) of scratch
-under `sif/.tmp`:
+under `sif/.tmp`, plus the layer cache under `sif/.cache`:
 
 ```cron
 #SCRON --time=02:00:00 --cpus-per-task=4 --mem=16G
@@ -426,10 +470,11 @@ under `sif/.tmp`:
 
 A run with nothing new only fetches, so it can run more often than daily.
 Overrides: `GAA_SIF_DIR`, `GAA_VENV`, `GAA_REQUIREMENTS`, `GAA_SIF_KEEP`,
-`GAA_SIF_GRACE_HOURS`, `GAA_HPC_UPDATE_LOG`, `GAA_HPC_UPDATE_LOCK`,
-`APPTAINER` (e.g. `singularity`), `APPTAINER_TMPDIR`. With a hand-built SIF,
+`GAA_SIF_GRACE_HOURS`, `GAA_CACHE_DAYS`, `GAA_HPC_UPDATE_LOG`,
+`GAA_HPC_UPDATE_LOCK`, `APPTAINER` (e.g. `singularity`),
+`APPTAINER_CACHEDIR`, `APPTAINER_TMPDIR`. With a hand-built SIF,
 `GAA_PULL_SIF=0` updates only the code and venv. To roll back, set
-`WORKER_IMAGE` to a kept `worker-sha-*.sif` and comment out the scrontab line
+`WORKER_IMAGE` to a kept `worker-src-*.sif` and comment out the scrontab line
 (the next run would move `worker-current.sif` again, but not `WORKER_IMAGE`).
 
 ## Operations

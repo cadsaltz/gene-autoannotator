@@ -1,11 +1,14 @@
 """deploy/scripts/hpc-update.sh against a real git remote and a fake `apptainer`.
 
-The fake pulls `docker://<repo>:<tag>` only when FAKE_ROOT/available-<tag> exists.
-The fake venv python appends its arguments to FAKE_ROOT/pip.log.
+The upstream repo carries the real worker-image-key.sh and a stub for each
+worker image path. The fake apptainer pulls `docker://<repo>:<tag>` only when
+FAKE_ROOT/available-<tag> exists. The fake venv python appends its arguments to
+FAKE_ROOT/pip.log.
 """
 
 import fcntl
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -14,13 +17,15 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "deploy" / "scripts" / "hpc-update.sh"
+KEY_SCRIPT = REPO_ROOT / "deploy" / "scripts" / "worker-image-key.sh"
 
 FAKE_APPTAINER = r"""#!/usr/bin/env bash
-echo "$*" >> "$FAKE_ROOT/apptainer.log"
-[[ "$1" == pull && "$2" == --disable-cache ]] || exit 2
-tag="${4##*:}"
+echo "$* cache=$APPTAINER_CACHEDIR" >> "$FAKE_ROOT/apptainer.log"
+if [[ "$1 $2" == "cache clean" ]]; then exit 0; fi
+[[ "$1" == pull && "$3" == docker://* ]] || exit 2
+tag="${3##*:}"
 [[ -f "$FAKE_ROOT/available-$tag" ]] || exit 1
-echo "image $tag" > "$3"
+echo "image $tag" > "$2"
 """
 
 FAKE_PYTHON = r"""#!/usr/bin/env bash
@@ -36,6 +41,8 @@ GIT_ENV = {
     "GIT_CONFIG_NOSYSTEM": "1",
 }
 
+DAY = 24 * 3600
+
 
 def _git(cwd, *args):
     return subprocess.run(
@@ -48,13 +55,30 @@ def _executable(path, text):
     path.chmod(0o755)
 
 
+def _age(path, seconds):
+    t = time.time() - seconds
+    os.utime(path, (t, t))
+
+
 class Hpc:
     def __init__(self, tmp_path):
         self.upstream = tmp_path / "upstream"
         self.upstream.mkdir()
         _git(self.upstream, "init", "-q", "-b", "master")
+        paths = subprocess.run([str(KEY_SCRIPT), "--paths"], check=True, capture_output=True, text=True)
+        for rel in paths.stdout.split():
+            target = self.upstream / rel
+            if "." in target.name:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(f"{rel}\n")
+            else:
+                target.mkdir(parents=True, exist_ok=True)
+                (target / "stub").write_text(f"{rel}\n")
         (self.upstream / "requirements.txt").write_text("httpx\n")
         (self.upstream / "requirements-web.txt").write_text("fastapi\n")
+        key_dest = self.upstream / "deploy" / "scripts" / "worker-image-key.sh"
+        key_dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(KEY_SCRIPT, key_dest)
         self.commit("initial")
         self.repo = tmp_path / "repo"
         _git(tmp_path, "clone", "-q", str(self.upstream), str(self.repo))
@@ -69,7 +93,7 @@ class Hpc:
         self.log = tmp_path / "hpc-update.log"
         self.lock = tmp_path / "hpc-update.lock"
         self.env = {
-            **os.environ,
+            **{k: v for k, v in os.environ.items() if not k.startswith("APPTAINER")},
             **GIT_ENV,
             "FAKE_ROOT": str(self.fake),
             "APPTAINER": str(self.fake / "apptainer"),
@@ -87,8 +111,18 @@ class Hpc:
         _git(self.upstream, "commit", "-q", "--allow-empty", "-m", message)
         return _git(self.upstream, "rev-parse", "HEAD")
 
-    def publish(self, sha):
-        (self.fake / f"available-sha-{sha[:7]}").write_text("")
+    def key(self, rev="HEAD"):
+        return subprocess.run(
+            [str(KEY_SCRIPT), rev], cwd=self.upstream, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    def publish(self, rev="HEAD"):
+        key = self.key(rev)
+        (self.fake / f"available-src-{key}").write_text("")
+        return key
+
+    def sif(self, key):
+        return self.sif_dir / f"worker-src-{key}.sif"
 
     def run(self, **env):
         return subprocess.run(["bash", str(SCRIPT)], env={**self.env, **env}, capture_output=True, text=True)
@@ -96,9 +130,10 @@ class Hpc:
     def head(self):
         return _git(self.repo, "rev-parse", "HEAD")
 
-    def calls(self, name):
+    def calls(self, name, prefix=""):
         path = self.fake / name
-        return path.read_text().splitlines() if path.exists() else []
+        lines = path.read_text().splitlines() if path.exists() else []
+        return [line for line in lines if line.startswith(prefix)]
 
     def current(self):
         return os.readlink(self.sif_dir / "worker-current.sif")
@@ -111,69 +146,102 @@ def hpc(tmp_path):
 
 def test_waits_for_the_image_before_moving_code(hpc):
     old = hpc.head()
-    hpc.publish(old)
+    old_key = hpc.publish()
     assert hpc.run().returncode == 0
-    new = hpc.commit("second")
+    hpc.commit("worker change", {"worker/stub": "changed\n"})
+    new_key = hpc.key()
+    assert new_key != old_key
 
     result = hpc.run()
 
     assert result.returncode == 0
     assert hpc.head() == old
-    assert hpc.current() == f"worker-sha-{old[:7]}.sif"
-    assert f"waiting: ghcr.io/cadsaltz/gene-autoannotator-worker:sha-{new[:7]}" in hpc.log.read_text()
+    assert hpc.current() == f"worker-src-{old_key}.sif"
+    assert f"waiting: ghcr.io/cadsaltz/gene-autoannotator-worker:src-{new_key}" in hpc.log.read_text()
     assert not list(hpc.sif_dir.glob(".worker-*"))
 
 
 def test_moves_code_and_sif_together_then_is_a_noop(hpc):
-    new = hpc.commit("second")
-    hpc.publish(new)
+    new = hpc.commit("worker change", {"worker/stub": "changed\n"})
+    key = hpc.publish()
 
     assert hpc.run().returncode == 0
     assert hpc.head() == new
-    assert hpc.current() == f"worker-sha-{new[:7]}.sif"
-    assert (hpc.sif_dir / f"worker-sha-{new[:7]}.sif").read_text() == f"image sha-{new[:7]}\n"
+    assert hpc.current() == f"worker-src-{key}.sif"
+    assert hpc.sif(key).read_text() == f"image src-{key}\n"
+    pulls = hpc.calls("apptainer.log", "pull")
+    assert len(pulls) == 1
+    assert pulls[0].endswith(f"cache={hpc.sif_dir}/.cache")
+    assert hpc.calls("apptainer.log", "cache clean -f --days 14")
     assert len(hpc.calls("pip.log")) == 1
     assert "--requirement=requirements.txt --requirement=requirements-web.txt" in hpc.calls("pip.log")[0]
 
     assert hpc.run().returncode == 0
-    assert len(hpc.calls("apptainer.log")) == 1
+    assert len(hpc.calls("apptainer.log", "pull")) == 1
     assert len(hpc.calls("pip.log")) == 1
     assert hpc.log.read_text().splitlines()[-1].endswith(f"up to date at {new[:7]}")
 
 
-def test_reinstalls_only_when_requirements_change(hpc):
-    hpc.publish(hpc.head())
+def test_commit_outside_worker_paths_reuses_the_sif(hpc):
+    key = hpc.publish()
     hpc.run()
-    hpc.publish(hpc.commit("docs only", {"README.md": "x\n"}))
+    new = hpc.commit("docs", {"README.md": "x\n"})
+    assert hpc.key() == key
+
+    assert hpc.run().returncode == 0
+
+    assert hpc.head() == new
+    assert len(hpc.calls("apptainer.log", "pull")) == 1
+    assert hpc.current() == f"worker-src-{key}.sif"
+
+
+def test_reinstalls_only_when_requirements_change(hpc):
+    hpc.publish()
+    hpc.run()
+    hpc.commit("docs only", {"README.md": "x\n"})
     hpc.run()
     assert len(hpc.calls("pip.log")) == 1
 
-    hpc.publish(hpc.commit("bump", {"requirements.txt": "httpx==0.28.1\n"}))
+    hpc.commit("bump", {"requirements.txt": "httpx==0.28.1\n"})
+    hpc.publish()
     assert hpc.run().returncode == 0
     assert len(hpc.calls("pip.log")) == 2
 
 
 def test_prunes_old_sifs_only_after_the_grace_period(hpc):
     hpc.sif_dir.mkdir()
-    day = 24 * 3600
-    now = time.time()
-    for name, age in (("a", 5 * day), ("b", 4 * day), ("c", 1 * day)):
-        path = hpc.sif_dir / f"worker-sha-{name * 7}.sif"
+    for name, age in (("a", 5 * DAY), ("b", 4 * DAY), ("c", 1 * DAY)):
+        path = hpc.sif(name * 16)
         path.write_text(name)
-        os.utime(path, (now - age, now - age))
-    hpc.publish(hpc.head())
+        _age(path, age)
+    key = hpc.publish()
 
     assert hpc.run().returncode == 0
 
-    # new (now), c (1 day), b (4 days; c replaced it 1 day ago), a (b replaced it 4 days ago)
-    names = sorted(p.name for p in hpc.sif_dir.glob("worker-sha-*.sif"))
-    assert f"worker-sha-{'a' * 7}.sif" not in names
-    assert f"worker-sha-{'b' * 7}.sif" in names
-    assert len(names) == 3
+    # new (now), c (1 day), b (c replaced it 1 day ago), a (b replaced it 4 days ago)
+    assert hpc.sif(key).exists()
+    assert hpc.sif("c" * 16).exists()
+    assert hpc.sif("b" * 16).exists()
+    assert not hpc.sif("a" * 16).exists()
+
+
+def test_prune_never_deletes_the_current_sif(hpc):
+    key = hpc.publish()
+    hpc.run()
+    _age(hpc.sif(key), 9 * DAY)
+    for name in ("b", "c"):
+        path = hpc.sif(name * 16)
+        path.write_text(name)
+        _age(path, 3 * DAY)
+
+    assert hpc.run().returncode == 0
+
+    assert hpc.current() == f"worker-src-{key}.sif"
+    assert hpc.sif(key).exists()
 
 
 def test_code_only_mode_skips_apptainer(hpc):
-    new = hpc.commit("second")
+    new = hpc.commit("worker change", {"worker/stub": "changed\n"})
 
     assert hpc.run(GAA_PULL_SIF="0").returncode == 0
 
@@ -183,7 +251,7 @@ def test_code_only_mode_skips_apptainer(hpc):
 
 
 def test_diverged_checkout_is_left_alone(hpc):
-    hpc.publish(hpc.head())
+    hpc.publish()
     (hpc.repo / "local.txt").write_text("x")
     _git(hpc.repo, "add", "local.txt")
     _git(hpc.repo, "commit", "-q", "-m", "local")
