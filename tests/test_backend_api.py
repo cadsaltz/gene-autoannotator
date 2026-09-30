@@ -872,7 +872,7 @@ def test_annotation_persistence_failure_is_visible_on_completed_job(tmp_path):
         run_job=lambda request: {"annotation": {"gene_id": request.locus}},
         run_jobs_inline=True,
     )
-    client = _authed_client(app)
+    client = _admin_client(app)
 
     create_response = client.post(
         "/jobs",

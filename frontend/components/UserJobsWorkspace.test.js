@@ -93,6 +93,14 @@ test("UserJobsWorkspace reuses the shared single and batch submit forms", async 
   assert.match(workspace, /<BatchJobForm/);
 });
 
+test("UserJobsWorkspace hides the admin-only custom organism pattern fields", async () => {
+  const workspace = await readProjectFile("components/UserJobsWorkspace.js");
+  const form = await readProjectFile("components/SingleJobForm.js");
+
+  assert.match(workspace, /showAdvancedTerms=\{false\}/);
+  assert.match(form, /isCustomProfile && showAdvancedTerms \?/);
+});
+
 test("UserJobsWorkspace polls every 15 seconds and refreshes after submit and cancel", async () => {
   const workspace = await readProjectFile("components/UserJobsWorkspace.js");
 

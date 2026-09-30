@@ -14,6 +14,7 @@ const QUOTA_ROWS = [
   { key: "ip_signups_per_day", label: "Signups per IP per day" },
   { key: "ip_logins_per_hour", label: "Logins per IP per hour" },
   { key: "ip_submits_per_hour", label: "Submissions per IP per hour" },
+  { key: "ip_validations_per_hour", label: "Gene lookups per IP per hour" },
   { key: "otp_sends_per_email_per_hour", label: "Login codes per email per hour" },
 ];
 

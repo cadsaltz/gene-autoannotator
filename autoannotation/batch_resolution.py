@@ -11,6 +11,16 @@ def _display_input(submitted_locus, submitted_name, raw_input):
     return raw_input
 
 
+def _resolve_with_profile(profile, **kwargs):
+    return targets.resolve_annotation_target(
+        profile_identifier=profile.profile_id,
+        organism_identifier=None,
+        strain_identifier=None,
+        profile_lookup=lambda _identifier: profile,
+        **kwargs,
+    )
+
+
 def resolve_batch_entry(
     profile,
     *,
@@ -25,10 +35,8 @@ def resolve_batch_entry(
         submitted_locus = selected_locus
 
     if submitted_locus and submitted_name:
-        target = targets.resolve_annotation_target(
-            profile_identifier=profile.profile_id,
-            organism_identifier=None,
-            strain_identifier=None,
+        target = _resolve_with_profile(
+            profile,
             locus=submitted_locus,
             name=submitted_name,
             allow_online_name_lookup=allow_online_name_lookup,
@@ -49,10 +57,8 @@ def resolve_batch_entry(
         return _invalid_entry(line, raw_input, None, None, "empty_input")
 
     if profile.locus_regex and re.fullmatch(profile.locus_regex, token):
-        target = targets.resolve_annotation_target(
-            profile_identifier=profile.profile_id,
-            organism_identifier=None,
-            strain_identifier=None,
+        target = _resolve_with_profile(
+            profile,
             locus=token,
             name=None,
             allow_online_name_lookup=allow_online_name_lookup,
@@ -70,10 +76,8 @@ def resolve_batch_entry(
 
     table_result = gene_names.lookup_locus_from_annotation_table(profile, token)
     if table_result and table_result.locus:
-        target = targets.resolve_annotation_target(
-            profile_identifier=profile.profile_id,
-            organism_identifier=None,
-            strain_identifier=None,
+        target = _resolve_with_profile(
+            profile,
             locus=table_result.locus,
             name=token,
             allow_online_name_lookup=allow_online_name_lookup,
@@ -110,10 +114,8 @@ def resolve_batch_entry(
             allow_online_lookup=True,
         )
         if locus_result and locus_result.locus:
-            target = targets.resolve_annotation_target(
-                profile_identifier=profile.profile_id,
-                organism_identifier=None,
-                strain_identifier=None,
+            target = _resolve_with_profile(
+                profile,
                 locus=locus_result.locus,
                 name=token,
                 allow_online_name_lookup=True,
@@ -144,10 +146,8 @@ def resolve_batch_entry(
             }
 
     if not profile.locus_regex:
-        target = targets.resolve_annotation_target(
-            profile_identifier=profile.profile_id,
-            organism_identifier=None,
-            strain_identifier=None,
+        target = _resolve_with_profile(
+            profile,
             locus=None,
             name=token,
             allow_online_name_lookup=allow_online_name_lookup,

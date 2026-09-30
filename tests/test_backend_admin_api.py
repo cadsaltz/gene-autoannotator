@@ -14,7 +14,7 @@ USER_ROW_KEYS = {
 }
 QUOTA_ENV = (
     "MAX_QUEUED_JOBS", "USER_MAX_ACTIVE_JOBS", "USER_MAX_JOBS_PER_DAY", "USER_MAX_BATCH_SIZE",
-    "IP_SIGNUPS_PER_DAY", "IP_SUBMITS_PER_HOUR", "IP_LOGINS_PER_HOUR",
+    "IP_SIGNUPS_PER_DAY", "IP_SUBMITS_PER_HOUR", "IP_LOGINS_PER_HOUR", "IP_VALIDATIONS_PER_HOUR",
     "OTP_SENDS_PER_EMAIL_PER_HOUR", "APP_VERSION",
 )
 
@@ -483,6 +483,7 @@ def test_overview(alice, admin, store, monkeypatch):
         "ip_signups_per_day": 5,
         "ip_submits_per_hour": 11,
         "ip_logins_per_hour": 30,
+        "ip_validations_per_hour": 120,
         "otp_sends_per_email_per_hour": 5,
     }
 

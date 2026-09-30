@@ -280,6 +280,7 @@ export default function UserJobsWorkspace() {
               setStatusMessage={setStatusMessage}
               onJobQueued={refresh}
               describeError={describeUserSubmitError}
+              showAdvancedTerms={false}
             />
           ) : (
             <div className="mt-6 grid gap-4">

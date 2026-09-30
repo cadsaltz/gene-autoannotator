@@ -134,6 +134,7 @@ function UserRow({
                 />
               </label>
             ))}
+            <p className="workbench-muted text-xs">0 = unlimited; suspend the account to block</p>
           </div>
         </td>
         <td className="workbench-muted px-3 py-3 align-top text-xs">

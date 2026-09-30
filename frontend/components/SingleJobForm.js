@@ -85,6 +85,7 @@ export default function SingleJobForm({
   setStatusMessage,
   onJobQueued,
   describeError = describeSubmitError,
+  showAdvancedTerms = true,
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -252,7 +253,7 @@ export default function SingleJobForm({
         </div>
       ) : null}
 
-      {isCustomProfile ? (
+      {isCustomProfile && showAdvancedTerms ? (
         <details className="workbench-muted-bg rounded-xl border workbench-border p-4 text-sm">
           <summary className="cursor-pointer font-bold">Advanced custom organism terms</summary>
           <div className="mt-4 grid gap-4">

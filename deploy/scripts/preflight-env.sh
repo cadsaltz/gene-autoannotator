@@ -104,17 +104,19 @@ check() {
   missing=1
 }
 
+# check_enabled NAME [REASON]: value must be truthy (1/true/yes/on).
 check_enabled() {
   local name="$1"
+  local reason="${2:-must be 1}"
   local value
   value="$(value_of "$name" | tr '[:upper:]' '[:lower:]')"
   if [[ -z "$value" ]]; then
     echo "MISSING $name"
     missing=1
-  elif [[ "$value" == 1 || "$value" == true || "$value" == yes ]]; then
+  elif [[ "$value" == 1 || "$value" == true || "$value" == yes || "$value" == on ]]; then
     echo "OK $name"
   else
-    echo "INVALID $name (must be 1 behind Caddy)"
+    echo "INVALID $name ($reason)"
     missing=1
   fi
 }
@@ -132,7 +134,7 @@ case "$ROLE" in
     # Backend annotation history + backups, and the frontend's /api/annotations routes.
     check MONGO_URI MONGODB_URI
     check WORKER_API_TOKEN
-    check REQUIRE_WORKER_API_TOKEN
+    check_enabled REQUIRE_WORKER_API_TOKEN
     check SESSION_COOKIE_SECURE
     check_email
     ;;
@@ -141,7 +143,7 @@ case "$ROLE" in
     check WORKER_API_TOKEN
     check_enabled REQUIRE_WORKER_API_TOKEN
     check SESSION_COOKIE_SECURE
-    check_enabled TRUST_FORWARDED_FOR
+    check_enabled TRUST_FORWARDED_FOR "must be 1 behind Caddy"
     check_email
     ;;
   frontend)

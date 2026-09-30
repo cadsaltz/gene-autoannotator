@@ -224,6 +224,12 @@ running jobs are unaffected.
   name, locus, or both. The response includes the resolved profile, submitted and
   resolved identifiers, primary identifier, and warnings such as missing locus,
   missing gene name, locus schema mismatch, or ad hoc profile usage.
+  Only admins may send `locus_regex`, `search_terms`, `target_patterns`,
+  `off_target_patterns`, or `excluded_species_patterns` (here and on
+  `/jobs`, `/batches/validate`, `/batches`); non-admins get 422. Locus, name,
+  and profile values are capped at 128 characters, organism and strain at 200.
+  Non-admin lookups on these four endpoints count toward
+  `IP_VALIDATIONS_PER_HOUR` (default 120; `0` = unlimited).
 - `GET /jobs`: lists shared jobs with queue positions (non-admins see only
   their own). Admins also get `submitted_by_user_id` and `submitted_by_email`.
 - `DELETE /jobs/history`: clears completed and failed job history while leaving
@@ -342,7 +348,7 @@ docker compose -f deploy/compose/docker-compose.backend.yml up -d
 
 The preflight prints `OK NAME` or `MISSING NAME` (never values) for
 `MONGO_URI` (or `MONGODB_URI`; the frontend's annotation routes need it too),
-`WORKER_API_TOKEN`, `REQUIRE_WORKER_API_TOKEN`, `SESSION_COOKIE_SECURE`,
+`WORKER_API_TOKEN`, `REQUIRE_WORKER_API_TOKEN` (must be `1`), `SESSION_COOKIE_SECURE`,
 `EMAIL_BACKEND`, and, when `EMAIL_BACKEND=resend`, `RESEND_API_KEY` and
 `EMAIL_FROM`. It exits non-zero if any is missing, empty, or still a
 `CHANGE_ME` placeholder; fix `.env` before building. For the production
@@ -366,6 +372,11 @@ always the TCP peer. Client IPs for rate limits come from `X-Forwarded-For`
 only when `TRUST_FORWARDED_FOR=1` (see `backend/client_ip.py`); set it only when
 every request reaches the backend through a proxy that overwrites that header
 and port 8000 is not reachable from outside.
+
+The image runs a single uvicorn process (no `--workers`). The submission lock
+that serializes quota checks, and the alert, backup, and retention loops, are
+per-process, so do not add `--workers` or run several backend replicas against
+the same SQLite file.
 
 `docker compose exec` bypasses the entrypoint and runs as root, so pass
 `-u app` (as in the commands below) or files it creates in the volumes stay

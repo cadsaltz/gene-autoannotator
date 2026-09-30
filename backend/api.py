@@ -41,6 +41,7 @@ from .quotas import (
     check_submission,
     daily_window_start,
     effective_limits,
+    env_int,
 )
 from .profile_store import (
     DEFAULT_PROFILES_DIR,
@@ -94,6 +95,7 @@ from .schemas import (
     BatchValidateRequest,
     BatchValidateResponse,
     JobCreateResponse,
+    JobSubmitRequest,
     JobsListResponse,
     JobRecordResponse,
     QueueStatusResponse,
@@ -103,6 +105,7 @@ from .schemas import (
     RegexFromDescriptionRequest,
     RegexFromExamplesRequest,
     ValidationRequest,
+    supplied_admin_only_fields,
 )
 
 # FastAPI wrapper around the existing annotator. It is deliberately thin: jobs
@@ -176,7 +179,15 @@ def _regex_model_health():
         return {"status": "unavailable", "model": model, "message": str(exc)}
 
 
-MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "2000"))
+def _positive_env_int(name: str, default: int) -> int:
+    value = env_int(name, default)
+    if value <= 0:
+        log.warning("Ignoring non-positive %s=%r; using default %d", name, value, default)
+        return default
+    return value
+
+
+MAX_BATCH_SIZE = _positive_env_int("MAX_BATCH_SIZE", 2000)
 # Keep in sync with TERMS_VERSION in frontend/lib/legal.js.
 DEFAULT_TERMS_VERSION = "draft-2026-09"
 # Six hours is long enough for an HPC allocation to finish one annotation while
@@ -298,9 +309,9 @@ def create_app(
     # An HPC-only deploy has no warm worker to satisfy the gate, so
     # WORKER_CAPACITY_REQUIRED=0 must be able to turn it off at deploy time.
     capacity_required = _env_flag("WORKER_CAPACITY_REQUIRED", worker_capacity_required)
-    lease_seconds = int(os.getenv("LEASE_SECONDS", str(DEFAULT_LEASE_SECONDS)))
-    max_attempts = int(os.getenv("MAX_ATTEMPTS", "3"))
-    offline_after_seconds = int(os.getenv("WORKER_OFFLINE_SECONDS", "60"))
+    lease_seconds = _positive_env_int("LEASE_SECONDS", DEFAULT_LEASE_SECONDS)
+    max_attempts = _positive_env_int("MAX_ATTEMPTS", 3)
+    offline_after_seconds = _positive_env_int("WORKER_OFFLINE_SECONDS", 60)
     terms_version = (os.getenv("TERMS_VERSION") or "").strip() or DEFAULT_TERMS_VERSION
     annotations = (
         annotation_store
@@ -550,18 +561,52 @@ def create_app(
     def _audit(request: Request, action: str, actor_user_id: str | None, **fields):
         audit.record(action=action, actor_user_id=actor_user_id, ip=client_ip(request), **fields)
 
+    def _submit_check(request: Request):
+        return _rate_check(
+            "submit",
+            client_ip(request),
+            HOUR_SECONDS,
+            "IP_SUBMITS_PER_HOUR",
+            "Too many submissions from your network this hour. Please try again later.",
+        )
+
     def _enforce_submit_limit(request: Request, user: dict):
+        if is_admin(user):
+            return
+        _enforce_rate_limits(_submit_check(request))
+
+    def _peek_submit_limit(request: Request, user: dict):
+        if is_admin(user):
+            return
+        bucket, key, window_seconds, limit, message = _submit_check(request)
+        if limit > 0 and not limiter.would_allow(bucket, key, window_seconds, limit):
+            raise RateLimited(message)
+
+    def _enforce_validation_limit(request: Request, user: dict):
         if is_admin(user):
             return
         _enforce_rate_limits(
             _rate_check(
-                "submit",
+                "validate",
                 client_ip(request),
                 HOUR_SECONDS,
-                "IP_SUBMITS_PER_HOUR",
-                "Too many submissions from your network this hour. Please try again later.",
+                "IP_VALIDATIONS_PER_HOUR",
+                "Too many lookups from your network this hour. Please try again later.",
             )
         )
+
+    def _reject_admin_only_fields(request, user: dict):
+        if is_admin(user):
+            return
+        supplied = supplied_admin_only_fields(request)
+        if supplied:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Only admins can set {', '.join(supplied)}. Choose a saved "
+                    "profile or leave the advanced organism terms blank."
+                ),
+            )
 
     def resource_snapshot():
         try:
@@ -692,6 +737,7 @@ def create_app(
 
     def _stored_request_for_target(request, target):
         stored_request = request.model_dump()
+        stored_request.pop("profile_config", None)
         if target.profile_source != "ad_hoc":
             stored_request["profile"] = target.profile.profile_id
             stored_request["organism"] = None
@@ -755,6 +801,9 @@ def create_app(
             public_job.pop("submitted_by_user_id", None)
             public_job.pop("submitted_by_email", None)
             public_job.pop("output_path", None)
+            public_job.pop("annotation_error", None)
+            if public_job.get("status") == "failed" and public_job.get("error"):
+                public_job["error"] = "Job failed"
         return redact_secrets_in(public_job)
 
     def _visible_job_or_404(job_id, user):
@@ -887,10 +936,11 @@ def create_app(
         )
         try:
             email_sender.send_login_code_email(to_email=email, code=code)
-        except Exception as exc:  # noqa: BLE001 - surface delivery failures to the client
+        except Exception as exc:  # noqa: BLE001 - delivery failures become a generic 502
+            log.exception("Could not send %s code to %s", purpose, mask_email(email))
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Could not send login code: {exc}",
+                detail="Could not send the sign-in code. Please try again later.",
             ) from exc
         _audit(
             request,
@@ -1115,7 +1165,11 @@ def create_app(
         return {"deleted": True}
 
     @app.post("/validate")
-    def validate_locus(request: ValidationRequest, _user: dict = Depends(require_user)):
+    def validate_locus(
+        request: ValidationRequest, http_request: Request, _user: dict = Depends(require_user)
+    ):
+        _reject_admin_only_fields(request, _user)
+        _enforce_validation_limit(http_request, _user)
         target = _resolve_target_for_request(request)
         return target.to_preflight_dict()
 
@@ -1140,7 +1194,11 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.post("/batches/validate", response_model=BatchValidateResponse)
-    def validate_batch(request: BatchValidateRequest, _user: dict = Depends(require_user)):
+    def validate_batch(
+        request: BatchValidateRequest, http_request: Request, _user: dict = Depends(require_user)
+    ):
+        _reject_admin_only_fields(request, _user)
+        _enforce_validation_limit(http_request, _user)
         try:
             entries, summary = _preview_batch(request, _user)
         except BatchParseError as exc:
@@ -1159,6 +1217,9 @@ def create_app(
         _user: dict = Depends(require_user),
     ):
         _reject_if_paused(_user)
+        _reject_admin_only_fields(request, _user)
+        _peek_submit_limit(http_request, _user)
+        _enforce_validation_limit(http_request, _user)
         request = request.model_copy(update=_SERVER_PATH_UPDATES)
         try:
             entries, summary = _preview_batch(request, _user)
@@ -1249,12 +1310,15 @@ def create_app(
         status_code=status.HTTP_201_CREATED,
     )
     def create_job(
-        request: AnnotationJobRequest,
+        request: JobSubmitRequest,
         background_tasks: BackgroundTasks,
         http_request: Request,
         _user: dict = Depends(require_user),
     ):
         _reject_if_paused(_user)
+        _reject_admin_only_fields(request, _user)
+        _peek_submit_limit(http_request, _user)
+        _enforce_validation_limit(http_request, _user)
         request = _server_owned_job_request(request)
         _reject_unresolvable_ortholog_override(request.ortholog_override)
         target = _resolve_target_for_request(request)

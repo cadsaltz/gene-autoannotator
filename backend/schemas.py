@@ -21,6 +21,32 @@ from shared.job_contract import (
 
 from .access import ROLES, STATUSES
 
+IDENTIFIER_MAX_LENGTH = 128
+ORGANISM_MAX_LENGTH = 200
+BATCH_RAW_TEXT_MAX_LENGTH = 200_000
+USERNAME_MAX_LENGTH = 64
+
+Identifier = Annotated[str | None, Field(max_length=IDENTIFIER_MAX_LENGTH)]
+OrganismText = Annotated[str | None, Field(max_length=ORGANISM_MAX_LENGTH)]
+# Regex/pattern fields compiled by the API process; only admins may set them.
+ADMIN_ONLY_TARGET_FIELDS = (
+    "locus_regex",
+    "search_terms",
+    "target_patterns",
+    "off_target_patterns",
+    "excluded_species_patterns",
+)
+
+
+def supplied_admin_only_fields(request) -> list[str]:
+    return [field for field in ADMIN_ONLY_TARGET_FIELDS if getattr(request, field, None)]
+
+
+class BoundedOrthologOverride(OrthologOverride):
+    profile_id: str = Field(min_length=1, max_length=IDENTIFIER_MAX_LENGTH)
+    locus: Identifier = None
+    name: Identifier = None
+
 
 class AnnotationFieldPayload(BaseModel):
     key: str = Field(min_length=1)
@@ -93,11 +119,11 @@ class ProfilePayload(BaseModel):
 
 
 class ValidationRequest(BaseModel):
-    profile: str | None = None
-    organism: str | None = None
-    strain: str | None = None
-    locus: str | None = None
-    name: str | None = None
+    profile: Identifier = None
+    organism: OrganismText = None
+    strain: OrganismText = None
+    locus: Identifier = None
+    name: Identifier = None
     locus_regex: str | None = None
     search_terms: list[str] = Field(default_factory=list)
     target_patterns: list[str] = Field(default_factory=list)
@@ -131,10 +157,10 @@ class ValidationRequest(BaseModel):
 
 
 class BatchEntryInput(BaseModel):
-    input: str | None = None
-    locus: str | None = None
-    name: str | None = None
-    selected_locus: str | None = None
+    input: Identifier = None
+    locus: Identifier = None
+    name: Identifier = None
+    selected_locus: Identifier = None
 
     @field_validator("input", "locus", "name", "selected_locus", mode="before")
     @classmethod
@@ -149,9 +175,9 @@ class BatchEntryInput(BaseModel):
 
 
 class BatchJobOptions(BaseModel):
-    profile: str | None = None
-    organism: str | None = None
-    strain: str | None = None
+    profile: Identifier = None
+    organism: OrganismText = None
+    strain: OrganismText = None
     # Ignored on public API; batch jobs use server defaults for path fields.
     cache_dir: str = "./.cache"
     output_dir: str = "gen_json"
@@ -167,7 +193,7 @@ class BatchJobOptions(BaseModel):
     allow_ortholog_fallback: bool = False
     # Batch jobs may constrain ortholog search to a profile, but must not pin a
     # single ortholog gene for every target in the batch.
-    ortholog_override: OrthologOverride | None = None
+    ortholog_override: BoundedOrthologOverride | None = None
 
     @field_validator(
         "profile",
@@ -200,11 +226,20 @@ class BatchJobOptions(BaseModel):
 
 class BatchValidateRequest(BatchJobOptions):
     entries: list[BatchEntryInput] = Field(min_length=1)
-    raw_text: str | None = None
+    raw_text: str | None = Field(default=None, max_length=BATCH_RAW_TEXT_MAX_LENGTH)
 
 
 class BatchCreateRequest(BatchValidateRequest):
     pass
+
+
+class JobSubmitRequest(AnnotationJobRequest):
+    profile: Identifier = None
+    organism: OrganismText = None
+    strain: OrganismText = None
+    locus: Identifier = None
+    name: Identifier = None
+    ortholog_override: BoundedOrthologOverride | None = None
 
 
 class BatchPreviewSummary(BaseModel):
@@ -401,7 +436,7 @@ class AnnotationVersionsResponse(BaseModel):
 
 class AuthSignupRequest(BaseModel):
     email: EmailStr
-    username: str | None = None
+    username: str | None = Field(default=None, max_length=USERNAME_MAX_LENGTH)
     accept_terms: StrictBool
 
     @field_validator('accept_terms')
@@ -503,6 +538,7 @@ class AdminQuotaConfig(BaseModel):
     ip_signups_per_day: int
     ip_submits_per_hour: int
     ip_logins_per_hour: int
+    ip_validations_per_hour: int
     otp_sends_per_email_per_hour: int
 
 

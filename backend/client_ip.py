@@ -1,6 +1,6 @@
 import os
 
-TRUE_VALUES = {"1", "true", "yes"}
+TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
 def _trust_forwarded_for() -> bool:
