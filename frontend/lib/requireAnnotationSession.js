@@ -1,24 +1,22 @@
-import { NextResponse } from "next/server";
+import { getServerSession } from "./session.js";
 
-import { getApiBaseUrl } from "./api.js";
+function denied(status, detail) {
+  return { user: null, response: Response.json({ detail }, { status }) };
+}
 
 /**
- * Soft server-side session check: forward Cookie to FastAPI /auth/me.
- * Returns a 401 NextResponse when unauthenticated; otherwise null.
+ * Route-handler session gate for the Mongo-backed annotation APIs.
+ * Returns `{ user, response: null }` when allowed, otherwise `{ user: null, response }`
+ * with a 401 (signed out / auth unavailable) or 403 (suspended, or non-admin when `admin`).
  */
-export async function requireAnnotationSession(request, fetchImpl = fetch) {
-  const cookie = request.headers.get("cookie") || "";
-  try {
-    const response = await fetchImpl(`${getApiBaseUrl()}/auth/me`, {
-      method: "GET",
-      headers: cookie ? { Cookie: cookie } : {},
-      cache: "no-store",
-    });
-    if (response.ok) {
-      return null;
-    }
-  } catch {
-    // Treat backend/auth failures as unauthenticated for annotation APIs.
+export async function requireAnnotationSession(request, { admin = false, fetchImpl = fetch } = {}) {
+  const session = await getServerSession(request, fetchImpl);
+  if (!session.user) {
+    if (session.reason === "suspended") return denied(403, "Account suspended");
+    return denied(401, "Authentication required");
   }
-  return NextResponse.json({ detail: "Authentication required" }, { status: 401 });
+  if (admin && session.user.role !== "admin") {
+    return denied(403, "Admin access required");
+  }
+  return { user: session.user, response: null };
 }

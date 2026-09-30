@@ -247,6 +247,15 @@ def _owned_or_admin(record: dict, user: dict) -> bool:
     return is_admin(user) or record.get("submitted_by_user_id") == user["id"]
 
 
+_ANNOTATION_ADMIN_FIELDS = ("job_id", "output_path")
+
+
+def _annotation_for_user(record: dict, user: dict) -> dict:
+    if is_admin(user):
+        return record
+    return {key: value for key, value in record.items() if key not in _ANNOTATION_ADMIN_FIELDS}
+
+
 class SubmissionsUnavailable(Exception):
     """Non-admin view of a missing worker fleet; must not reveal fleet state."""
 
@@ -1371,7 +1380,7 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         if annotation is None:
             raise HTTPException(status_code=404, detail="Annotation not found")
-        return redact_secrets_in(annotation)
+        return redact_secrets_in(_annotation_for_user(annotation, _user))
 
     @app.get(
         "/annotations/{annotation_id}/versions",
@@ -1384,7 +1393,8 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         if versions is None:
             raise HTTPException(status_code=404, detail="Annotation not found")
-        return {"annotation_id": annotation_id, "versions": redact_secrets_in(versions)}
+        visible = [_annotation_for_user(version, _user) for version in versions]
+        return {"annotation_id": annotation_id, "versions": redact_secrets_in(visible)}
 
     @app.post("/workers/register", response_model=WorkerRegisterResponse)
     def register_worker(request: WorkerRegister, authorization: str | None = Header(default=None)):

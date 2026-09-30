@@ -9,7 +9,7 @@ export const metadata = {
 
 export default function SignupPage() {
   return (
-    <AppShell>
+    <AppShell publicPage>
       <Suspense fallback={<p className="workbench-muted text-sm">Loading…</p>}>
         <SignupForm />
       </Suspense>

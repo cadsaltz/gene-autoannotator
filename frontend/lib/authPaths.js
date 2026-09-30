@@ -21,10 +21,6 @@ export function isProtectedPath(pathname) {
   );
 }
 
-export function isAdminPath(pathname) {
-  return matchesSection(pathname, "/fleet") || matchesSection(pathname, "/admin");
-}
-
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
 function isSafeRelativePath(value) {
@@ -47,4 +43,15 @@ export function sanitizeNextPath(next, fallback = "/jobs") {
   }
   if (!isSafeRelativePath(decoded)) return fallback;
   return next;
+}
+
+/** `/login` URL that returns to `nextPath` (pathname plus query) after sign-in. */
+export function loginPathFor(nextPath) {
+  return `/login?next=${encodeURIComponent(sanitizeNextPath(nextPath))}`;
+}
+
+/** Auth page link that carries a sanitized `next` forward when one was supplied. */
+export function authLinkWithNext(base, nextRaw) {
+  if (!nextRaw) return base;
+  return `${base}?next=${encodeURIComponent(sanitizeNextPath(nextRaw))}`;
 }

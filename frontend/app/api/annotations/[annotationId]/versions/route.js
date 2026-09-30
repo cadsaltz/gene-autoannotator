@@ -8,19 +8,21 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request, context) {
-  const unauthorized = await requireAnnotationSession(request);
-  if (unauthorized) return unauthorized;
+  const access = await requireAnnotationSession(request);
+  if (access.response) return access.response;
 
   const params = await context.params;
 
   try {
     const collection = await getAnnotationsCollection();
-    const versions = await getStoredAnnotationVersions(collection, params.annotationId);
+    const versions = await getStoredAnnotationVersions(collection, params.annotationId, {
+      includeJobDetails: access.user.role === "admin",
+    });
     if (versions === null) {
       return NextResponse.json({ detail: "Annotation not found" }, { status: 404 });
     }
     return NextResponse.json({ annotation_id: params.annotationId, versions });
-  } catch (error) {
-    return NextResponse.json({ detail: error.message }, { status: 503 });
+  } catch {
+    return NextResponse.json({ detail: "Annotation storage is unavailable" }, { status: 503 });
   }
 }

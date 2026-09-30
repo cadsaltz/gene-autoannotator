@@ -7,6 +7,7 @@ import {
   ANNOTATION_DATABASE_NAME,
   getAnnotationStorageHealth,
 } from "./annotationStore";
+import { redactConnectionStrings } from "./redact";
 
 const SERVER_SELECTION_TIMEOUT_MS = 1000;
 
@@ -65,7 +66,7 @@ export async function getNextAnnotationHealth() {
   } catch (error) {
     return {
       status: process.env.MONGO_URI || process.env.MONGODB_URI ? "unavailable" : "unconfigured",
-      message: error.message,
+      message: redactConnectionStrings(error.message),
       source: "next",
     };
   }

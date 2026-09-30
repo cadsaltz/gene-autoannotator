@@ -9,7 +9,7 @@ export const metadata = {
 
 export default function VerifyPage() {
   return (
-    <AppShell>
+    <AppShell publicPage>
       <Suspense
         fallback={
           <div className="workbench-card mx-auto max-w-md p-7 text-sm workbench-muted">

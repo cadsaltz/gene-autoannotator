@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { login, signup, verifyCode } from "../lib/authApi";
-import { sanitizeNextPath } from "../lib/authPaths";
+import { authLinkWithNext, sanitizeNextPath } from "../lib/authPaths";
+
+const SHOW_CONSOLE_EMAIL_HINT = process.env.NODE_ENV !== "production";
 
 function AuthCard({ title, kicker, children, footer }) {
   return (
@@ -75,7 +77,10 @@ export function SignupForm() {
       footer={
         <>
           Already have an account?{" "}
-          <Link href="/login" className="font-semibold underline">
+          <Link
+            href={authLinkWithNext("/login", searchParams.get("next"))}
+            className="font-semibold underline"
+          >
             Sign in
           </Link>
         </>
@@ -187,7 +192,10 @@ export function LoginForm() {
       footer={
         <>
           Need an account?{" "}
-          <Link href="/signup" className="font-semibold underline">
+          <Link
+            href={authLinkWithNext("/signup", searchParams.get("next"))}
+            className="font-semibold underline"
+          >
             Sign up
           </Link>
         </>
@@ -258,8 +266,14 @@ export function VerifyForm() {
             (<span className="font-semibold workbench-foreground">{email}</span>)
           </>
         ) : null}
-        . Check your inbox, or the backend logs when{" "}
-        <code className="font-mono text-xs">EMAIL_BACKEND=console</code>.
+        . Check your inbox
+        {SHOW_CONSOLE_EMAIL_HINT ? (
+          <>
+            , or the backend logs when{" "}
+            <code className="font-mono text-xs">EMAIL_BACKEND=console</code>
+          </>
+        ) : null}
+        .
       </p>
       <form
         className="grid gap-4"

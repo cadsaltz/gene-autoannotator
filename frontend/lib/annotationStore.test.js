@@ -89,7 +89,7 @@ test("searchStoredAnnotations returns no matches for blank queries", async () =>
   assert.deepEqual(await searchStoredAnnotations(collection, "   "), []);
 });
 
-test("getStoredAnnotation returns the current annotation detail", async () => {
+test("getStoredAnnotation includes job details only when requested", async () => {
   const collection = {
     async findOne(filter) {
       assert.deepEqual(filter, { _id: "mtb-h37rv:Rv0001" });
@@ -97,7 +97,9 @@ test("getStoredAnnotation returns the current annotation detail", async () => {
     },
   };
 
-  const annotation = await getStoredAnnotation(collection, "mtb-h37rv:Rv0001");
+  const annotation = await getStoredAnnotation(collection, "mtb-h37rv:Rv0001", {
+    includeJobDetails: true,
+  });
 
   assert.equal(annotation.id, "mtb-h37rv:Rv0001");
   assert.equal(annotation.job_id, "job-current");
@@ -105,7 +107,39 @@ test("getStoredAnnotation returns the current annotation detail", async () => {
   assert.equal(annotation.result.annotation.function, "Chromosomal replication initiator");
 });
 
-test("getStoredAnnotationVersions returns older versions only", async () => {
+test("getStoredAnnotation omits job details by default", async () => {
+  const collection = {
+    async findOne() {
+      return makeDocument();
+    },
+  };
+
+  const annotation = await getStoredAnnotation(collection, "mtb-h37rv:Rv0001");
+
+  assert.equal("job_id" in annotation, false);
+  assert.equal("output_path" in annotation, false);
+  assert.equal(annotation.result.annotation.function, "Chromosomal replication initiator");
+});
+
+test("getStoredAnnotation redacts api_key values in the result", async () => {
+  const collection = {
+    async findOne() {
+      return makeDocument({
+        current: {
+          job_id: "job-current",
+          output_path: "gen_json/gen_Rv0001.json",
+          result: { sources: ["https://eutils.test/efetch?id=1&api_key=secret123"] },
+        },
+      });
+    },
+  };
+
+  const annotation = await getStoredAnnotation(collection, "mtb-h37rv:Rv0001");
+
+  assert.deepEqual(annotation.result.sources, ["https://eutils.test/efetch?id=1&api_key=REDACTED"]);
+});
+
+test("getStoredAnnotationVersions returns older versions with job details when requested", async () => {
   const collection = {
     async findOne(filter, projection) {
       assert.deepEqual(filter, { _id: "mtb-h37rv:Rv0001" });
@@ -114,9 +148,39 @@ test("getStoredAnnotationVersions returns older versions only", async () => {
     },
   };
 
-  const versions = await getStoredAnnotationVersions(collection, "mtb-h37rv:Rv0001");
+  const versions = await getStoredAnnotationVersions(collection, "mtb-h37rv:Rv0001", {
+    includeJobDetails: true,
+  });
 
   assert.deepEqual(versions, makeDocument().versions);
+});
+
+test("getStoredAnnotationVersions strips job details and redacts secrets by default", async () => {
+  const collection = {
+    async findOne() {
+      return makeDocument({
+        versions: [
+          {
+            version_id: "version-1",
+            job_id: "job-older",
+            output_path: "gen_json/old.json",
+            generated_at: "2026-06-04T10:00:00Z",
+            result: { note: "api_key=secret456" },
+          },
+        ],
+      });
+    },
+  };
+
+  const versions = await getStoredAnnotationVersions(collection, "mtb-h37rv:Rv0001");
+
+  assert.deepEqual(versions, [
+    {
+      version_id: "version-1",
+      generated_at: "2026-06-04T10:00:00Z",
+      result: { note: "api_key=REDACTED" },
+    },
+  ]);
 });
 
 test("getAnnotationStorageHealth reports the Next server Mongo ping result", async () => {

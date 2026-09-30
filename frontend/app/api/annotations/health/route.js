@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request) {
-  const unauthorized = await requireAnnotationSession(request);
-  if (unauthorized) return unauthorized;
+  const access = await requireAnnotationSession(request, { admin: true });
+  if (access.response) return access.response;
 
   const health = await getNextAnnotationHealth();
   const status = health.status === "ok" ? 200 : 503;

@@ -1,3 +1,5 @@
+import { redactSecretsIn } from "./redact.js";
+
 export const ANNOTATION_DATABASE_NAME = "gene_autoannotator";
 export const ANNOTATION_COLLECTION_NAME = "annotations";
 
@@ -19,13 +21,26 @@ function publicSummary(document) {
   };
 }
 
-function publicDetail(document) {
-  return {
+const JOB_DETAIL_FIELDS = ["job_id", "output_path"];
+
+function withoutJobDetails(record) {
+  return Object.fromEntries(
+    Object.entries(record).filter(([key]) => !JOB_DETAIL_FIELDS.includes(key)),
+  );
+}
+
+function publicDetail(document, { includeJobDetails = false } = {}) {
+  const detail = {
     ...publicSummary(document),
     result: document.current.result,
     job_id: document.current.job_id,
     output_path: document.current.output_path,
   };
+  return redactSecretsIn(includeJobDetails ? detail : withoutJobDetails(detail));
+}
+
+function publicVersion(version, { includeJobDetails = false } = {}) {
+  return redactSecretsIn(includeJobDetails ? version : withoutJobDetails(version));
 }
 
 export async function searchStoredAnnotations(collection, query, limit = 20) {
@@ -47,15 +62,15 @@ export async function searchStoredAnnotations(collection, query, limit = 20) {
   return documents.map(publicSummary);
 }
 
-export async function getStoredAnnotation(collection, annotationId) {
+export async function getStoredAnnotation(collection, annotationId, options = {}) {
   const document = await collection.findOne({ _id: annotationId });
   if (document === null) {
     return null;
   }
-  return publicDetail(document);
+  return publicDetail(document, options);
 }
 
-export async function getStoredAnnotationVersions(collection, annotationId) {
+export async function getStoredAnnotationVersions(collection, annotationId, options = {}) {
   const document = await collection.findOne(
     { _id: annotationId },
     { projection: { versions: 1 } },
@@ -63,7 +78,7 @@ export async function getStoredAnnotationVersions(collection, annotationId) {
   if (document === null) {
     return null;
   }
-  return document.versions || [];
+  return (document.versions || []).map((version) => publicVersion(version, options));
 }
 
 export async function getAnnotationStorageHealth({ databaseName, ping }) {

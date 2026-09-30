@@ -268,7 +268,8 @@ function VersionHistory({
                   {option.gene_name || annotation.gene_name || annotation.normalized_locus}
                 </p>
                 <p className="workbench-muted mt-1">
-                  Generated {generated} · job {option.job_id || "Unknown"}
+                  Generated {generated}
+                  {option.job_id ? ` · job ${option.job_id}` : ""}
                 </p>
               </button>
             );
@@ -352,19 +353,29 @@ function AnnotationDetail({
         </p>
       ) : null}
 
-      <dl className="mt-6 grid overflow-hidden rounded-xl border workbench-border text-sm sm:grid-cols-3">
+      <dl
+        className={`mt-6 grid overflow-hidden rounded-xl border workbench-border text-sm ${
+          displayAnnotation.job_id ? "sm:grid-cols-3" : "sm:grid-cols-2"
+        }`}
+      >
         <div className="workbench-muted-bg border-b workbench-border p-4 sm:border-r sm:border-b-0">
           <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Generated</dt>
           <dd className="mt-1 text-[#3d463f]">{generated}</dd>
         </div>
-        <div className="workbench-muted-bg border-b workbench-border p-4 sm:border-r sm:border-b-0">
+        <div
+          className={`workbench-muted-bg p-4 ${
+            displayAnnotation.job_id ? "border-b workbench-border sm:border-r sm:border-b-0" : ""
+          }`}
+        >
           <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Versions</dt>
           <dd className="mt-1 text-[#3d463f]">{totalVersions}</dd>
         </div>
-        <div className="workbench-muted-bg p-4">
-          <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Job</dt>
-          <dd className="mt-1 break-all text-[#3d463f]">{displayAnnotation.job_id || "Unknown"}</dd>
-        </div>
+        {displayAnnotation.job_id ? (
+          <div className="workbench-muted-bg p-4">
+            <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Job</dt>
+            <dd className="mt-1 break-all text-[#3d463f]">{displayAnnotation.job_id}</dd>
+          </div>
+        ) : null}
       </dl>
 
       <VersionHistory

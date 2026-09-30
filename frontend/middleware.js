@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
-import { isProtectedPath } from "./lib/authPaths";
+import { isProtectedPath, loginPathFor } from "./lib/authPaths";
 
 export function middleware(request) {
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();
   }
   const session = request.cookies.get("ga_session");
   if (!session?.value) {
-    const login = new URL("/login", request.url);
-    login.searchParams.set("next", pathname);
-    return NextResponse.redirect(login);
+    return NextResponse.redirect(new URL(loginPathFor(`${pathname}${search}`), request.url));
   }
   return NextResponse.next();
 }
