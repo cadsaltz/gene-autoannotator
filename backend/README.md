@@ -192,6 +192,12 @@ full address. See [deploy/docs/data-inventory.md](../deploy/docs/data-inventory.
 Invalid backup and retention values fall back to the default with a logged
 warning.
 
+The production example (`deploy/compose/backend.prod.env.example`)
+intentionally differs from these code defaults: `ALERT_QUEUE_DEPTH=150`,
+`ALERT_NO_WORKER_MINUTES=30`, and hourly backups
+(`BACKUP_INTERVAL_SECONDS=3600`) keeping 48. `backend.env.example` uses the
+code defaults.
+
 Start the backend:
 
 ```bash
@@ -354,6 +360,37 @@ The preflight prints `OK NAME` or `MISSING NAME` (never values) for
 `CHANGE_ME` placeholder; fix `.env` before building. For the production
 stack's split files use `--role backend` / `--role frontend` (see
 `deploy/README.md`).
+
+### Upgrading the old stack in place (before cutover)
+
+When a running stack of this compose file is updated to `master` from a
+checkout that predates the production stack (details in
+[`deploy/README.md`](../deploy/README.md), "Upgrading the old stack in
+place"):
+
+- Run `deploy/scripts/preflight-env.sh` first. The frontend image no longer
+  bakes in `frontend/.env.local`, so the root `.env` needs `MONGO_URI` (or
+  `MONGODB_URI`). Run `build` before `up -d` so a failed arm64 build leaves
+  the old containers running.
+- Every browser request reaches the backend from the frontend container's
+  IP, and `TRUST_FORWARDED_FOR` must stay `0` because port 8000 is published.
+  Set `IP_SIGNUPS_PER_DAY=0`, `IP_LOGINS_PER_HOUR=0`, `IP_SUBMITS_PER_HOUR=0`,
+  and `IP_VALIDATIONS_PER_HOUR=0` until cutover; per-email sign-in code limits
+  still apply.
+- Backups start about 60 s after the backend starts if `MONGO_URI` is set
+  (every 6 hours, keeping 28; the Atlas free tier holds 512 MB). Check the
+  size of `jobs.sqlite3`, or set `BACKUP_INTERVAL_SECONDS=0` or a lower
+  `BACKUP_KEEP`. A read-only Mongo URI only logs authorization errors.
+- Admin alerts start (every 300 s; with `EMAIL_BACKEND=resend` admins get
+  real emails). For HPC-primary setups use `ALERT_NO_WORKER_MINUTES=30` or
+  more. Quotas apply to non-admins at once (`MAX_QUEUED_JOBS=200`,
+  `USER_MAX_ACTIVE_JOBS=20`, `USER_MAX_JOBS_PER_DAY=50`,
+  `USER_MAX_BATCH_SIZE=25`).
+- `/health` now requires an admin session; point uptime monitors and the
+  HPC's copy of `deploy/scripts/test-backend-reachability.sh` at `/healthz`.
+- Old and new workers work with either backend, but old workers ignore
+  cancellation and run a cancelled job to completion, so update the HPC
+  workers soon after.
 
 The backend image installs only `requirements-backend.txt`, pinned by
 `deploy/docker/constraints-backend.txt` (no torch, CUDA,

@@ -105,7 +105,7 @@ The backend needs MongoDB for restores and backups, so do this before step 4:
 
 ### 4a. Path A: cut over on the Pi
 
-Use a separate checkout of this branch on the Pi (as for staging), then follow
+Use a separate checkout of `master` on the Pi (as for staging), then follow
 deploy/README.md from "Env files and preflight" through "Production cutover
 from docker-compose.backend.yml". In short:
 
@@ -151,10 +151,13 @@ curl -fsS https://<domain>/healthz
    Run the `$DC` commands below with `sudo` too (or add your user to the
    `docker` group).
 
-2. Take the final backup on the Pi. This needs the Pi to run the new stack
-   with `MONGO_URI` (path A done, or at least the prod compose stack started
-   there); the old `docker-compose.backend.yml` stack has no backup command,
-   see the fallback below. Stop what writes first so nothing is lost:
+2. Take the final backup on the Pi. This needs a backend on the Pi built
+   from `master` with `MONGO_URI` set: the new stack (path A done, or at
+   least the prod compose stack started there), or the old
+   `docker-compose.backend.yml` stack upgraded in place (deploy/README.md,
+   "Upgrading the old stack in place"). An old stack still on pre-merge code
+   has no backup command; use the fallback below. Stop what writes first so
+   nothing is lost:
 
    ```bash
    # on the Pi, in the checkout the new stack runs from
@@ -162,6 +165,11 @@ curl -fsS https://<domain>/healthz
    $DC exec -u app backend python -m backend.manage backup # prints the snapshot id
    $DC stop backend
    ```
+
+   On the upgraded old stack the same steps are `$OLD stop frontend`,
+   `$OLD exec -u app backend python -m backend.manage backup`, and
+   `$OLD stop backend` (workers reach its port 8000 directly until the
+   backend stops).
 
    Keep backups off on anything else sharing the Atlas cluster (staging uses
    `BACKUP_INTERVAL_SECONDS=0`), or `--id latest` could pick its snapshot;

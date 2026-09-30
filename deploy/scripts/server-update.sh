@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Pull new images for the production stack and recreate only what changed.
 # Meant for cron every 5 minutes, e.g. in root's crontab:
-#   */5 * * * * /opt/gaa/repo/deploy/scripts/server-update.sh
+#   */5 * * * * /opt/gaa/deploy/scripts/server-update.sh
 # Does nothing unless the project's backend is already running, so it never
 # starts a stack that was stopped on purpose (before cutover, after a rollback).
 # A run that finds nothing new logs one line. Overlapping runs exit at once.

@@ -163,7 +163,10 @@ sudo docker login ghcr.io -u <github-user>   # paste the token as the password
 `sha-<7-char sha>` to pin a commit, or `previous` (see Updates).
 
 **Before the cutover the images must exist in GHCR**: push to `master`, wait
-for CI and then Images to finish, then `$DC pull`. Fallback without GHCR:
+for CI and then Images to finish, then `$DC pull`. Watch the first CI and
+Images runs after this branch is merged on the Actions tab: they are the
+first runs from the default branch, so package permissions, the arm64 QEMU
+build, and the cleanup jobs are exercised for the first time there. Fallback without GHCR:
 build on the Pi from the checkout you deploy, tagged the way the compose file
 expects (native arm64, no QEMU):
 
@@ -196,14 +199,65 @@ automatically. If a package already exists (e.g. pushed by hand), open
 `cadsaltz/gene-autoannotator`, and give it the **Admin** role (Write is
 enough to push; the cleanup jobs need Admin to delete versions).
 
+## Upgrading the old stack in place (before cutover)
+
+If the Pi keeps running `docker-compose.backend.yml` for a while after this
+branch is merged, updating its checkout to `master` and rebuilding changes
+more than the code. Before the first `git pull` there:
+
+1. Run the preflight on the root `.env`: `deploy/scripts/preflight-env.sh`.
+   The frontend image no longer bakes in `frontend/.env.local`, so the root
+   `.env` must now set `MONGO_URI` (or `MONGODB_URI`) for the frontend's
+   annotation routes too, plus `WORKER_API_TOKEN`,
+   `REQUIRE_WORKER_API_TOKEN=1`, `SESSION_COOKIE_SECURE`, and `EMAIL_BACKEND`.
+2. Build before recreating, so a failed arm64 build leaves the old containers
+   serving:
+
+   ```bash
+   OLD="docker compose -f deploy/compose/docker-compose.backend.yml"
+   $OLD build && $OLD up -d
+   ```
+
+3. Turn the per-IP limits off until cutover. On this stack every browser
+   request reaches the backend from the frontend container's IP, and
+   `TRUST_FORWARDED_FOR` must stay `0` because port 8000 is published, so all
+   users would share one bucket. In `.env`:
+
+   ```bash
+   IP_SIGNUPS_PER_DAY=0
+   IP_LOGINS_PER_HOUR=0
+   IP_SUBMITS_PER_HOUR=0
+   IP_VALIDATIONS_PER_HOUR=0
+   ```
+
+   Per-email sign-in code limits (`OTP_SENDS_PER_EMAIL_PER_HOUR`) still apply.
+4. Backups start on their own about 60 s after the backend starts if
+   `MONGO_URI` is set: every 6 hours, keeping 28 snapshots in GridFS. The
+   Atlas free tier holds 512 MB, so check the size of `jobs.sqlite3` first
+   (`$OLD exec -u app backend ls -l backend/jobs.sqlite3`), then lower
+   `BACKUP_KEEP` or set `BACKUP_INTERVAL_SECONDS=0`. With a read-only Mongo
+   URI the backup only logs authorization errors.
+5. Admin alerts start too (checked every 300 s; with `EMAIL_BACKEND=resend`
+   admins get real emails). For an HPC-primary setup, where queued jobs wait
+   for the dispatcher, set `ALERT_NO_WORKER_MINUTES=30` or more.
+6. Quotas apply to non-admins at once. Code defaults: `MAX_QUEUED_JOBS=200`,
+   `USER_MAX_ACTIVE_JOBS=20`, `USER_MAX_JOBS_PER_DAY=50`,
+   `USER_MAX_BATCH_SIZE=25`, `OTP_SENDS_PER_EMAIL_PER_HOUR=5`. Admins can
+   override them per user on /admin/users.
+7. `/health` now requires an admin session. Point uptime monitors, and the
+   HPC's copy of `deploy/scripts/test-backend-reachability.sh`, at `/healthz`.
+8. HPC rollout: old and new workers work with either backend, but old workers
+   ignore cancellation and run a cancelled job to completion. Update the HPC
+   checkout and worker image (see "HPC updates") soon after.
+
 ## Staging on the Pi (no domain, old stack keeps running)
 
 The running `docker-compose.backend.yml` stack keeps ports 3000 and 8000 and
 its volumes. Staging is a separate project (`gaa-staging`) with its own
 containers and volumes, and Caddy on host ports 8080/8443.
 
-1. Use a separate checkout of this branch so the running stack's checkout is
-   untouched, e.g. `git clone <repo> ~/gaa-next && cd ~/gaa-next && git checkout feat/go-public-d-g`.
+1. Use a separate checkout of `master` so the running stack's checkout is
+   untouched, e.g. `git clone <repo> ~/gaa-next && cd ~/gaa-next && git checkout master`.
 2. Build arm64 images locally (until CI publishes them). The old containers
    keep serving meanwhile:
 
