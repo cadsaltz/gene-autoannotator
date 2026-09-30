@@ -52,7 +52,10 @@ remain local JSON files. See
 for the cloud frontend/backend, MongoDB, SCRI dispatcher, optional laptop, and
 rollback deployment path. The production Compose stack (Caddy, split env
 files, staging, migration from the Pi stack, update cron) is documented in
-[`deploy/README.md`](deploy/README.md).
+[`deploy/README.md`](deploy/README.md). Runbooks:
+[launch day](deploy/docs/launch-runbook.md) (with the deployment smoke test,
+`scripts/smoke_test.py`), [data inventory, retention, and
+secrets](deploy/docs/data-inventory.md), and [abuse](deploy/docs/abuse-runbook.md).
 
 ## Dependencies
 

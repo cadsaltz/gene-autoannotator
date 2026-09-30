@@ -19,7 +19,10 @@ shared `.env`) stays for LAN/dev use and is what the Raspberry Pi runs today.
 | `scripts/migrate-to-prod-compose.sh` | Copies the old stack's database and profiles into the new volumes |
 | `scripts/server-update.sh` | Cron: pull images, recreate what changed, prune dangling images |
 | `scripts/test-compose-config.sh` | `docker compose config` + `caddy validate` on the examples |
+| `docs/launch-runbook.md` | Launch day: DNS, Resend, Atlas, cutover or new server, redaction, smoke checklist |
+| `docs/data-inventory.md` | What is stored where, who sees it, retention, account deletion, secrets and rotation |
 | `docs/abuse-runbook.md` | Floods, suspensions, limits, token rotation |
+| `../scripts/smoke_test.py` | End-to-end smoke test against any deployment (see the launch runbook) |
 
 The real env files (`deploy/compose/*.env`) are gitignored. Every command
 below passes `-p`: the old stack runs as compose project `compose` (the
@@ -256,7 +259,9 @@ containers and volumes, and Caddy on host ports 8080/8443.
    ```
 
    Open `http://<pi-lan-ip>:8080`, sign in as the bootstrap admin and as a
-   second email, and walk the smoke checklist in the launch runbook. Browsers
+   second email, and walk the smoke checklist in the
+   [launch runbook](docs/launch-runbook.md) (`scripts/smoke_test.py` automates
+   most of it; the runbook has the staging command). Browsers
    share cookies across ports of one host, so use a private window if you are
    also signed in to the old UI on port 3000. Jobs only run if a worker uses
    `BACKEND_URL=http://<pi-lan-ip>:8080`; the HPC dispatcher still points at
