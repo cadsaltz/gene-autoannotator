@@ -62,9 +62,11 @@ Undo with `set-status EMAIL active` (cancelled jobs stay cancelled).
 - **Individual jobs**: **/jobs** as an admin shows every user's jobs with the
   submitter's email and a **Cancel** button (audited as `job_cancel`). It
   lists only the newest 100 jobs.
-- **Delete the account**: **Delete** on /admin/users revokes sessions and
-  cancels the user's queued jobs (not running ones). It cannot be undone and
-  frees the email to sign up again, so prefer suspend.
+- **Delete the account**: **Delete** on /admin/users revokes sessions,
+  cancels the user's queued and running jobs, and detaches their jobs from the
+  account (the jobs stay, without a submitter). The `user_delete` audit event
+  keeps only a masked email. It cannot be undone and frees the email to sign
+  up again (with no rate-limit history), so prefer suspend.
 
 ## 5. Tighten limits
 

@@ -43,9 +43,10 @@ Related: [data inventory, retention, and secrets](data-inventory.md),
    `backend/api.py` together (currently `draft-2026-09`), or set
    `TERMS_VERSION` in `backend.env` to the same value.
 2. **Retention.** Choose `JOB_RETENTION_DAYS` (the prod example keeps jobs
-   forever) and decide on the open gaps listed in
-   [data-inventory.md](data-inventory.md#open-retention-gaps); the Privacy
-   Policy must match.
+   forever) and `AUDIT_RETENTION_DAYS` (default 365), and decide on the open
+   gaps listed in [data-inventory.md](data-inventory.md#open-retention-gaps);
+   the Privacy Policy must match its "Retention" and "Account deletion"
+   sections.
 3. **Images.** Decide GHCR visibility (deploy/README.md, "GHCR visibility and
    cost"); public packages need no `docker login` on the host and no
    `apptainer registry login` on the HPC. Then make sure the first images
@@ -277,9 +278,9 @@ tokens, or cookies.
 On production the simulated worker only claims when its job is the only
 queued one, and it **fails** the job rather than completing it, because a
 completed job writes a fake annotation into the shared library
-(`--complete-with-fake-result` is for deployments without MongoDB). The two
-deleted accounts leave their job rows and audit events behind (see
-data-inventory.md, "Account deletion"). Each run uses up to three of the
+(`--complete-with-fake-result` is for deployments without MongoDB). The smoke
+jobs stay as anonymized rows (no submitter) and the audit events stay until
+`AUDIT_RETENTION_DAYS` (see data-inventory.md, "Account deletion"). Each run uses up to three of the
 day's `IP_SIGNUPS_PER_DAY` sign-ups from your IP (two with `--admin-login`).
 
 Then by hand in a browser:

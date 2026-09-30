@@ -12,8 +12,10 @@ Standard library only; run it from any machine that reaches the site.
 
 It creates real accounts, so it refuses to run without
 ``--i-understand-this-creates-accounts``. Test accounts are ``+smoke``
-aliases of the admin address and are deleted at the end; smoke jobs are
-cancelled. The admin account is only signed in (and signed out at the end).
+aliases of the admin address and are deleted at the end (checking that the
+deletion anonymizes their jobs and masks the email in the audit log); smoke
+jobs are cancelled. The admin account is only signed in (and signed out at
+the end).
 Sign-in codes, the worker token, and session cookies are never printed.
 
 The simulated worker only claims when the smoke job is the only queued job,
@@ -646,6 +648,24 @@ class Smoke:
                 "(behind Caddy this should be your public IP, not a private/Docker address)"
             )
 
+    def deletion_checks(self, user_id, email):
+        response = self.admin.call("GET", f"/admin/audit?action=user_delete&user_id={user_id}")
+        events = (response.json() or {}).get("events") or []
+        stored = events[0].get("details", {}).get("email") if events else None
+        self.check(
+            "user_delete audit event keeps only a masked email",
+            bool(stored) and "***" in stored and stored != email,
+            "no user_delete event" if not events else "email is not masked",
+        )
+        if user_id != (self.user.user or {}).get("id"):
+            return
+        owned = []
+        for job_id in filter(None, self.job_ids):
+            status, record = self.job_status(self.admin, job_id)
+            if status == 200 and (record.get("submitted_by_user_id") or record.get("submitted_by_email")):
+                owned.append(job_id[:8])
+        self.check("deleted user's jobs have no submitter", not owned, f"still linked: {owned}")
+
     def cleanup(self):
         print("---- cleanup", flush=True)
         for job_id in self.job_ids:
@@ -664,6 +684,8 @@ class Smoke:
             response = self.admin.call("DELETE", f"/admin/users/{session.user['id']}")
             self.expect(f"admin deletes {email}", response, 200)
             self.expect(f"deleted account's session no longer works ({session.label})", session.call("GET", "/auth/me"), 401)
+            if response.status == 200:
+                self.deletion_checks(session.user["id"], email)
         if self.admin.cookie:
             self.admin.call("POST", "/auth/logout")
             self.expect("admin signs out", self.admin.call("GET", "/auth/me"), 401)

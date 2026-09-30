@@ -174,6 +174,20 @@ Environment variables:
   on disk referenced by a job's `output_path` and annotation history in MongoDB
   are left in place. Each purge that deletes something records a `jobs_purged`
   audit event (no actor, `"source": "system"`) with the counts.
+- `AUDIT_RETENTION_DAYS` (default `365`; `0` keeps the audit log forever;
+  capped at `36500`): the same daily run deletes audit events older than this.
+  It also always deletes sessions that expired, and sign-in codes used or
+  expired, more than a day ago, and rate-limit rows older than two days. When
+  anything is deleted it records one `personal_data_pruned` audit event with
+  the counts. The daily run starts about a minute after the backend and does
+  not need MongoDB.
+
+Deleting an account (`DELETE /admin/users/{id}`) removes the user, their
+sessions, sign-in codes, and email-keyed rate-limit rows, cancels their queued
+and running jobs, and sets `submitted_by_user_id` to NULL on their jobs and
+batches (the rows stay for the shared history and the retention purge). The
+`user_delete` audit event stores a masked email (`s***@gmail.com`), never the
+full address. See [deploy/docs/data-inventory.md](../deploy/docs/data-inventory.md).
 
 Invalid backup and retention values fall back to the default with a logged
 warning.

@@ -31,21 +31,30 @@ The frontend stores nothing server-side and uses no `localStorage`.
 | Table | Fields | Written when | Removed when |
 |-------|--------|--------------|--------------|
 | `users` | `id`, `email`, `username` (optional, from the sign-up form), `email_verified`, `role`, `status`, `quota_max_active`, `quota_max_per_day`, `quota_max_batch`, `terms_version`, `terms_accepted_at`, `last_login_at`, `created_at` | Sign-up (the row exists before the code is verified) | Admin deletes the account |
-| `sessions` | `id`, `user_id`, `token_hash` (SHA-256 of the cookie value), `ip` (client IP at sign-in), `created_at`, `last_seen_at`, `expires_at` (90 days, sliding) | Code verified | Sign-out, admin revoke, suspension, account deletion. **Expired rows are not purged.** |
-| `login_codes` | `id`, `email`, `purpose` (`signup`/`login`), `code_hash` (SHA-256 of the 6-digit code), `expires_at` (10 minutes), `used_at`, `attempt_count`, `created_at` | Each code sent | Account deletion only. **Used and expired codes are not purged.** |
-| `annotation_jobs` | `request_json` (profile, organism, strain, locus, gene name, target preflight, profile snapshot), `result_json`, `error`, status and progress fields, `worker_id`, `submitted_by_user_id`, `output_path` (path on the worker), timestamps | Submission; updated by workers | `JOB_RETENTION_DAYS` purge (finished jobs only), or an admin's `DELETE /jobs/history` (all finished jobs) |
-| `annotation_batches` | Options, input summary (the submitted gene list after parsing), `submitted_by_user_id`, `created_at` | Batch submission | Retention purge once older than the cutoff and without jobs |
-| `audit_events` | `action`, `actor_user_id`, `target_type`, `target_id`, `ip`, `details_json`, `created_at` | See below | **Never** (no pruning) |
-| `rate_events` | `bucket`, `key` (client IP, or the lower-cased email for `otp_send`), `created_at` | Each sign-up, sign-in request, code sent, and non-admin submission | On the next event in the same bucket once older than 2 days |
+| `sessions` | `id`, `user_id`, `token_hash` (SHA-256 of the cookie value), `ip` (client IP at sign-in), `created_at`, `last_seen_at`, `expires_at` (90 days, sliding) | Code verified | Sign-out, admin revoke, suspension, account deletion; the daily purge deletes rows that expired more than 1 day ago |
+| `login_codes` | `id`, `email`, `purpose` (`signup`/`login`), `code_hash` (SHA-256 of the 6-digit code), `expires_at` (10 minutes), `used_at`, `attempt_count`, `created_at` | Each code sent | Account deletion; the daily purge deletes codes used or expired more than 1 day ago |
+| `annotation_jobs` | `request_json` (profile, organism, strain, locus, gene name, target preflight, profile snapshot), `result_json`, `error`, status and progress fields, `worker_id`, `submitted_by_user_id`, `output_path` (path on the worker), timestamps | Submission; updated by workers | `JOB_RETENTION_DAYS` purge (finished jobs only), or an admin's `DELETE /jobs/history` (all finished jobs). Account deletion sets `submitted_by_user_id` to NULL |
+| `annotation_batches` | Options, input summary (the submitted gene list after parsing), `submitted_by_user_id`, `created_at` | Batch submission | Retention purge once older than the cutoff and without jobs. Account deletion sets `submitted_by_user_id` to NULL |
+| `audit_events` | `action`, `actor_user_id`, `target_type`, `target_id`, `ip`, `details_json`, `created_at` | See below | Daily purge of events older than `AUDIT_RETENTION_DAYS` (default 365) |
+| `rate_events` | `bucket`, `key` (client IP, or the lower-cased email for `otp_send`), `created_at` | Each sign-up, sign-in request, code sent, and non-admin submission | Daily purge of rows older than 2 days (also pruned per bucket on each new event); account deletion removes rows keyed by the email |
 | `workers` | Worker name, hostname, agent version, memory, slots, state, Ollama models, heartbeats | Worker registration | Worker deregisters (HPC workers do on exit) |
 
 Audit actions: `signup` (details: `terms_version`), `login_code_sent`,
 `login`, `logout`, `job_submit`, `batch_submit`, `job_cancel`,
 `profile_create`, `profile_update`, `profile_delete`, `role_change`,
 `status_change`, `quota_change`, `sessions_revoked`, `jobs_cancelled` (CLI),
-`user_delete` (details include the deleted **email**), `jobs_purged`,
-`backup_created`, `backup_restored`. The `ip` column is the client IP
-(`TRUST_FORWARDED_FOR=1` behind Caddy); CLI and system events have none.
+`user_delete` (details: masked email such as `s***@gmail.com`, first
+character of the local part plus the domain; `cancelled_jobs`,
+`anonymized_jobs`, `anonymized_batches`, `sessions_revoked`), `jobs_purged`,
+`personal_data_pruned` (counts of deleted sessions, sign-in codes, rate-limit
+rows, and audit events), `backup_created`, `backup_restored`. The `ip` column
+is the client IP (`TRUST_FORWARDED_FOR=1` behind Caddy); CLI and system events
+have none. The backend masks any plain email left in older `user_delete`
+events when it starts.
+
+The email is masked rather than hashed: a masked address cannot be reversed
+or confirmed by guessing (a salted hash could be, by anyone holding the salt),
+and it still lets an admin match a deletion request by eye.
 
 ### MongoDB
 
@@ -94,7 +103,7 @@ Audit actions: `signup` (details: `terms_version`), `login_code_sent`,
 |-----|---------|
 | Anyone | Homepage, `/legal/*`, `robots.txt` |
 | Signed-in user | Own account (`/auth/me`), own jobs, batches, and results, queue position and own quota usage, the whole annotation library (every completed gene, from anyone's job, without submitter), organism profiles |
-| Admin | Everything above for all users, plus every account (email, role, status, quotas, last sign-in, job counts), submitter email on every job, the audit log with client IPs, workers and health, quota settings |
+| Admin | Everything above for all users, plus every account (email, role, status, quotas, last sign-in, job counts), submitter email on every job (none for jobs of deleted accounts), the audit log with client IPs, workers and health, quota settings |
 | Operator with server access | Everything in SQLite, env files (secrets), container logs; with the backend's Mongo user also backups |
 | Holder of the frontend's Mongo user | Whatever its Atlas role allows; with the built-in `read` role on `gene_autoannotator` that includes the backups (see Secrets) |
 | HPC account holders | Job requests and outputs on the shared filesystem, worker logs |
@@ -107,20 +116,25 @@ find which genes have been annotated (not by whom).
 | Data | Kept for | Set by |
 |------|----------|--------|
 | Account (`users`) | Until an admin deletes it | Manual |
-| Sessions | 90 days after last use for sign-in; rows stay until sign-out, revoke, suspension, or deletion | `SESSION_TTL_SECONDS` in `backend/auth.py` |
-| Sign-in codes | Valid 10 minutes; rows stay until the account is deleted | `OTP_TTL_SECONDS` |
+| Sessions | 90 days after last use for sign-in; the row is deleted on sign-out, revoke, suspension, or account deletion, otherwise by the daily purge 1 day after it expires | `SESSION_TTL_SECONDS` in `backend/auth.py`; grace `EXPIRED_AUTH_GRACE` in `backend/backup.py` |
+| Sign-in codes | Valid 10 minutes; deleted by the daily purge 1 day after use or expiry, or on account deletion | `OTP_TTL_SECONDS`; `EXPIRED_AUTH_GRACE` |
 | Finished jobs and empty batches | `JOB_RETENTION_DAYS` after they finished (checked daily); `0` (the default and the prod example) keeps them forever | `JOB_RETENTION_DAYS` |
 | Queued/running jobs | Until they finish | |
-| Audit log | Forever | No setting |
-| Rate-limit events | About 2 days | `PRUNE_AFTER` in `backend/rate_limits.py` |
+| Audit log (including IPs) | `AUDIT_RETENTION_DAYS` (default and prod example 365; checked daily); `0` keeps it forever | `AUDIT_RETENTION_DAYS` |
+| Rate-limit events | About 2 days (daily purge) | `PRUNE_AFTER` in `backend/rate_limits.py` |
 | Annotation library | Forever, including earlier versions; not touched by `JOB_RETENTION_DAYS` | No setting |
 | Backups | Newest `BACKUP_KEEP` snapshots, one every `BACKUP_INTERVAL_SECONDS` (prod example: 48 hourly = 2 days; code defaults: 28 × 6 h = 7 days) | `BACKUP_KEEP`, `BACKUP_INTERVAL_SECONDS` |
 | Container logs | 50 MB per container, rotated by size | `x-logging` in the compose file |
 | Resend logs | Resend's retention | Resend |
 
-Before launch, pick a `JOB_RETENTION_DAYS` value and state it in the Privacy
-Policy (the purge removes SQLite rows only; result files on HPC and the
-annotation library stay).
+The daily purge runs in the backend about a minute after start and then every
+24 hours, whether or not MongoDB is configured. It records a
+`personal_data_pruned` (and, for jobs, `jobs_purged`) audit event only when it
+deleted something.
+
+Before launch, pick `JOB_RETENTION_DAYS` and `AUDIT_RETENTION_DAYS` values and
+state them in the Privacy Policy (the purges remove SQLite rows only; result
+files on HPC, the annotation library, and existing backups stay).
 
 ## Account deletion
 
@@ -128,32 +142,38 @@ annotation library stay).
 2. An admin opens **/admin/users**, finds the email, and clicks **Delete**
    (`DELETE /admin/users/{id}`; there is no CLI command). The last admin cannot
    be deleted.
-3. Immediately removed from SQLite: the `users` row, all `sessions`, and all
-   `login_codes` for the email. Queued jobs are cancelled; running jobs keep
-   running and finish normally.
-4. Left in SQLite: the user's job and batch rows (with the now-dangling
-   `submitted_by_user_id`) until the retention purge; audit events with the
-   user's id and IPs (never purged), plus a `user_delete` event that records
-   the email; `rate_events` keyed by the email for up to about 2 days.
-5. Backups: snapshots taken before the deletion still contain the account.
+3. Immediately removed from SQLite: the `users` row, all `sessions`, all
+   `login_codes` for the email, and the `rate_events` keyed by the email. The
+   user's queued and running jobs are cancelled (a worker running one stops at
+   its next progress report).
+4. Anonymized: every job and batch row of the user keeps its content (gene
+   requests and results, which belong to the shared library) but its
+   `submitted_by_user_id` is set to NULL, so nothing links it to the account
+   and only admins can list it (without a submitter). A new account with the
+   same email gets a new id and does not see the old jobs. The rows are
+   removed later by the `JOB_RETENTION_DAYS` purge like any other.
+5. Audit log: events keep the deleted user's id (now linked to no email) and
+   their IPs until `AUDIT_RETENTION_DAYS` removes them. The `user_delete`
+   event stores only the masked email.
+6. Backups: snapshots taken before the deletion still contain the account.
    They age out after `BACKUP_KEEP` further snapshots, i.e. `BACKUP_KEEP` ×
-   `BACKUP_INTERVAL_SECONDS` (2 days with the prod example).
-6. Annotation library: unaffected (it holds no user identity).
-7. Resend keeps its delivery logs per its retention.
-
-The Privacy Policy must describe steps 4 to 7 honestly, or the gaps must be
-closed first (see "Open retention gaps").
+   `BACKUP_INTERVAL_SECONDS` (2 days with the prod example). Restoring an
+   older snapshot brings the account back: delete it again after a restore.
+7. Annotation library: unaffected. Its documents hold the job id, gene, and
+   result, with no user id or email.
+8. Resend keeps its delivery logs per its retention; container logs rotate by
+   size (see Logs).
 
 ## Open retention gaps
 
-Decisions for the owner before the Privacy Policy is final; none of these is
-automated today:
+Decisions for the owner before the Privacy Policy is final:
 
-- The audit log (IPs, and the email in `user_delete`) is kept forever.
-- Expired sessions (with their IPs) and used or expired sign-in codes are
-  never purged.
-- Deleting an account keeps its jobs and audit events.
-- `JOB_RETENTION_DAYS=0` keeps finished jobs forever.
+- `JOB_RETENTION_DAYS=0` (default and prod example) keeps finished jobs
+  forever; anonymized jobs of deleted accounts included.
+- Accounts that signed up but never verified a code stay until an admin
+  deletes them.
+- Container logs (IPs, URLs with email fragments in admin searches) are kept
+  until rotated by size, not by age.
 - The frontend's Mongo user can read backups unless it gets the narrow custom
   role described below.
 
