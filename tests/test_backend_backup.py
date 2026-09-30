@@ -759,10 +759,19 @@ def test_app_lifespan_runs_backups_after_delay(tmp_path, monkeypatch, env_grid):
     assert not loop.is_alive()
 
 
-def test_app_retention_loop_disabled_by_default(tmp_path):
-    client = make_client(tmp_path)
+def test_app_retention_loop_keeps_jobs_by_default(tmp_path, monkeypatch):
+    monkeypatch.setattr(backup, "FIRST_RUN_DELAY_SECONDS", 0.01)
+    db_path = tmp_path / "jobs.sqlite3"
+    store = JobStore(db_path)
+    audit = AuditStore(db_path)
+    job_id = store.create_job({})["id"]
+    _set_finished(db_path, job_id, "completed", "2000-01-01T00:00:00+00:00")
+    client = make_client(tmp_path, job_store=store, audit_store=audit)
     with TestClient(client.app):
-        assert client.app.state.retention_loop is None
+        assert client.app.state.retention_loop.is_alive()
+        time.sleep(0.2)
+    assert store.get_job(job_id) is not None
+    assert audit.list(action="jobs_purged") == []
 
 
 def test_app_retention_loop_purges_when_enabled(tmp_path, monkeypatch):

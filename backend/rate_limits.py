@@ -47,6 +47,19 @@ class RateLimiter:
                 "ON rate_events (bucket, key, created_at)"
             )
 
+    def _delete(self, where: str, params) -> int:
+        connection = self._connect()
+        try:
+            return connection.execute(f"DELETE FROM rate_events WHERE {where}", params).rowcount
+        finally:
+            connection.close()
+
+    def forget_key(self, key: str) -> int:
+        return self._delete("key = ?", (key,))
+
+    def purge_before(self, cutoff: str) -> int:
+        return self._delete("created_at < ?", (cutoff,))
+
     @staticmethod
     def _count(connection, bucket, key, window_start) -> int:
         (count,) = connection.execute(

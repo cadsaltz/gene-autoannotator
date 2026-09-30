@@ -11,6 +11,14 @@ DEFAULT_LIST_LIMIT = 200
 MAX_LIST_LIMIT = 1000
 
 
+def mask_email(email: str) -> str:
+    """Keep the first character and the domain, e.g. ``s***@gmail.com``."""
+    local, at, domain = (email or "").strip().lower().partition("@")
+    if not at or not local or not domain:
+        return "***"
+    return f"{local[0]}***@{domain}"
+
+
 class AuditStore:
     def __init__(self, db_path):
         self.db_path = Path(db_path)
@@ -46,6 +54,34 @@ class AuditStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events (action)"
             )
+            self._mask_deleted_user_emails(connection)
+
+    @staticmethod
+    def _mask_deleted_user_emails(connection):
+        rows = connection.execute(
+            "SELECT id, details_json FROM audit_events "
+            "WHERE action = 'user_delete' AND details_json LIKE '%\"email\"%'"
+        ).fetchall()
+        for event_id, details_json in rows:
+            try:
+                details = json.loads(details_json)
+            except (TypeError, ValueError):
+                continue
+            email = details.get("email") if isinstance(details, dict) else None
+            if not isinstance(email, str) or "***" in email:
+                continue
+            details["email"] = mask_email(email)
+            connection.execute(
+                "UPDATE audit_events SET details_json = ? WHERE id = ?",
+                (json.dumps(details), event_id),
+            )
+
+    def purge_before(self, cutoff: str) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM audit_events WHERE created_at < ?", (cutoff,)
+            )
+        return cursor.rowcount
 
     def record(
         self,

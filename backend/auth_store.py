@@ -268,6 +268,17 @@ class AuthStore:
             )
         return cursor.rowcount
 
+    def purge_expired(self, cutoff: str) -> dict:
+        """Delete sessions that expired, and sign-in codes used or expired, before `cutoff`."""
+        with self._connect() as connection:
+            sessions = connection.execute(
+                "DELETE FROM sessions WHERE expires_at < ?", (cutoff,)
+            ).rowcount
+            login_codes = connection.execute(
+                "DELETE FROM login_codes WHERE expires_at < ? OR used_at < ?", (cutoff, cutoff)
+            ).rowcount
+        return {"sessions": sessions, "login_codes": login_codes}
+
     def delete_user(self, user_id: str) -> bool:
         user = self.get_user(user_id)
         if user is None:

@@ -17,7 +17,7 @@ from autoannotation.batch_parse import BatchParseError
 from .access import is_admin
 from .alerts import AlertConfig, AlertLoop
 from .annotation_store import AnnotationStoreUnavailable, annotation_store_from_env
-from .audit_store import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, AuditStore
+from .audit_store import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, AuditStore, mask_email
 from .backup import BackupConfig, backup_task, retention_task
 from .auth import (
     OTP_TTL_SECONDS,
@@ -453,10 +453,10 @@ def create_app(
             log.info("Control-plane backups disabled (MONGO_URI is not set)")
         app.state.backup_loop = backup_loop
 
-        retention_loop = None
-        if backup_config.retention_enabled:
-            retention_loop = retention_task(config=backup_config, store=store, audit=audit)
-            retention_loop.start()
+        retention_loop = retention_task(
+            config=backup_config, store=store, auth=auth, limiter=limiter, audit=audit
+        )
+        retention_loop.start()
         app.state.retention_loop = retention_loop
 
         _maybe_run_jobs_inline()
@@ -1616,17 +1616,22 @@ def create_app(
             _guard_last_admin(target, None)
             revoked = auth.revoke_sessions(user_id)
             cancelled = None
+            anonymized = {"jobs": None, "batches": None}
             with submission_lock:
                 auth.delete_user(user_id)
                 try:
-                    cancelled = store.cancel_queued_for_user(user_id)
+                    limiter.forget_key(target["email"].strip().lower())
+                    cancelled = store.cancel_active_for_user(user_id)
+                    anonymized = store.anonymize_user(user_id)
                 finally:
                     _audit(
                         request, "user_delete", _user["id"],
                         target_type="user", target_id=user_id,
                         details={
-                            "email": target["email"],
+                            "email": mask_email(target["email"]),
                             "cancelled_jobs": cancelled,
+                            "anonymized_jobs": anonymized["jobs"],
+                            "anonymized_batches": anonymized["batches"],
                             "sessions_revoked": revoked,
                         },
                     )

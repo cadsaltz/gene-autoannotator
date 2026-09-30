@@ -1,4 +1,4 @@
-"""Control-plane backups to MongoDB GridFS, restore, and job retention.
+"""Control-plane backups to MongoDB GridFS, restore, and retention purges.
 
 A snapshot is a gzip tarball with a consistent copy of the control-plane SQLite
 database (users, sessions, sign-in codes, jobs, batches, workers, audit log,
@@ -21,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 
 from .annotation_store import MONGO_DATABASE_NAME, mongo_uri_from_env
+from .rate_limits import PRUNE_AFTER
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +32,8 @@ DEFAULT_INTERVAL_SECONDS = 21600
 MAX_INTERVAL_SECONDS = 7 * 86400
 DEFAULT_KEEP = 28
 DEFAULT_RETENTION_DAYS = 0
+DEFAULT_AUDIT_RETENTION_DAYS = 365
+EXPIRED_AUTH_GRACE = timedelta(days=1)
 RETENTION_INTERVAL_SECONDS = 86400
 FIRST_RUN_DELAY_SECONDS = 60
 MONGO_SERVER_SELECTION_TIMEOUT_MS = 10000
@@ -70,6 +73,7 @@ class BackupConfig:
     interval_seconds: float = DEFAULT_INTERVAL_SECONDS
     keep: int = DEFAULT_KEEP
     retention_days: float = DEFAULT_RETENTION_DAYS
+    audit_retention_days: float = DEFAULT_AUDIT_RETENTION_DAYS
     mongo_configured: bool = False
 
     @classmethod
@@ -87,6 +91,10 @@ class BackupConfig:
             keep=keep,
             retention_days=min(
                 _env_number("JOB_RETENTION_DAYS", DEFAULT_RETENTION_DAYS), MAX_RETENTION_DAYS
+            ),
+            audit_retention_days=min(
+                _env_number("AUDIT_RETENTION_DAYS", DEFAULT_AUDIT_RETENTION_DAYS),
+                MAX_RETENTION_DAYS,
             ),
             mongo_configured=bool(mongo_uri_from_env()),
         )
@@ -441,6 +449,43 @@ def run_retention_purge(*, store, audit, days, now=None) -> dict:
     return counts
 
 
+def run_privacy_purge(*, auth, limiter, audit, audit_days, now=None) -> dict:
+    """Delete expired sessions, old sign-in codes and rate-limit rows, and old audit events."""
+    now = now or _now()
+    counts = {
+        **auth.purge_expired((now - EXPIRED_AUTH_GRACE).isoformat()),
+        "rate_events": limiter.purge_before((now - PRUNE_AFTER).isoformat()),
+        "audit_events": 0,
+    }
+    if audit_days > 0:
+        counts["audit_events"] = audit.purge_before((now - timedelta(days=audit_days)).isoformat())
+    if any(counts.values()):
+        audit.record(
+            action="personal_data_pruned",
+            actor_user_id=None,
+            details={**counts, "audit_retention_days": audit_days, "source": "system"},
+        )
+        log.info("Pruned personal data: %s", counts)
+    return counts
+
+
+def run_daily_retention(*, config: BackupConfig, store, auth, limiter, audit) -> None:
+    steps = [
+        lambda: run_privacy_purge(
+            auth=auth, limiter=limiter, audit=audit, audit_days=config.audit_retention_days
+        )
+    ]
+    if config.retention_enabled:
+        steps.append(
+            lambda: run_retention_purge(store=store, audit=audit, days=config.retention_days)
+        )
+    for step in steps:
+        try:
+            step()
+        except Exception:  # noqa: BLE001 - one failed purge must not skip the others.
+            log.exception("Retention purge failed")
+
+
 class PeriodicTask:
     """Daemon thread that runs `run` after a delay, then every interval, until stopped."""
 
@@ -486,10 +531,12 @@ def backup_task(*, config: BackupConfig, db_path, profiles_dir) -> PeriodicTask:
     )
 
 
-def retention_task(*, config: BackupConfig, store, audit) -> PeriodicTask:
+def retention_task(*, config: BackupConfig, store, auth, limiter, audit) -> PeriodicTask:
     return PeriodicTask(
-        name="job-retention-purge",
+        name="retention-purge",
         interval_seconds=RETENTION_INTERVAL_SECONDS,
         first_delay_seconds=FIRST_RUN_DELAY_SECONDS,
-        run=lambda: run_retention_purge(store=store, audit=audit, days=config.retention_days),
+        run=lambda: run_daily_retention(
+            config=config, store=store, auth=auth, limiter=limiter, audit=audit
+        ),
     )

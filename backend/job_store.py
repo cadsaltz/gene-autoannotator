@@ -278,18 +278,25 @@ class JobStore:
             return None
         return row["status"]
 
-    def cancel_queued_for_user(self, user_id, *, by="admin") -> int:
+    def anonymize_user(self, user_id) -> dict:
+        """Detach a user's jobs and batches from them by clearing the owner column."""
         with self._connect() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE annotation_jobs
-                SET status = 'cancelled', current_step = 'cancelled', error = ?,
-                    finished_at = ?, lease_expires_at = NULL
-                WHERE submitted_by_user_id = ? AND status = 'queued'
-                """,
-                (f"Cancelled by {by}", _now_iso(), user_id),
-            )
-            return cursor.rowcount
+            jobs = connection.execute(
+                "UPDATE annotation_jobs SET submitted_by_user_id = NULL "
+                "WHERE submitted_by_user_id = ?",
+                (user_id,),
+            ).rowcount
+            batches = 0
+            has_batches = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'annotation_batches'"
+            ).fetchone()
+            if has_batches:
+                batches = connection.execute(
+                    "UPDATE annotation_batches SET submitted_by_user_id = NULL "
+                    "WHERE submitted_by_user_id = ?",
+                    (user_id,),
+                ).rowcount
+        return {"jobs": jobs, "batches": batches}
 
     def cancel_active_for_user(self, user_id, *, by="admin") -> int:
         """Cancel a user's queued and running jobs, like ``cancel_job`` for each."""

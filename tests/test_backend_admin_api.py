@@ -386,7 +386,7 @@ def test_revoke_sessions(alice, admin):
     assert [(e["target_id"], e["details"]) for e in events] == [(alice_id, {"count": 1})]
 
 
-def test_delete_user_cancels_queued_jobs_only(alice, admin, store):
+def test_delete_user_cancels_active_jobs(alice, admin, store):
     alice_id = _id(alice, "alice@example.com")
     job_ids = [alice.post("/jobs", json=JOB).json()["job_id"] for _ in range(3)]
     running = store.claim_next_queued_job()
@@ -394,21 +394,22 @@ def test_delete_user_cancels_queued_jobs_only(alice, admin, store):
 
     response = admin.delete(f"/admin/users/{alice_id}")
     assert response.status_code == 200
-    assert response.json() == {"deleted": True, "cancelled_jobs": 2}
+    assert response.json() == {"deleted": True, "cancelled_jobs": 3}
 
     assert admin.auth_store.get_user(alice_id) is None
     assert alice.get("/auth/me").status_code == 401
     jobs = [store.get_job(job_id) for job_id in job_ids]
-    assert [j["status"] for j in jobs] == ["running", "cancelled", "cancelled"]
-    assert all(j["submitted_by_user_id"] == alice_id for j in jobs)
+    assert [j["status"] for j in jobs] == ["cancelled"] * 3
+    assert all(j["submitted_by_user_id"] is None for j in jobs)
     assert all(u["email"] != "alice@example.com" for u in admin.get("/admin/users").json()["users"])
 
     events = _events(admin, action="user_delete")
     assert len(events) == 1
     assert events[0]["target_type"] == "user"
     assert events[0]["target_id"] == alice_id
-    assert events[0]["details"]["email"] == "alice@example.com"
-    assert events[0]["details"]["cancelled_jobs"] == 2
+    assert events[0]["details"]["email"] == "a***@example.com"
+    assert events[0]["details"]["cancelled_jobs"] == 3
+    assert events[0]["details"]["anonymized_jobs"] == 3
 
 
 def test_delete_audited_even_if_cancel_fails(alice, admin, store, monkeypatch):
@@ -417,26 +418,16 @@ def test_delete_audited_even_if_cancel_fails(alice, admin, store, monkeypatch):
     def boom(user_id, **kwargs):
         raise RuntimeError("database is locked")
 
-    monkeypatch.setattr(store, "cancel_queued_for_user", boom)
+    monkeypatch.setattr(store, "cancel_active_for_user", boom)
     with pytest.raises(RuntimeError):
         admin.delete(f"/admin/users/{alice_id}")
     assert admin.auth_store.get_user(alice_id) is None
     events = _events(admin, action="user_delete")
     assert len(events) == 1
     assert events[0]["target_id"] == alice_id
-    assert events[0]["details"]["email"] == "alice@example.com"
+    assert events[0]["details"]["email"] == "a***@example.com"
     assert events[0]["details"]["cancelled_jobs"] is None
-
-
-def test_cancel_queued_for_user_store(store):
-    mine = [store.create_job({}, submitted_by_user_id="u1") for _ in range(2)]
-    other = store.create_job({}, submitted_by_user_id="u2")
-    store.claim_next_queued_job()
-    assert store.cancel_queued_for_user("u1") == 1
-    assert store.get_job(mine[0]["id"])["status"] == "running"
-    assert store.get_job(mine[1]["id"])["status"] == "cancelled"
-    assert store.get_job(other["id"])["status"] == "queued"
-    assert store.cancel_queued_for_user("u1") == 0
+    assert events[0]["details"]["anonymized_jobs"] is None
 
 
 def test_counts_since_store(store):
@@ -547,10 +538,14 @@ def test_suspend_and_delete_hold_submission_lock(alice, admin, store, monkeypatc
         monkeypatch.setattr(store, method_name, wrapper)
 
     spy("cancel_active_for_user")
-    spy("cancel_queued_for_user")
+    spy("anonymize_user")
     admin.patch(f"/admin/users/{alice_id}", json={"status": "suspended"})
     admin.delete(f"/admin/users/{alice_id}")
-    assert held == [("cancel_active_for_user", True), ("cancel_queued_for_user", True)]
+    assert held == [
+        ("cancel_active_for_user", True),
+        ("cancel_active_for_user", True),
+        ("anonymize_user", True),
+    ]
 
 
 def test_status_change_audited_even_if_cancel_fails(alice, admin, store, monkeypatch):
