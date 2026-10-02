@@ -135,7 +135,7 @@ function ProfileFieldsDisplay({ profile }) {
                 <p className="workbench-foreground font-semibold">{field.label}</p>
                 <p className="workbench-muted mt-1 font-mono text-xs">{field.key}</p>
               </div>
-              <span className="workbench-muted rounded-full border workbench-border px-2 py-0.5 text-[10px] font-medium">
+              <span className="workbench-muted rounded-full border workbench-border px-2 py-0.5 text-xs font-medium">
                 {field.isDefault ? "Default" : "Custom"}
               </span>
             </div>

@@ -178,7 +178,7 @@ function JobTile({ job, onCancel, cancelling }) {
               transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
             />
           ) : null}
-          <span className="rounded-full border workbench-border bg-surface px-3 py-1 text-xs font-medium text-fg-secondary">
+          <span className="rounded-full border workbench-border bg-surface px-3 py-1 text-xs font-medium capitalize text-fg-secondary">
             {job.status}
           </span>
           {isCancellable(job) ? (

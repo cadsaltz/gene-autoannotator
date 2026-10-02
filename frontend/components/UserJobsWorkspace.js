@@ -44,7 +44,7 @@ function StatusCell({ job }) {
   return (
     <div className="grid gap-1">
       <span
-        className={`w-fit rounded-full px-2 py-0.5 text-xs font-medium ${
+        className={`w-fit rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
           statusBadgeClasses[job.status] || statusBadgeClasses.queued
         }`}
       >

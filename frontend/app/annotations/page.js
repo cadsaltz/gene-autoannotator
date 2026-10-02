@@ -34,9 +34,7 @@ export default async function AnnotationsPage({ searchParams }) {
     <AppShell fullWidth>
       <Suspense
         fallback={
-          <div className="workbench-card p-8 text-sm workbench-muted">
-            Loading annotation search...
-          </div>
+          <div className="px-6 py-8 text-sm text-fg-muted">Loading annotation search…</div>
         }
       >
         <AnnotationExplorer
