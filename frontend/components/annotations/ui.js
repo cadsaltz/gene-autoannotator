@@ -28,7 +28,7 @@ export function Card({ as: Tag = "section", className = "", children, ...props }
 export function CardHeader({ title, aside = null }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <h3 className="shrink-0 text-sm font-semibold text-fg">{title}</h3>
+      <h2 className="shrink-0 text-sm font-semibold text-fg">{title}</h2>
       {aside}
     </div>
   );

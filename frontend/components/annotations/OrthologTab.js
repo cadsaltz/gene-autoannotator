@@ -38,7 +38,7 @@ export default function OrthologTab({ annotation, profileFields }) {
                     </th>
                     <td className="px-4 py-4 leading-6 text-fg-secondary">
                       {row.orthologOnly ? (
-                        <span className="text-fg-subtle">No target data</span>
+                        <span className="text-fg-muted">No target data</span>
                       ) : (
                         <CitedText text={row.value} />
                       )}

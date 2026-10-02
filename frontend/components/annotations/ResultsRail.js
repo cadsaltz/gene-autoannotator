@@ -47,6 +47,7 @@ export default function ResultsRail({
   return (
     <aside className="flex flex-col border-b border-line bg-surface lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:border-r lg:border-b-0">
       <div className="border-b border-line px-4 pt-5 pb-3">
+        <h2 className="sr-only">Search annotations</h2>
         <form
           role="search"
           onSubmit={(event) => {
@@ -65,12 +66,12 @@ export default function ResultsRail({
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               placeholder="Locus, gene name, or term"
-              className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-subtle"
+              className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-muted"
             />
             {isSearching ? (
               <span className="text-xs text-fg-muted">Searching…</span>
             ) : (
-              <kbd className="rounded border border-line px-1 font-sans text-xs text-fg-subtle">
+              <kbd className="rounded border border-line px-1 font-sans text-xs text-fg-muted">
                 {apple ? "⌘K" : "Ctrl K"}
               </kbd>
             )}
@@ -90,7 +91,7 @@ export default function ResultsRail({
                 <select
                   value={organism}
                   onChange={(event) => onOrganismChange(event.target.value)}
-                  className="max-w-44 truncate bg-transparent font-semibold text-fg-secondary outline-none"
+                  className="max-w-44 truncate bg-transparent font-semibold text-fg-secondary"
                 >
                   <option value="">All organisms</option>
                   {organisms.map((name) => (

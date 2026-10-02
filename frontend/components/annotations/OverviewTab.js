@@ -73,12 +73,12 @@ function CompactValue({ value }) {
     );
   }
   if (isNoData(value)) {
-    return <span className="font-normal text-fg-subtle">{value}</span>;
+    return <span className="font-normal text-fg-muted">{value}</span>;
   }
   return (
     <span className="flex flex-wrap gap-1.5">
-      {splitListValue(value).map((item) => (
-        <Badge key={item} tone="brand">
+      {splitListValue(value).map((item, index) => (
+        <Badge key={`${item}-${index}`} tone="brand">
           {item}
         </Badge>
       ))}

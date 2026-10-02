@@ -14,7 +14,9 @@ export default function QueuePlaceholder({ status }) {
 
   return (
     <div
-      className={`workbench-card p-6 ${accepting ? "health-status-ok" : "health-status-warn"}`}
+      className={`workbench-card border-t-4 p-6 ${
+        accepting ? "border-t-success-solid" : "border-t-warning-solid"
+      }`}
       role="status"
     >
       <p className="workbench-kicker">Shared queue</p>

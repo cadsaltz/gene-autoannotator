@@ -35,8 +35,10 @@ function JobsHealthBanner({ health, annotationHealth }) {
 
   return (
     <div
-      className={`workbench-surface-bg rounded-xl border px-5 py-4 ${
-        isOk ? "health-status-ok workbench-border" : "health-status-warn workbench-border-amber"
+      className={`workbench-surface-bg rounded-xl border border-t-4 px-5 py-4 ${
+        isOk
+          ? "workbench-border border-t-success-solid"
+          : "workbench-border-amber border-t-warning-solid"
       }`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -106,7 +108,7 @@ function BatchSummaryCard({ batchId, batchDetail, queueCounts, batchFilterActive
           <p className="workbench-foreground mt-1 text-lg font-semibold tracking-tight">{batchId}</p>
           <p className="workbench-muted mt-1 text-sm">{profileLabel}</p>
         </div>
-        <span className="rounded-full border workbench-border bg-surface px-3 py-1 text-xs font-medium text-fg-secondary">
+        <span className="rounded-full border workbench-border bg-surface px-3 py-1 text-xs font-medium capitalize text-fg-secondary">
           {batchDetail?.status || "submitted"}
         </span>
       </div>

@@ -50,7 +50,7 @@
   --surface-muted: #0c111d;
   --surface-sunken: #1f242f;
   --line: #333741;
-  --line-strong: #333741;
+  --line-strong: #61646c;
   --fg: #f5f5f6;
   --fg-secondary: #cecfd2;
   --fg-tertiary: #cecfd2;
@@ -220,14 +220,6 @@
     border-color: var(--error-line);
   }
 
-  .health-status-ok {
-    border-top: 4px solid var(--success-solid);
-  }
-
-  .health-status-warn {
-    border-top: 4px solid var(--warning-solid);
-  }
-
   .workbench-kicker {
     color: var(--brand-fg);
     font-size: 0.875rem;
@@ -287,7 +279,7 @@
   }
 
   .workbench-input::placeholder {
-    color: var(--fg-subtle);
+    color: var(--fg-muted);
   }
 
   .workbench-input:focus {

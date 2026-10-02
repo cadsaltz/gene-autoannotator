@@ -167,7 +167,7 @@ export default function CustomFieldsEditor({
                 <button
                   type="button"
                   onClick={() => removeField(index)}
-                  className="workbench-button workbench-button-secondary workbench-red"
+                  className="workbench-button workbench-button-secondary border-error-line text-error-fg hover:text-error-fg"
                 >
                   Remove
                 </button>

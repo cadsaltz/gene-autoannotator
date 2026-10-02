@@ -17,7 +17,7 @@ function EmptyDetail() {
   return (
     <div className="grid min-h-80 place-items-center rounded-xl border border-dashed border-line-strong p-10 text-center">
       <div>
-        <p className="text-base font-semibold text-fg">No annotation selected</p>
+        <h1 className="text-base font-semibold text-fg">No annotation selected</h1>
         <p className="mt-1 max-w-md text-sm text-fg-muted">
           Search by locus, gene name, or organism, then pick a result to read its annotation.
         </p>
@@ -81,7 +81,7 @@ export default function AnnotationDetail({
         id={`annotation-panel-${current}`}
         aria-labelledby={`annotation-tab-${current}`}
         tabIndex={0}
-        className="mt-6 outline-none"
+        className="mt-6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-fg"
       >
         {current === "annotation" ? (
           <OverviewTab

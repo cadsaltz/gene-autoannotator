@@ -46,7 +46,7 @@ function formatSummary(summary) {
 function PreviewStatusBadge({ status }) {
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(status)}`}
+      className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${statusBadgeClass(status)}`}
     >
       {statusLabel(status)}
     </span>

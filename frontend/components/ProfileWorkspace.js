@@ -563,7 +563,7 @@ export default function ProfileWorkspace({ canEdit = false }) {
                                 <button
                                   type="button"
                                   onClick={() => handleDelete(profile.profile_id)}
-                                  className="workbench-button workbench-button-secondary workbench-red"
+                                  className="workbench-button workbench-button-secondary border-error-line text-error-fg hover:text-error-fg"
                                 >
                                   Delete
                                 </button>

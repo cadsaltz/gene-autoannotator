@@ -21,8 +21,8 @@ function HealthBadge({ label, status, detail }) {
   const ok = status === "ok";
   return (
     <div
-      className={`workbench-surface-bg min-h-32 rounded-xl border workbench-border p-4 ${
-        ok ? "health-status-ok" : "health-status-warn"
+      className={`workbench-surface-bg min-h-32 rounded-xl border border-t-4 workbench-border p-4 ${
+        ok ? "border-t-success-solid" : "border-t-warning-solid"
       }`}
     >
       <p className="workbench-muted text-sm font-semibold">{label}</p>
@@ -37,8 +37,8 @@ function HealthBadge({ label, status, detail }) {
 function MetricBadge({ label, value, detail, ok = true }) {
   return (
     <div
-      className={`workbench-surface-bg min-h-32 rounded-xl border workbench-border p-4 ${
-        ok ? "health-status-ok" : "health-status-warn"
+      className={`workbench-surface-bg min-h-32 rounded-xl border border-t-4 workbench-border p-4 ${
+        ok ? "border-t-success-solid" : "border-t-warning-solid"
       }`}
     >
       <p className="workbench-muted text-sm font-semibold">{label}</p>
@@ -49,8 +49,8 @@ function MetricBadge({ label, value, detail, ok = true }) {
 }
 
 function workerStateTone(state) {
-  if (state === "ready") return "health-status-ok";
-  if (state === "offline") return "health-status-warn";
+  if (state === "ready") return "border-t-4 border-t-success-solid";
+  if (state === "offline") return "border-t-4 border-t-warning-solid";
   return "workbench-muted-bg";
 }
 
@@ -69,7 +69,7 @@ function WorkerCard({ worker }) {
           </p>
         </div>
         <div className="flex flex-col items-start gap-1 sm:items-end">
-          <span className="rounded-full border workbench-border bg-surface px-3 py-1 text-xs font-medium text-fg-secondary">
+          <span className="rounded-full border workbench-border bg-surface px-3 py-1 text-xs font-medium capitalize text-fg-secondary">
             {worker.state || "unknown"}
           </span>
           <p className="workbench-muted text-xs">

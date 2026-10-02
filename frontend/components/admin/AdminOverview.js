@@ -28,8 +28,8 @@ const LINKS = [
 function Stat({ label, value, warn = false }) {
   return (
     <div
-      className={`workbench-surface-bg rounded-xl border workbench-border p-4 ${
-        warn ? "health-status-warn" : "health-status-ok"
+      className={`workbench-surface-bg rounded-xl border border-t-4 workbench-border p-4 ${
+        warn ? "border-t-warning-solid" : "border-t-success-solid"
       }`}
     >
       <p className="workbench-muted text-sm font-semibold">{label}</p>
