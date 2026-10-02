@@ -121,21 +121,21 @@ function ProfileFieldsDisplay({ profile }) {
 
   return (
     <div className="mt-4 border-t workbench-border pt-4">
-      <p className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">
+      <p className="workbench-muted text-xs font-medium">
         Annotation fields
       </p>
       <ul className="mt-3 grid gap-3">
         {fields.map((field) => (
           <li
             key={field.key}
-            className="rounded-xl border workbench-border bg-white/70 p-3 text-sm"
+            className="rounded-xl border workbench-border bg-surface p-3 text-sm"
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="workbench-foreground font-semibold">{field.label}</p>
                 <p className="workbench-muted mt-1 font-mono text-xs">{field.key}</p>
               </div>
-              <span className="workbench-muted rounded-full border workbench-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+              <span className="workbench-muted rounded-full border workbench-border px-2 py-0.5 text-[10px] font-medium">
                 {field.isDefault ? "Default" : "Custom"}
               </span>
             </div>
@@ -171,10 +171,10 @@ function ProfileDetailList({ profile }) {
       <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
         {rows.map(([label, value]) => (
           <div key={label} className="border-t workbench-border pt-2">
-            <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">
+            <dt className="workbench-muted text-xs font-medium">
               {label}
             </dt>
-            <dd className="mt-1 text-[#3d463f]">{value}</dd>
+            <dd className="mt-1 text-fg-secondary">{value}</dd>
           </div>
         ))}
       </dl>
@@ -315,7 +315,7 @@ export default function ProfileWorkspace({ canEdit = false }) {
       >
         <div className="workbench-card p-6">
           <p className="workbench-kicker">Organism Profiles</p>
-          <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+          <h1 className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
             {canEdit ? "Manage reusable annotation targets" : "Browse reusable annotation targets"}
           </h1>
           {canEdit ? (
@@ -333,11 +333,11 @@ export default function ProfileWorkspace({ canEdit = false }) {
         </div>
 
         {canEdit ? (
-          <div className="workbench-amber-bg workbench-foreground rounded-[18px] border workbench-border p-6">
-            <h2 className="text-xl font-bold tracking-[-0.02em]">
+          <div className="workbench-amber-bg workbench-foreground rounded-xl border workbench-border p-6">
+            <h2 className="text-xl font-semibold tracking-tight">
               Profile storage
             </h2>
-            <p className="mt-3 text-sm leading-6 text-[#5f4b2e]">
+            <p className="mt-3 text-sm leading-6 text-warning-fg">
               Profiles live under <code>data/profiles</code> (or{" "}
               <code>PROFILES_DIR</code>) on the API host. MongoDB is not
               used for organism profiles.
@@ -355,7 +355,7 @@ export default function ProfileWorkspace({ canEdit = false }) {
         <section ref={formRef} className="workbench-card p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">
+              <h2 className="workbench-foreground text-2xl font-semibold tracking-tight">
                 {editingProfileId ? "Edit profile" : "New profile"}
               </h2>
               <p className="workbench-muted mt-2 text-sm leading-6">
@@ -450,7 +450,7 @@ export default function ProfileWorkspace({ canEdit = false }) {
             </div>
 
             {statusMessage ? (
-              <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+              <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-warning-fg">
                 {statusMessage}
               </p>
             ) : null}
@@ -473,7 +473,7 @@ export default function ProfileWorkspace({ canEdit = false }) {
         <section className="workbench-card p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">
+              <h2 className="workbench-foreground text-2xl font-semibold tracking-tight">
                 Available profiles
               </h2>
               <p className="workbench-muted mt-2 text-sm">
@@ -507,20 +507,20 @@ export default function ProfileWorkspace({ canEdit = false }) {
           </div>
 
           {!canEdit && statusMessage ? (
-            <p className="workbench-amber-bg mt-6 rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+            <p className="workbench-amber-bg mt-6 rounded-xl border workbench-border p-4 text-sm text-warning-fg">
               {statusMessage}
             </p>
           ) : null}
 
           <div className="mt-6 grid max-h-[760px] gap-4 overflow-y-auto pr-1">
             {isLoading ? (
-              <div className="workbench-muted rounded-2xl border border-dashed workbench-border p-8 text-center">
+              <div className="workbench-muted rounded-xl border border-dashed workbench-border p-8 text-center">
                 Loading profiles...
               </div>
             ) : visibleProfiles.length > 0 ? (
               profileGroups.map((group) => (
                 <section key={group.speciesName} className="grid gap-3">
-                  <h3 className="workbench-muted text-xs font-bold uppercase tracking-[0.14em]">
+                  <h3 className="workbench-muted text-xs font-medium">
                     {group.speciesName}
                   </h3>
                   {group.profiles.map((profile) => {
@@ -528,7 +528,7 @@ export default function ProfileWorkspace({ canEdit = false }) {
                     return (
                       <article
                         key={profile.profile_id}
-                        className={`rounded-2xl border workbench-border bg-white/50 p-4 ${isExpanded ? "shadow-sm" : ""}`}
+                        className={`rounded-xl border workbench-border bg-surface p-4 ${isExpanded ? "shadow-sm" : ""}`}
                       >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <button
@@ -536,7 +536,7 @@ export default function ProfileWorkspace({ canEdit = false }) {
                             onClick={() => setExpandedProfileId(isExpanded ? "" : profile.profile_id)}
                             className="min-w-0 text-left"
                           >
-                            <p className="workbench-foreground text-lg font-bold tracking-[-0.02em]">
+                            <p className="workbench-foreground text-lg font-semibold tracking-tight">
                               {profile.canonical_name}
                             </p>
                             <p className="workbench-muted mt-1 text-sm">
@@ -579,11 +579,11 @@ export default function ProfileWorkspace({ canEdit = false }) {
                 </section>
               ))
             ) : profiles.length > 0 ? (
-              <div className="workbench-muted rounded-2xl border border-dashed workbench-border p-8 text-center">
+              <div className="workbench-muted rounded-xl border border-dashed workbench-border p-8 text-center">
                 No profiles match the current search.
               </div>
             ) : (
-              <div className="workbench-muted rounded-2xl border border-dashed workbench-border p-8 text-center">
+              <div className="workbench-muted rounded-xl border border-dashed workbench-border p-8 text-center">
                 No profiles were returned by the backend.
               </div>
             )}

@@ -50,7 +50,7 @@ export default function TradeoffsSection() {
   return (
     <section id="tradeoffs" aria-labelledby="tradeoffs-title" className="scroll-mt-6">
       <p className="workbench-kicker">{KICKER}</p>
-      <h2 id="tradeoffs-title" className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+      <h2 id="tradeoffs-title" className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
         {TITLE}
       </h2>
       <p className="workbench-muted mt-3 max-w-2xl leading-7">{INTRO}</p>
@@ -58,11 +58,11 @@ export default function TradeoffsSection() {
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         {TRADEOFFS.map((item) => (
           <article key={item.title} className="workbench-card p-6 md:last:col-span-2">
-            <h3 className="workbench-foreground text-lg font-bold tracking-[-0.02em]">{item.title}</h3>
+            <h3 className="workbench-foreground text-lg font-semibold tracking-tight">{item.title}</h3>
             <ul className="workbench-muted mt-3 grid gap-2 text-sm leading-6">
               {item.points.map((point) => (
                 <li key={point} className="flex gap-2">
-                  <span aria-hidden="true" className="workbench-amber font-bold">
+                  <span aria-hidden="true" className="workbench-amber font-semibold">
                     •
                   </span>
                   <span>{point}</span>

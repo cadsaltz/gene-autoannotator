@@ -15,10 +15,10 @@ const GENE_LIST_PLACEHOLDER =
   "One gene per line — locus (e.g. Rv0001) or gene name (e.g. dnaA). Commas and tabs also work.";
 
 function statusBadgeClass(status) {
-  if (status === "ready") return "bg-[#dbe8df] text-[#2d4a38]";
-  if (status === "ambiguous") return "bg-[#f5e8c8] text-[#5f4b2e]";
-  if (status === "duplicate_skipped") return "bg-[#e8e3db] text-[#5a5248]";
-  return "bg-[#f3d9dc] text-[#7a3a41]";
+  if (status === "ready") return "bg-success-tint text-success-fg";
+  if (status === "ambiguous") return "bg-warning-tint text-warning-fg";
+  if (status === "duplicate_skipped") return "bg-surface-sunken text-fg-tertiary";
+  return "bg-error-tint text-error-fg";
 }
 
 function statusLabel(status) {
@@ -46,7 +46,7 @@ function formatSummary(summary) {
 function PreviewStatusBadge({ status }) {
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${statusBadgeClass(status)}`}
+      className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(status)}`}
     >
       {statusLabel(status)}
     </span>
@@ -168,7 +168,7 @@ export default function BatchJobForm({
       {!_isCustomProfile && selectedProfile ? (
         <div className="workbench-muted-bg workbench-muted rounded-xl border workbench-border p-4 text-sm">
           Expected locus format:{" "}
-          <code className="rounded bg-[#eee6d9] px-1 py-0.5">{selectedProfile.locus_regex}</code>
+          <code className="rounded bg-surface-sunken px-1 py-0.5">{selectedProfile.locus_regex}</code>
         </div>
       ) : null}
 
@@ -249,7 +249,7 @@ export default function BatchJobForm({
 
           <div className="overflow-x-auto rounded-xl border workbench-border">
             <table className="min-w-full text-left text-sm">
-              <thead className="workbench-muted-bg workbench-muted text-xs font-bold uppercase tracking-[0.08em]">
+              <thead className="workbench-muted-bg workbench-muted text-xs font-medium">
                 <tr>
                   <th className="px-3 py-2">Line</th>
                   <th className="px-3 py-2">Input</th>
@@ -286,7 +286,7 @@ export default function BatchJobForm({
                     <td className="px-3 py-2 align-top">
                       <PreviewStatusBadge status={entry.status} />
                     </td>
-                    <td className="px-3 py-2 align-top text-xs text-[#5f4b2e]">
+                    <td className="px-3 py-2 align-top text-xs text-warning-fg">
                       {entry.warnings?.length
                         ? entry.warnings.map((warning) => warning.message).join(" ")
                         : "—"}

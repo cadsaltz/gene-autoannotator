@@ -42,14 +42,14 @@ export default function FaqSection() {
   return (
     <section id="faq" aria-labelledby="faq-title" className="scroll-mt-6">
       <p className="workbench-kicker">{KICKER}</p>
-      <h2 id="faq-title" className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+      <h2 id="faq-title" className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
         {TITLE}
       </h2>
 
       <div className="mt-6 grid gap-3">
         {FAQ_ITEMS.map((item) => (
           <details key={item.question} className="guide-faq workbench-card group p-0">
-            <summary className="workbench-foreground flex cursor-pointer items-center gap-4 rounded-[18px] px-5 py-4 font-bold">
+            <summary className="workbench-foreground flex cursor-pointer items-center gap-4 rounded-xl px-5 py-4 font-semibold">
               <h3 className="text-base">{item.question}</h3>
             </summary>
             <div className="workbench-muted px-5 pb-5 text-sm leading-6">
@@ -57,7 +57,7 @@ export default function FaqSection() {
               {item.link ? (
                 <Link
                   href={item.link.href}
-                  className="workbench-green mt-2 inline-block font-bold underline underline-offset-2"
+                  className="workbench-green mt-2 inline-block font-semibold underline underline-offset-2"
                 >
                   {item.link.label}
                 </Link>

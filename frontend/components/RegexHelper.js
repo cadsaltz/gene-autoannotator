@@ -100,7 +100,7 @@ export default function RegexHelper({ onApply }) {
   }
 
   return (
-    <div className="rounded-xl border border-dashed workbench-border bg-white/40 p-4">
+    <div className="rounded-xl border border-dashed workbench-border bg-surface p-4">
       <button
         type="button"
         onClick={() => setIsOpen((value) => !value)}
@@ -191,15 +191,15 @@ export default function RegexHelper({ onApply }) {
           {error ? (
             <p
               role="alert"
-              className="workbench-amber-bg rounded-xl border workbench-border p-3 text-sm text-[#5f4b2e]"
+              className="workbench-amber-bg rounded-xl border workbench-border p-3 text-sm text-warning-fg"
             >
               {error}
             </p>
           ) : null}
 
           {result?.regex ? (
-            <div className="grid gap-3 rounded-xl border workbench-border bg-white/60 p-4">
-              <code className="break-all rounded bg-black/5 px-2 py-1 text-sm">
+            <div className="grid gap-3 rounded-xl border workbench-border bg-surface p-4">
+              <code className="break-all rounded bg-surface-sunken px-2 py-1 text-sm">
                 {result.regex}
               </code>
               {result.explanation ? (

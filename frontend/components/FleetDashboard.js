@@ -21,12 +21,12 @@ function HealthBadge({ label, status, detail }) {
   const ok = status === "ok";
   return (
     <div
-      className={`workbench-surface-bg min-h-32 rounded-2xl border workbench-border p-4 ${
+      className={`workbench-surface-bg min-h-32 rounded-xl border workbench-border p-4 ${
         ok ? "health-status-ok" : "health-status-warn"
       }`}
     >
       <p className="workbench-muted text-sm font-semibold">{label}</p>
-      <p className="workbench-foreground mt-2 text-base font-bold">
+      <p className="workbench-foreground mt-2 text-base font-semibold">
         {ok ? "Connected" : status || "Unavailable"}
       </p>
       {detail ? <p className="workbench-muted mt-2 text-xs leading-5">{detail}</p> : null}
@@ -37,12 +37,12 @@ function HealthBadge({ label, status, detail }) {
 function MetricBadge({ label, value, detail, ok = true }) {
   return (
     <div
-      className={`workbench-surface-bg min-h-32 rounded-2xl border workbench-border p-4 ${
+      className={`workbench-surface-bg min-h-32 rounded-xl border workbench-border p-4 ${
         ok ? "health-status-ok" : "health-status-warn"
       }`}
     >
       <p className="workbench-muted text-sm font-semibold">{label}</p>
-      <p className="workbench-foreground mt-2 text-base font-bold">{value}</p>
+      <p className="workbench-foreground mt-2 text-base font-semibold">{value}</p>
       {detail ? <p className="workbench-muted mt-2 text-xs leading-5">{detail}</p> : null}
     </div>
   );
@@ -58,10 +58,10 @@ function WorkerCard({ worker }) {
   const stateClass = workerStateTone(worker.state);
 
   return (
-    <article className={`rounded-2xl border workbench-border p-4 ${stateClass}`}>
+    <article className={`rounded-xl border workbench-border p-4 ${stateClass}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="workbench-foreground text-lg font-bold tracking-[-0.02em]">
+          <p className="workbench-foreground text-lg font-semibold tracking-tight">
             {worker.worker_name || "Unknown worker"}
           </p>
           <p className="workbench-muted mt-1 text-sm">
@@ -69,7 +69,7 @@ function WorkerCard({ worker }) {
           </p>
         </div>
         <div className="flex flex-col items-start gap-1 sm:items-end">
-          <span className="rounded-full border workbench-border bg-white/60 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#3f4b43]">
+          <span className="rounded-full border workbench-border bg-surface px-3 py-1 text-xs font-medium text-fg-secondary">
             {worker.state || "unknown"}
           </span>
           <p className="workbench-muted text-xs">
@@ -80,22 +80,22 @@ function WorkerCard({ worker }) {
 
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
         <div className="border-t workbench-border pt-2">
-          <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Slots</dt>
-          <dd className="mt-1 text-[#3d463f]">{formatWorkerSlotsLabel(worker)}</dd>
+          <dt className="workbench-muted text-xs font-medium">Slots</dt>
+          <dd className="mt-1 text-fg-secondary">{formatWorkerSlotsLabel(worker)}</dd>
         </div>
         <div className="border-t workbench-border pt-2">
-          <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Agent</dt>
-          <dd className="mt-1 text-[#3d463f]">{worker.agent_version || "unknown"}</dd>
+          <dt className="workbench-muted text-xs font-medium">Agent</dt>
+          <dd className="mt-1 text-fg-secondary">{worker.agent_version || "unknown"}</dd>
         </div>
         <div className="border-t workbench-border pt-2 sm:col-span-2">
-          <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Resources</dt>
-          <dd className="mt-1 text-[#3d463f]">{formatWorkerResourceDetail(worker)}</dd>
+          <dt className="workbench-muted text-xs font-medium">Resources</dt>
+          <dd className="mt-1 text-fg-secondary">{formatWorkerResourceDetail(worker)}</dd>
         </div>
         <div className="border-t workbench-border pt-2 sm:col-span-2">
-          <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">
+          <dt className="workbench-muted text-xs font-medium">
             Dedicated memory
           </dt>
-          <dd className="mt-1 text-[#3d463f]">{formatWorkerDedicatedMemory(worker)}</dd>
+          <dd className="mt-1 text-fg-secondary">{formatWorkerDedicatedMemory(worker)}</dd>
         </div>
       </dl>
     </article>
@@ -154,7 +154,7 @@ export default function FleetDashboard() {
     <div className="grid gap-5">
       <section className="workbench-card p-6">
         <p className="workbench-kicker">Fleet</p>
-        <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+        <h1 className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
           Fleet &amp; health
         </h1>
         <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
@@ -217,7 +217,7 @@ export default function FleetDashboard() {
       </section>
 
       <section className="workbench-card p-6">
-        <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">
+        <h2 className="workbench-foreground text-2xl font-semibold tracking-tight">
           Fleet workers
         </h2>
         <p className="workbench-muted mt-2 text-sm">
@@ -230,7 +230,7 @@ export default function FleetDashboard() {
           {workers.length > 0 ? (
             workers.map((worker) => <WorkerCard key={worker.id} worker={worker} />)
           ) : (
-            <div className="workbench-muted rounded-2xl border border-dashed workbench-border p-8 text-center lg:col-span-2">
+            <div className="workbench-muted rounded-xl border border-dashed workbench-border p-8 text-center lg:col-span-2">
               Start a worker process to see fleet members here.
             </div>
           )}

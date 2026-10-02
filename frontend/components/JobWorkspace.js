@@ -35,14 +35,14 @@ function JobsHealthBanner({ health, annotationHealth }) {
 
   return (
     <div
-      className={`workbench-surface-bg rounded-2xl border px-5 py-4 ${
+      className={`workbench-surface-bg rounded-xl border px-5 py-4 ${
         isOk ? "health-status-ok workbench-border" : "health-status-warn workbench-border-amber"
       }`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p
-            className={`text-base font-bold tracking-[-0.02em] ${
+            className={`text-base font-semibold tracking-tight ${
               isOk ? "workbench-green" : "workbench-amber"
             }`}
           >
@@ -56,7 +56,7 @@ function JobsHealthBanner({ health, annotationHealth }) {
             </p>
           ) : null}
         </div>
-        <Link href="/fleet" className="workbench-green shrink-0 text-sm font-bold hover:text-[#111a16]">
+        <Link href="/fleet" className="workbench-green shrink-0 text-sm font-semibold hover:text-fg">
           Fleet &amp; health →
         </Link>
       </div>
@@ -99,14 +99,14 @@ function BatchSummaryCard({ batchId, batchDetail, queueCounts, batchFilterActive
     "Batch annotation run";
 
   return (
-    <div className="workbench-muted-bg rounded-2xl border workbench-border p-4">
+    <div className="workbench-muted-bg rounded-xl border workbench-border p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="workbench-kicker">Active batch</p>
-          <p className="workbench-foreground mt-1 text-lg font-bold tracking-[-0.02em]">{batchId}</p>
+          <p className="workbench-foreground mt-1 text-lg font-semibold tracking-tight">{batchId}</p>
           <p className="workbench-muted mt-1 text-sm">{profileLabel}</p>
         </div>
-        <span className="rounded-full border workbench-border bg-white/60 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#3f4b43]">
+        <span className="rounded-full border workbench-border bg-surface px-3 py-1 text-xs font-medium text-fg-secondary">
           {batchDetail?.status || "submitted"}
         </span>
       </div>
@@ -126,7 +126,7 @@ function BatchSummaryCard({ batchId, batchDetail, queueCounts, batchFilterActive
           type="button"
           onClick={onShowBatchOnly}
           aria-pressed={batchFilterActive}
-          className={`min-h-9 rounded-lg px-3 text-sm font-bold transition-colors ${
+          className={`min-h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${
             batchFilterActive
               ? "workbench-button-primary"
               : "workbench-button-secondary border-0 bg-transparent shadow-none"
@@ -138,7 +138,7 @@ function BatchSummaryCard({ batchId, batchDetail, queueCounts, batchFilterActive
           type="button"
           onClick={onShowAllJobs}
           aria-pressed={!batchFilterActive}
-          className={`min-h-9 rounded-lg px-3 text-sm font-bold transition-colors ${
+          className={`min-h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${
             !batchFilterActive
               ? "workbench-button-primary"
               : "workbench-button-secondary border-0 bg-transparent shadow-none"
@@ -159,10 +159,10 @@ function JobTile({ job, onCancel, cancelling }) {
   const showSpinner = shouldShowRunningSpinner(job);
 
   return (
-    <article className={`rounded-2xl border workbench-border border-l-[5px] p-4 ${statusTone(job.status)}`}>
+    <article className={`rounded-xl border workbench-border border-l-[5px] p-4 ${statusTone(job.status)}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="workbench-foreground text-lg font-bold tracking-[-0.02em]">
+          <p className="workbench-foreground text-lg font-semibold tracking-tight">
             {getJobDisplayName(job)}
           </p>
           <p className="workbench-muted mt-1 text-sm">
@@ -173,12 +173,12 @@ function JobTile({ job, onCancel, cancelling }) {
           {showSpinner ? (
             <motion.span
               aria-label="Annotation job running"
-              className="inline-block size-4 rounded-full border-2 border-[#b8c7bb] border-t-[#557864]"
+              className="inline-block size-4 rounded-full border-2 border-success-line border-t-brand-fg"
               animate={{ rotate: 360 }}
               transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
             />
           ) : null}
-          <span className="rounded-full border workbench-border bg-white/60 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#3f4b43]">
+          <span className="rounded-full border workbench-border bg-surface px-3 py-1 text-xs font-medium text-fg-secondary">
             {job.status}
           </span>
           {isCancellable(job) ? (
@@ -194,14 +194,14 @@ function JobTile({ job, onCancel, cancelling }) {
         </div>
       </div>
 
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#e3dbcf]">
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface-sunken">
         <div
           className={`h-full rounded-full ${
             job.status === "failed"
-              ? "bg-[#994f56]"
+              ? "bg-error-solid"
               : job.status === "cancelled"
-                ? "bg-[#b9ad99]"
-                : "bg-[#557864]"
+                ? "bg-fg-subtle"
+                : "bg-brand"
           }`}
           style={{ width: `${progressPercent(job)}%` }}
         />
@@ -209,22 +209,22 @@ function JobTile({ job, onCancel, cancelling }) {
 
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-4">
         <div className="border-t workbench-border pt-2">
-          <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Submitter</dt>
-          <dd className="mt-1 break-all text-[#3d463f]">{job.submitted_by_email || "Unknown"}</dd>
+          <dt className="workbench-muted text-xs font-medium">Submitter</dt>
+          <dd className="mt-1 break-all text-fg-secondary">{job.submitted_by_email || "Unknown"}</dd>
         </div>
         <div className="border-t workbench-border pt-2">
-          <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Step</dt>
-          <dd className="mt-1 text-[#3d463f]">{step}</dd>
+          <dt className="workbench-muted text-xs font-medium">Step</dt>
+          <dd className="mt-1 text-fg-secondary">{step}</dd>
         </div>
         <div className="border-t workbench-border pt-2">
-          <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Queue</dt>
-          <dd className="mt-1 text-[#3d463f]">
+          <dt className="workbench-muted text-xs font-medium">Queue</dt>
+          <dd className="mt-1 text-fg-secondary">
             {job.queue_position ? `#${job.queue_position}` : "Active or finished"}
           </dd>
         </div>
         <div className="border-t workbench-border pt-2">
-          <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Elapsed</dt>
-          <dd className="mt-1 text-[#3d463f]">{elapsed}</dd>
+          <dt className="workbench-muted text-xs font-medium">Elapsed</dt>
+          <dd className="mt-1 text-fg-secondary">{elapsed}</dd>
         </div>
       </dl>
 
@@ -238,7 +238,7 @@ function JobTile({ job, onCancel, cancelling }) {
       {job.result_available ? (
         <Link
           href={`/annotations?query=${encodeURIComponent(annotationQuery)}`}
-          className="workbench-green mt-4 inline-flex text-sm font-bold hover:text-[#111a16]"
+          className="workbench-green mt-4 inline-flex text-sm font-semibold hover:text-fg"
         >
           Search stored annotation
         </Link>
@@ -399,7 +399,7 @@ export default function JobWorkspace() {
             <p className="workbench-kicker">
               Backend
             </p>
-            <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+            <h1 className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
               Submit and monitor jobs
             </h1>
             <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
@@ -426,7 +426,7 @@ export default function JobWorkspace() {
       <JobsHealthBanner health={health} annotationHealth={annotationHealth} />
 
       {submissionsPaused ? (
-        <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+        <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-warning-fg">
           New submissions from non-admin users are paused (<code>SUBMISSIONS_PAUSED=1</code>).
           Queued and running jobs continue, and admins can still submit.
         </p>
@@ -434,7 +434,7 @@ export default function JobWorkspace() {
 
       <div className="grid items-start gap-5 lg:grid-cols-[0.95fr_1.05fr]">
         <section className="workbench-card p-6">
-          <h2 className="text-2xl font-bold tracking-[-0.03em]">New annotation job</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">New annotation job</h2>
           <p className="workbench-muted mt-3 text-sm leading-6">
             Choose a configured profile, provide a gene name, locus, or both, and submit the run.
             Jobs are queued and executed sequentially; a real annotation can take hours.
@@ -449,7 +449,7 @@ export default function JobWorkspace() {
               type="button"
               onClick={() => setSubmitMode("single")}
               aria-pressed={submitMode === "single"}
-              className={`min-h-10 rounded-lg px-4 text-sm font-bold transition-colors ${
+              className={`min-h-10 rounded-lg px-4 text-sm font-semibold transition-colors ${
                 submitMode === "single"
                   ? "workbench-button-primary"
                   : "workbench-button-secondary border-0 bg-transparent shadow-none"
@@ -461,7 +461,7 @@ export default function JobWorkspace() {
               type="button"
               onClick={() => setSubmitMode("batch")}
               aria-pressed={submitMode === "batch"}
-              className={`min-h-10 rounded-lg px-4 text-sm font-bold transition-colors ${
+              className={`min-h-10 rounded-lg px-4 text-sm font-semibold transition-colors ${
                 submitMode === "batch"
                   ? "workbench-button-primary"
                   : "workbench-button-secondary border-0 bg-transparent shadow-none"
@@ -505,7 +505,7 @@ export default function JobWorkspace() {
               />
 
               {statusMessage ? (
-                <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+                <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-warning-fg">
                   {statusMessage}
                 </p>
               ) : null}
@@ -516,7 +516,7 @@ export default function JobWorkspace() {
         <section className="workbench-card p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">Job queue</h2>
+              <h2 className="workbench-foreground text-2xl font-semibold tracking-tight">Job queue</h2>
               <p className="workbench-muted w-full md:w-35 mt-2 text-sm">
                 {queue.running || 0} running · {queue.queued || 0} queued ·{" "}
                 {queue.completed || 0} completed · {queue.failed || 0} failed ·{" "}
@@ -569,7 +569,7 @@ export default function JobWorkspace() {
                 />
               ))
             ) : (
-              <div className="workbench-muted rounded-2xl border border-dashed workbench-border p-8 text-center">
+              <div className="workbench-muted rounded-xl border border-dashed workbench-border p-8 text-center">
                 {activeBatchId && batchFilterActive
                   ? "No jobs in this batch yet."
                   : "No jobs have been submitted yet."}

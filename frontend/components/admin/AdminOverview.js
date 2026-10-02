@@ -28,12 +28,12 @@ const LINKS = [
 function Stat({ label, value, warn = false }) {
   return (
     <div
-      className={`workbench-surface-bg rounded-2xl border workbench-border p-4 ${
+      className={`workbench-surface-bg rounded-xl border workbench-border p-4 ${
         warn ? "health-status-warn" : "health-status-ok"
       }`}
     >
       <p className="workbench-muted text-sm font-semibold">{label}</p>
-      <p className="workbench-foreground mt-2 text-2xl font-bold">{value ?? "—"}</p>
+      <p className="workbench-foreground mt-2 text-2xl font-semibold">{value ?? "—"}</p>
     </div>
   );
 }
@@ -65,7 +65,7 @@ export default function AdminOverview() {
     <div className="grid gap-5">
       <section className="workbench-card p-6">
         <p className="workbench-kicker">Admin</p>
-        <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+        <h1 className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
           Admin console
         </h1>
         <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
@@ -85,7 +85,7 @@ export default function AdminOverview() {
         {error ? (
           <p
             role="alert"
-            className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]"
+            className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-warning-fg"
           >
             {error}
           </p>
@@ -112,7 +112,7 @@ export default function AdminOverview() {
 
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="workbench-card p-6">
-          <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">
+          <h2 className="workbench-foreground text-2xl font-semibold tracking-tight">
             Quota configuration
           </h2>
           <p className="workbench-muted mt-2 text-sm">
@@ -122,7 +122,7 @@ export default function AdminOverview() {
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             {QUOTA_ROWS.map((row) => (
               <div key={row.key} className="border-t workbench-border pt-2">
-                <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">
+                <dt className="workbench-muted text-xs font-medium">
                   {row.label}
                 </dt>
                 <dd className="workbench-foreground mt-1 font-semibold">
@@ -134,15 +134,15 @@ export default function AdminOverview() {
         </section>
 
         <section className="workbench-card p-6">
-          <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">Manage</h2>
+          <h2 className="workbench-foreground text-2xl font-semibold tracking-tight">Manage</h2>
           <ul className="mt-4 grid gap-3">
             {LINKS.map((link) => (
               <li key={link.href}>
                 <Link
                   href={link.href}
-                  className="workbench-surface-bg block rounded-2xl border workbench-border p-4 transition hover:underline"
+                  className="workbench-surface-bg block rounded-xl border workbench-border p-4 transition hover:underline"
                 >
-                  <p className="workbench-foreground font-bold">{link.label}</p>
+                  <p className="workbench-foreground font-semibold">{link.label}</p>
                   <p className="workbench-muted mt-1 text-sm">{link.detail}</p>
                 </Link>
               </li>

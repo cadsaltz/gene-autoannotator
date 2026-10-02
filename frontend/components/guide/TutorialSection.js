@@ -54,7 +54,7 @@ export default function TutorialSection() {
   return (
     <section id="tutorial" aria-labelledby="tutorial-title" className="scroll-mt-6">
       <p className="workbench-kicker">{KICKER}</p>
-      <h2 id="tutorial-title" className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+      <h2 id="tutorial-title" className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
         {TITLE}
       </h2>
       <p className="workbench-muted mt-3 max-w-2xl leading-7">{INTRO}</p>
@@ -67,7 +67,7 @@ export default function TutorialSection() {
             </span>
             <div>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="workbench-foreground text-lg font-bold tracking-[-0.02em]">
+                <h3 className="workbench-foreground text-lg font-semibold tracking-tight">
                   <span className="sr-only">Step {index + 1}: </span>
                   {step.title}
                 </h3>
@@ -80,7 +80,7 @@ export default function TutorialSection() {
               <ul className="workbench-muted mt-3 grid gap-2 text-sm leading-6">
                 {step.points.map((point) => (
                   <li key={point} className="flex gap-2">
-                    <span aria-hidden="true" className="workbench-green font-bold">
+                    <span aria-hidden="true" className="workbench-green font-semibold">
                       ›
                     </span>
                     <span>{point}</span>

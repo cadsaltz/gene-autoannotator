@@ -64,7 +64,7 @@ export default function AuditTable({ initialAction = "", initialUserId = "" }) {
     <div className="grid gap-5">
       <section className="workbench-card p-6">
         <p className="workbench-kicker">Admin</p>
-        <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+        <h1 className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
           Audit log
         </h1>
         <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
@@ -114,7 +114,7 @@ export default function AuditTable({ initialAction = "", initialUserId = "" }) {
         {error ? (
           <p
             role="alert"
-            className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]"
+            className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-warning-fg"
           >
             {error}
           </p>
@@ -130,7 +130,7 @@ export default function AuditTable({ initialAction = "", initialUserId = "" }) {
         {events.length > 0 ? (
           <div className="mt-4 overflow-x-auto rounded-xl border workbench-border">
             <table className="min-w-full text-left text-sm">
-              <thead className="workbench-muted-bg workbench-muted text-xs font-bold uppercase tracking-[0.08em]">
+              <thead className="workbench-muted-bg workbench-muted text-xs font-medium">
                 <tr>
                   <th className="px-3 py-2">Time</th>
                   <th className="px-3 py-2">Actor</th>
@@ -177,7 +177,7 @@ export default function AuditTable({ initialAction = "", initialUserId = "" }) {
             </table>
           </div>
         ) : !loading ? (
-          <div className="workbench-muted mt-4 rounded-2xl border border-dashed workbench-border p-8 text-center">
+          <div className="workbench-muted mt-4 rounded-xl border border-dashed workbench-border p-8 text-center">
             No audit events match these filters.
           </div>
         ) : null}

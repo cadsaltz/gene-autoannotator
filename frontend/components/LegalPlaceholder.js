@@ -2,7 +2,7 @@ export default function LegalPlaceholder({ title, sections, draft }) {
   return (
     <article className="mx-auto grid max-w-3xl gap-6">
       <div
-        className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm font-semibold text-[#5f4b2e]"
+        className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm font-semibold text-warning-fg"
         role="note"
       >
         DRAFT — pending legal review. This page lists what the final text must
@@ -11,14 +11,14 @@ export default function LegalPlaceholder({ title, sections, draft }) {
 
       <header>
         <p className="workbench-kicker">Legal</p>
-        <h1 className="workbench-foreground mt-2 text-4xl font-bold tracking-[-0.04em]">
+        <h1 className="workbench-foreground mt-2 text-4xl font-semibold tracking-tight">
           {title}
         </h1>
       </header>
 
       {draft && draft.length > 0 ? (
         <section className="workbench-card p-6">
-          <h2 className="workbench-foreground text-xl font-bold tracking-[-0.02em]">
+          <h2 className="workbench-foreground text-xl font-semibold tracking-tight">
             Draft wording
           </h2>
           <div className="workbench-muted mt-3 grid gap-3 text-sm leading-6">
@@ -31,7 +31,7 @@ export default function LegalPlaceholder({ title, sections, draft }) {
 
       {sections.map((section) => (
         <section key={section.heading} className="workbench-card p-6">
-          <h2 className="workbench-foreground text-xl font-bold tracking-[-0.02em]">
+          <h2 className="workbench-foreground text-xl font-semibold tracking-tight">
             {section.heading}
           </h2>
           <p className="workbench-kicker mt-4">Must include</p>

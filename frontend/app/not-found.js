@@ -12,7 +12,7 @@ export default function NotFound() {
       <section className="mx-auto max-w-md">
         <div className="workbench-card p-7">
           <p className="workbench-kicker">404</p>
-          <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+          <h1 className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
             Page not found
           </h1>
           <p className="mt-4 text-sm workbench-muted">

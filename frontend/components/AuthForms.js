@@ -14,7 +14,7 @@ function AuthCard({ title, kicker, children, footer }) {
     <section className="mx-auto max-w-md">
       <div className="workbench-card p-7">
         <p className="workbench-kicker">{kicker}</p>
-        <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+        <h1 className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
           {title}
         </h1>
         <div className="mt-6">{children}</div>
@@ -29,7 +29,7 @@ function ErrorText({ message }) {
     return null;
   }
   return (
-    <p className="workbench-amber-bg rounded-xl border workbench-border p-3 text-sm text-[#5f4b2e]">
+    <p className="workbench-amber-bg rounded-xl border workbench-border p-3 text-sm text-warning-fg">
       {message}
     </p>
   );
@@ -301,7 +301,7 @@ export function VerifyForm() {
             maxLength={6}
             value={code}
             onChange={(event) => setCode(event.target.value)}
-            className="workbench-input font-mono tracking-[0.2em]"
+            className="workbench-input font-mono tracking-widest"
             required
             autoComplete="one-time-code"
             placeholder="000000"

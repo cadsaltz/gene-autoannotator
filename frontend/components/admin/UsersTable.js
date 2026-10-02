@@ -54,7 +54,7 @@ function UserRow({
           <p className="workbench-foreground font-semibold">
             {user.email}
             {restrictions.isSelf ? (
-              <span className="workbench-muted-bg ml-2 rounded-full border workbench-border px-2 py-0.5 text-xs font-bold uppercase tracking-wide">
+              <span className="workbench-muted-bg ml-2 rounded-full border workbench-border px-2 py-0.5 text-xs font-medium">
                 You
               </span>
             ) : null}
@@ -142,7 +142,7 @@ function UserRow({
           <p>{user.jobs_24h} in 24 h</p>
           <Link
             href={`/admin/audit?user_id=${encodeURIComponent(user.id)}`}
-            className="workbench-green mt-2 inline-block font-bold"
+            className="workbench-green mt-2 inline-block font-semibold"
           >
             Audit
           </Link>
@@ -183,7 +183,7 @@ function UserRow({
             <p
               role={message.error ? "alert" : "status"}
               className={`rounded-xl border workbench-border p-3 text-sm ${
-                message.error ? "workbench-amber-bg text-[#5f4b2e]" : "workbench-muted-bg"
+                message.error ? "workbench-amber-bg text-warning-fg" : "workbench-muted-bg"
               }`}
             >
               {message.text}
@@ -340,7 +340,7 @@ export default function UsersTable({ currentUserId }) {
     <div className="grid gap-5">
       <section className="workbench-card p-6">
         <p className="workbench-kicker">Admin</p>
-        <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">Users</h1>
+        <h1 className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">Users</h1>
         <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
           Change roles and status, override per-user quotas, and revoke sessions. Leave a quota
           blank to use the default; 0 means unlimited. Suspending a user signs them out
@@ -370,7 +370,7 @@ export default function UsersTable({ currentUserId }) {
         {listError ? (
           <p
             role="alert"
-            className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]"
+            className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-warning-fg"
           >
             {listError}
           </p>
@@ -386,7 +386,7 @@ export default function UsersTable({ currentUserId }) {
         {users.length > 0 ? (
           <div className="mt-4 overflow-x-auto rounded-xl border workbench-border">
             <table className="min-w-full text-left text-sm">
-              <thead className="workbench-muted-bg workbench-muted text-xs font-bold uppercase tracking-[0.08em]">
+              <thead className="workbench-muted-bg workbench-muted text-xs font-medium">
                 <tr>
                   <th className="px-3 py-2">User</th>
                   <th className="px-3 py-2">Role</th>
@@ -418,7 +418,7 @@ export default function UsersTable({ currentUserId }) {
             </table>
           </div>
         ) : !loading ? (
-          <div className="workbench-muted mt-4 rounded-2xl border border-dashed workbench-border p-8 text-center">
+          <div className="workbench-muted mt-4 rounded-xl border border-dashed workbench-border p-8 text-center">
             No users match this search.
           </div>
         ) : null}

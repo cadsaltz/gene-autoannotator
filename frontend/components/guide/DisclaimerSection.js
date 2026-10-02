@@ -25,15 +25,15 @@ const FULL_TEXT_LINK = "Read the full Disclaimer";
 export default function DisclaimerSection() {
   return (
     <section id="disclaimers" aria-labelledby="disclaimers-title" className="scroll-mt-6">
-      <div className="workbench-amber-bg rounded-[18px] border workbench-border-amber p-6 sm:p-8">
+      <div className="workbench-amber-bg rounded-xl border workbench-border-amber p-6 sm:p-8">
         <p className="workbench-kicker guide-kicker-amber">{KICKER}</p>
-        <h2 id="disclaimers-title" className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+        <h2 id="disclaimers-title" className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
           {TITLE}
         </h2>
-        <ul className="mt-5 grid gap-3 text-sm leading-6 text-[#5f4b2e] sm:grid-cols-2">
+        <ul className="mt-5 grid gap-3 text-sm leading-6 text-warning-fg sm:grid-cols-2">
           {DISCLAIMER_POINTS.map((point) => (
-            <li key={point.lead} className="rounded-xl border border-[#e3cfa9] bg-[#fffaf0] p-4">
-              <strong className="workbench-foreground block font-bold">{point.lead}</strong>
+            <li key={point.lead} className="rounded-xl border border-warning-line bg-warning-tint p-4">
+              <strong className="workbench-foreground block font-semibold">{point.lead}</strong>
               {point.text}
             </li>
           ))}

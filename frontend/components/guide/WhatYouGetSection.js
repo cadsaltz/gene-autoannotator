@@ -99,7 +99,7 @@ function CitedText({ text }) {
 function ExampleField({ label, children }) {
   return (
     <div className="border-t workbench-border pt-3">
-      <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">{label}</dt>
+      <dt className="workbench-muted text-xs font-medium">{label}</dt>
       <dd className="workbench-foreground mt-1 text-sm leading-6">{children}</dd>
     </div>
   );
@@ -113,7 +113,7 @@ function ExampleCard() {
       <div className="workbench-muted-bg flex flex-wrap items-baseline justify-between gap-2 border-b workbench-border px-5 py-4">
         <div>
           <p className="workbench-kicker">Example output</p>
-          <p className="workbench-foreground mt-1 text-xl font-bold tracking-[-0.02em]">
+          <p className="workbench-foreground mt-1 text-xl font-semibold tracking-tight">
             {example.name}{" "}
             <span className="workbench-muted font-mono text-sm font-semibold">{example.gene_id}</span>
           </p>
@@ -153,30 +153,30 @@ function ExampleCard() {
       <div className="workbench-muted-bg border-t workbench-border px-5 py-4">
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div>
-            <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Papers</dt>
+            <dt className="workbench-muted text-xs font-medium">Papers</dt>
             <dd className="workbench-foreground mt-1 font-semibold">
               {literature.papers_analyzed} of {literature.total_papers_retrieved}
             </dd>
           </div>
           <div>
-            <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Sections</dt>
+            <dt className="workbench-muted text-xs font-medium">Sections</dt>
             <dd className="workbench-foreground mt-1 font-semibold">{literature.sections_analyzed}</dd>
           </div>
           <div>
-            <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Relevance</dt>
+            <dt className="workbench-muted text-xs font-medium">Relevance</dt>
             <dd className="workbench-foreground mt-1 font-semibold">
               {literature.cumulative_relevance} / {literature.target_relevance.toFixed(1)}
             </dd>
           </div>
           <div>
-            <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Run time</dt>
+            <dt className="workbench-muted text-xs font-medium">Run time</dt>
             <dd className="workbench-foreground mt-1 font-semibold">
               {Math.round(example.duration_sec / 60)} min
             </dd>
           </div>
         </dl>
 
-        <p className="workbench-muted mt-4 text-xs font-bold uppercase tracking-[0.1em]">
+        <p className="workbench-muted mt-4 text-xs font-medium">
           Selected papers (2 of {literature.papers_analyzed} shown)
         </p>
         <ul className="mt-2 grid gap-2">
@@ -203,7 +203,7 @@ function ExampleCard() {
             </li>
           ))}
         </ul>
-        <p className="mt-4 rounded-xl border workbench-border bg-[#fffefa] p-3 text-sm leading-6 text-[#5f4b2e]">
+        <p className="mt-4 rounded-xl border workbench-border bg-surface p-3 text-sm leading-6 text-warning-fg">
           {EXAMPLE_REVIEW_NOTE}
         </p>
       </div>
@@ -220,7 +220,7 @@ export default function WhatYouGetSection() {
       <p className="workbench-kicker">{KICKER}</p>
       <h2
         id="what-you-get-title"
-        className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]"
+        className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight"
       >
         {TITLE}
       </h2>
@@ -230,7 +230,7 @@ export default function WhatYouGetSection() {
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
           {DELIVERABLES.map((item) => (
             <li key={item.title} className="workbench-card p-5">
-              <h3 className="workbench-foreground text-lg font-bold tracking-[-0.02em]">{item.title}</h3>
+              <h3 className="workbench-foreground text-lg font-semibold tracking-tight">{item.title}</h3>
               <p className="workbench-muted mt-2 text-sm leading-6">{item.text}</p>
             </li>
           ))}

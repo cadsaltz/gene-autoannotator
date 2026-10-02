@@ -21,11 +21,11 @@ const stepLabels = {
 };
 
 const statusBadgeClasses = {
-  queued: "bg-[#eee6d9] text-[#5a5248]",
-  running: "bg-[#dbe8df] text-[#2d4a38]",
-  completed: "bg-[#dde6f0] text-[#2f4a66]",
-  failed: "bg-[#f3d9dc] text-[#7a3a41]",
-  cancelled: "bg-[#e8e3db] text-[#5a5248]",
+  queued: "bg-surface-sunken text-fg-tertiary",
+  running: "bg-success-tint text-success-fg",
+  completed: "bg-info-tint text-info-fg",
+  failed: "bg-error-tint text-error-fg",
+  cancelled: "bg-surface-sunken text-fg-tertiary",
 };
 
 function formatSubmittedAt(value) {
@@ -44,7 +44,7 @@ function StatusCell({ job }) {
   return (
     <div className="grid gap-1">
       <span
-        className={`w-fit rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${
+        className={`w-fit rounded-full px-2 py-0.5 text-xs font-medium ${
           statusBadgeClasses[job.status] || statusBadgeClasses.queued
         }`}
       >
@@ -65,19 +65,19 @@ function UsagePanel({ queueStatus }) {
       {queueStatus ? (
         <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
           <div className="border-t workbench-border pt-2">
-            <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Active jobs</dt>
+            <dt className="workbench-muted text-xs font-medium">Active jobs</dt>
             <dd className="workbench-foreground mt-1 font-semibold">
               {formatUsage(queueStatus.your_active, queueStatus.your_active_limit)}
             </dd>
           </div>
           <div className="border-t workbench-border pt-2">
-            <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Last 24 hours</dt>
+            <dt className="workbench-muted text-xs font-medium">Last 24 hours</dt>
             <dd className="workbench-foreground mt-1 font-semibold">
               {formatUsage(queueStatus.your_today, queueStatus.your_daily_limit)}
             </dd>
           </div>
           <div className="border-t workbench-border pt-2">
-            <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">Batch size</dt>
+            <dt className="workbench-muted text-xs font-medium">Batch size</dt>
             <dd className="workbench-foreground mt-1 font-semibold">
               Up to {queueStatus.batch_limit} genes
             </dd>
@@ -192,7 +192,7 @@ export default function UserJobsWorkspace() {
     <div className="grid gap-5">
       <section className="workbench-card p-6">
         <p className="workbench-kicker">Jobs</p>
-        <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+        <h1 className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
           Submit and track your jobs
         </h1>
         <p className="workbench-muted mt-3 max-w-2xl text-sm leading-6">
@@ -218,13 +218,13 @@ export default function UserJobsWorkspace() {
 
       <div className="grid items-start gap-5 lg:grid-cols-[0.95fr_1.05fr]">
         <section className="workbench-card p-6">
-          <h2 className="text-2xl font-bold tracking-[-0.03em]">New annotation job</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">New annotation job</h2>
           <p className="workbench-muted mt-3 text-sm leading-6">
             Provide a gene name, locus, or both, or switch to batch mode to queue a list.
           </p>
 
           {queueStatus && !accepting ? (
-            <p className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+            <p className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-warning-fg">
               {queueStatus.paused
                 ? "New submissions are paused. Your existing jobs keep running; please try again later."
                 : "Submissions are paused because the shared queue is full. Your existing jobs keep running; please try again later."}
@@ -232,7 +232,7 @@ export default function UserJobsWorkspace() {
           ) : null}
 
           {queueStatusFailed && !queueStatus ? (
-            <p className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+            <p className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-warning-fg">
               Submissions are paused until the queue status loads. Use Refresh to try again.
             </p>
           ) : null}
@@ -246,7 +246,7 @@ export default function UserJobsWorkspace() {
               type="button"
               onClick={() => setSubmitMode("single")}
               aria-pressed={submitMode === "single"}
-              className={`min-h-10 rounded-lg px-4 text-sm font-bold transition-colors ${
+              className={`min-h-10 rounded-lg px-4 text-sm font-semibold transition-colors ${
                 submitMode === "single"
                   ? "workbench-button-primary"
                   : "workbench-button-secondary border-0 bg-transparent shadow-none"
@@ -258,7 +258,7 @@ export default function UserJobsWorkspace() {
               type="button"
               onClick={() => setSubmitMode("batch")}
               aria-pressed={submitMode === "batch"}
-              className={`min-h-10 rounded-lg px-4 text-sm font-bold transition-colors ${
+              className={`min-h-10 rounded-lg px-4 text-sm font-semibold transition-colors ${
                 submitMode === "batch"
                   ? "workbench-button-primary"
                   : "workbench-button-secondary border-0 bg-transparent shadow-none"
@@ -299,7 +299,7 @@ export default function UserJobsWorkspace() {
               />
 
               {statusMessage ? (
-                <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+                <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-warning-fg">
                   {statusMessage}
                 </p>
               ) : null}
@@ -308,13 +308,13 @@ export default function UserJobsWorkspace() {
         </section>
 
         <section className="workbench-card p-6">
-          <h2 className="workbench-foreground text-2xl font-bold tracking-[-0.03em]">My jobs</h2>
+          <h2 className="workbench-foreground text-2xl font-semibold tracking-tight">My jobs</h2>
           <p className="workbench-muted mt-2 text-sm">
             Only jobs you submitted are listed here.
           </p>
 
           {jobsMessage ? (
-            <p className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+            <p className="workbench-amber-bg mt-4 rounded-xl border workbench-border p-4 text-sm text-warning-fg">
               {jobsMessage}
             </p>
           ) : null}
@@ -322,7 +322,7 @@ export default function UserJobsWorkspace() {
           {jobs.length > 0 ? (
             <div className="mt-6 overflow-x-auto rounded-xl border workbench-border">
               <table className="min-w-full text-left text-sm">
-                <thead className="workbench-muted-bg workbench-muted text-xs font-bold uppercase tracking-[0.08em]">
+                <thead className="workbench-muted-bg workbench-muted text-xs font-medium">
                   <tr>
                     <th className="px-3 py-2">Gene / locus</th>
                     <th className="px-3 py-2">Status</th>
@@ -354,7 +354,7 @@ export default function UserJobsWorkspace() {
                           {job.status === "completed" && job.result_available ? (
                             <Link
                               href={`/annotations?query=${encodeURIComponent(getAnnotationQuery(job))}`}
-                              className="workbench-green text-sm font-bold hover:text-[#111a16]"
+                              className="workbench-green text-sm font-semibold hover:text-fg"
                             >
                               View annotation
                             </Link>
@@ -377,7 +377,7 @@ export default function UserJobsWorkspace() {
               </table>
             </div>
           ) : (
-            <div className="workbench-muted mt-6 rounded-2xl border border-dashed workbench-border p-8 text-center">
+            <div className="workbench-muted mt-6 rounded-xl border border-dashed workbench-border p-8 text-center">
               You have not submitted any jobs yet.
             </div>
           )}

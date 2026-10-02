@@ -59,14 +59,14 @@ export default function PipelineSection() {
   return (
     <section id="pipeline" aria-labelledby="pipeline-title" className="scroll-mt-6">
       <p className="workbench-kicker">{KICKER}</p>
-      <h2 id="pipeline-title" className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+      <h2 id="pipeline-title" className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
         {TITLE}
       </h2>
       <p className="workbench-muted mt-3 max-w-2xl leading-7">{INTRO}</p>
 
       <div
         aria-hidden="true"
-        className="workbench-card mt-6 flex items-center gap-2 overflow-x-auto p-4 text-xs font-bold"
+        className="workbench-card mt-6 flex items-center gap-2 overflow-x-auto p-4 text-xs font-semibold"
       >
         {STAGES.map((stage, index) => (
           <span key={stage.title} className="flex flex-none items-center gap-2">
@@ -86,7 +86,7 @@ export default function PipelineSection() {
               {String(index + 1).padStart(2, "0")}
             </span>
             <div>
-              <h3 className="workbench-foreground text-base font-bold tracking-[-0.01em]">
+              <h3 className="workbench-foreground text-base font-semibold tracking-tight">
                 <span className="sr-only">Step {index + 1}: </span>
                 {stage.title}
               </h3>
@@ -97,7 +97,7 @@ export default function PipelineSection() {
       </ol>
 
       <div className="workbench-surface mt-4 p-5">
-        <h3 className="workbench-foreground text-base font-bold">{ORTHOLOG_TITLE}</h3>
+        <h3 className="workbench-foreground text-base font-semibold">{ORTHOLOG_TITLE}</h3>
         <p className="workbench-muted mt-2 text-sm leading-6">{ORTHOLOG_TEXT}</p>
       </div>
     </section>

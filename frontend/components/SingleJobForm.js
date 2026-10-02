@@ -125,7 +125,7 @@ export default function SingleJobForm({
       {!isCustomProfile && selectedProfile ? (
         <div className="workbench-muted-bg workbench-muted rounded-xl border workbench-border p-4 text-sm">
           Expected locus format:{" "}
-          <code className="rounded bg-[#eee6d9] px-1 py-0.5">
+          <code className="rounded bg-surface-sunken px-1 py-0.5">
             {selectedProfile.locus_regex}
           </code>
         </div>
@@ -255,7 +255,7 @@ export default function SingleJobForm({
 
       {isCustomProfile && showAdvancedTerms ? (
         <details className="workbench-muted-bg rounded-xl border workbench-border p-4 text-sm">
-          <summary className="cursor-pointer font-bold">Advanced custom organism terms</summary>
+          <summary className="cursor-pointer font-semibold">Advanced custom organism terms</summary>
           <div className="mt-4 grid gap-4">
             <label className="grid gap-2">
               Locus regex
@@ -303,7 +303,7 @@ export default function SingleJobForm({
       ) : null}
 
       {statusMessage ? (
-        <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-[#5f4b2e]">
+        <p className="workbench-amber-bg rounded-xl border workbench-border p-4 text-sm text-warning-fg">
           {statusMessage}
         </p>
       ) : null}

@@ -65,9 +65,9 @@ export default function CustomFieldsEditor({
   }
 
   return (
-    <section className="grid gap-4 rounded-2xl border workbench-border bg-white/40 p-4">
+    <section className="grid gap-4 rounded-xl border workbench-border bg-surface p-4">
       <div>
-        <h3 className="workbench-foreground text-lg font-bold tracking-[-0.02em]">
+        <h3 className="workbench-foreground text-lg font-semibold tracking-tight">
           Annotation fields
         </h3>
         <p className="workbench-muted mt-2 text-sm leading-6">
@@ -77,13 +77,13 @@ export default function CustomFieldsEditor({
       </div>
 
       <div className="grid gap-3">
-        <p className="workbench-muted text-xs font-bold uppercase tracking-[0.12em]">
+        <p className="workbench-muted text-xs font-medium">
           Required defaults
         </p>
         {REQUIRED_DEFAULT_FIELDS.map((field) => (
           <div
             key={field.key}
-            className="grid gap-3 rounded-xl border workbench-border bg-white/70 p-3 text-sm"
+            className="grid gap-3 rounded-xl border workbench-border bg-surface p-3 text-sm"
           >
             <div>
               <p className="workbench-foreground font-semibold">{field.label}</p>
@@ -109,7 +109,7 @@ export default function CustomFieldsEditor({
             </label>
           </div>
         ))}
-        <label className="flex items-start gap-3 rounded-xl border workbench-border bg-white/70 p-3 text-sm font-medium">
+        <label className="flex items-start gap-3 rounded-xl border workbench-border bg-surface p-3 text-sm font-medium">
           <input
             type="checkbox"
             checked={Boolean(goResolutionEnabled)}
@@ -158,7 +158,7 @@ export default function CustomFieldsEditor({
           {(customFields || []).map((field, index) => (
             <article
               key={`${field.key || "field"}-${index}`}
-              className="grid gap-3 rounded-xl border workbench-border bg-white/70 p-4"
+              className="grid gap-3 rounded-xl border workbench-border bg-surface p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <p className="workbench-foreground text-sm font-semibold">

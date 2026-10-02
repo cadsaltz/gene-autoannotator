@@ -32,7 +32,7 @@ export default function LimitsSection() {
   return (
     <section id="limits" aria-labelledby="limits-title" className="scroll-mt-6">
       <p className="workbench-kicker">{KICKER}</p>
-      <h2 id="limits-title" className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+      <h2 id="limits-title" className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
         {TITLE}
       </h2>
       <p className="workbench-muted mt-3 max-w-2xl leading-7">{INTRO}</p>
@@ -41,7 +41,7 @@ export default function LimitsSection() {
         <dl className="workbench-card grid gap-4 p-6">
           {LIMIT_POINTS.map((point) => (
             <div key={point.title} className="border-t workbench-border pt-3 first:border-t-0 first:pt-0">
-              <dt className="workbench-foreground font-bold">{point.title}</dt>
+              <dt className="workbench-foreground font-semibold">{point.title}</dt>
               <dd className="workbench-muted mt-1 text-sm leading-6">{point.text}</dd>
             </div>
           ))}

@@ -44,7 +44,7 @@ export default function CreditsSection() {
   return (
     <section id="credits" aria-labelledby="credits-title" className="scroll-mt-6">
       <p className="workbench-kicker">{KICKER}</p>
-      <h2 id="credits-title" className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+      <h2 id="credits-title" className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
         {TITLE}
       </h2>
       <p className="workbench-muted mt-3 max-w-2xl leading-7">{NCBI_NOTE}</p>
@@ -53,7 +53,7 @@ export default function CreditsSection() {
         <ul className="grid gap-3 sm:grid-cols-2">
           {SOURCES.map((source) => (
             <li key={source.name} className="workbench-card p-5">
-              <h3 className="text-base font-bold">
+              <h3 className="text-base font-semibold">
                 <a
                   href={source.href}
                   target="_blank"
@@ -69,9 +69,9 @@ export default function CreditsSection() {
           ))}
         </ul>
         <div className="workbench-card p-5">
-          <h3 className="workbench-foreground text-base font-bold">{CITATION_HEADING}</h3>
+          <h3 className="workbench-foreground text-base font-semibold">{CITATION_HEADING}</h3>
           <p className="workbench-muted mt-1 text-sm leading-6">{CITATION_TEXT}</p>
-          <p className="workbench-muted-bg mt-3 rounded-xl border border-dashed workbench-border p-3 font-mono text-sm text-[#3d463f]">
+          <p className="workbench-muted-bg mt-3 rounded-xl border border-dashed workbench-border p-3 font-mono text-sm text-fg-secondary">
             {CITATION_PLACEHOLDER}
           </p>
         </div>

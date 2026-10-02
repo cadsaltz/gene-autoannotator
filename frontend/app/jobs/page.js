@@ -20,7 +20,7 @@ export default async function JobsPage() {
     <AppShell>
       <Suspense
         fallback={
-          <div className="rounded-3xl border border-white/10 bg-slate-900 p-8 text-slate-300">
+          <div className="workbench-card p-8 text-sm workbench-muted">
             Loading job workspace...
           </div>
         }

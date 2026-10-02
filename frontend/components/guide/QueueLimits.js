@@ -18,7 +18,7 @@ function describeQueueState(queueStatus) {
 function Stat({ label, value }) {
   return (
     <div className="border-t workbench-border pt-2">
-      <dt className="workbench-muted text-xs font-bold uppercase tracking-[0.1em]">{label}</dt>
+      <dt className="workbench-muted text-xs font-medium">{label}</dt>
       <dd className="workbench-foreground mt-1 font-semibold">{value}</dd>
     </div>
   );
@@ -43,7 +43,7 @@ export default function QueueLimits() {
 
   return (
     <div className="workbench-card p-6" aria-live="polite">
-      <h3 className="workbench-foreground text-lg font-bold tracking-[-0.02em]">{HEADING}</h3>
+      <h3 className="workbench-foreground text-lg font-semibold tracking-tight">{HEADING}</h3>
       {queueStatus ? (
         <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
           <Stat

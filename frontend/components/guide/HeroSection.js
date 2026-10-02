@@ -19,14 +19,14 @@ export default function HeroSection() {
       <p className="workbench-kicker">{KICKER}</p>
       <h1
         id="hero-title"
-        className="mt-4 max-w-3xl text-3xl font-bold tracking-[-0.04em] sm:text-5xl"
+        className="mt-4 max-w-3xl text-3xl font-semibold tracking-tight sm:text-5xl"
       >
         {TITLE}
       </h1>
       <p className="guide-hero-muted mt-5 max-w-2xl text-lg leading-8">{SUMMARY}</p>
       <p className="guide-hero-muted mt-3 max-w-2xl text-sm">
         {REVIEW_NOTE}{" "}
-        <a href="#disclaimers" className="font-semibold text-[#f5f0e6] underline underline-offset-2">
+        <a href="#disclaimers" className="font-semibold text-fg underline underline-offset-2">
           Research use only
         </a>
         .
@@ -37,7 +37,7 @@ export default function HeroSection() {
       <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {AT_A_GLANCE.map((item) => (
           <li key={item.value} className="guide-hero-stat pt-3">
-            <p className="text-2xl font-bold tracking-[-0.03em]">{item.value}</p>
+            <p className="text-2xl font-semibold tracking-tight">{item.value}</p>
             <p className="guide-hero-muted mt-1 text-sm leading-6">{item.label}</p>
           </li>
         ))}
