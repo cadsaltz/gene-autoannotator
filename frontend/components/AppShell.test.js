@@ -98,3 +98,28 @@ test("AppShell replaces page content with a suspended card on 403", async () => 
   assert.match(shell, /This account is suspended/);
   assert.match(shell, /Contact the site administrators/);
 });
+
+test("AppShell supports a full-width content area", async () => {
+  const shell = await readProjectFile("components/AppShell.js");
+  assert.match(shell, /export default function AppShell\(\{ children, publicPage = false, fullWidth = false \}\)/);
+  assert.match(shell, /fullWidth \? "w-full flex-1" : "mx-auto w-full max-w-7xl flex-1 px-6 py-8"/);
+});
+
+test("AppShell header has the theme switch on every page", async () => {
+  const shell = await readProjectFile("components/AppShell.js");
+  assert.match(shell, /import ThemeToggle from "\.\/ThemeToggle"/);
+  assert.match(shell, /<ThemeToggle \/>/);
+  assert.doesNotMatch(shell, /workbench-nav/);
+});
+
+test("ThemeToggle offers light, dark, and system and persists the choice", async () => {
+  const toggle = await readProjectFile("components/ThemeToggle.js");
+  assert.match(toggle, /"use client"/);
+  assert.match(toggle, /role="group"/);
+  assert.match(toggle, /aria-pressed=\{choice === option\.value\}/);
+  assert.match(toggle, /localStorage\.setItem\(THEME_STORAGE_KEY, next\)/);
+  assert.match(toggle, /useSyncExternalStore\(subscribe, readChoice, \(\) => "system"\)/);
+  for (const value of ["light", "dark", "system"]) {
+    assert.match(toggle, new RegExp(`value: "${value}"`));
+  }
+});

@@ -6,14 +6,16 @@ import { useEffect, useState } from "react";
 
 import { getMe, logout } from "../lib/authApi";
 import { isNavItemActive, navItemsFor } from "../lib/navItems";
+import { LogoMark, PlusIcon } from "./icons";
 import SiteFooter from "./SiteFooter";
+import ThemeToggle from "./ThemeToggle";
 
 function SuspendedCard() {
   return (
     <section className="mx-auto max-w-md">
       <div className="workbench-card p-7">
         <p className="workbench-kicker">Account</p>
-        <h1 className="workbench-foreground mt-2 text-3xl font-bold tracking-[-0.04em]">
+        <h1 className="workbench-foreground mt-2 text-3xl font-semibold tracking-tight">
           This account is suspended
         </h1>
         <p className="mt-4 text-sm workbench-muted">
@@ -26,13 +28,18 @@ function SuspendedCard() {
 
 function SessionLoading() {
   return (
-    <p className="text-sm workbench-muted" role="status">
+    <p className="p-6 text-sm workbench-muted" role="status">
       Loading…
     </p>
   );
 }
 
-export default function AppShell({ children, publicPage = false }) {
+function initialsFor(user) {
+  const source = String(user?.username || user?.email || "?").trim();
+  return source.slice(0, 2).toUpperCase();
+}
+
+export default function AppShell({ children, publicPage = false, fullWidth = false }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -81,42 +88,61 @@ export default function AppShell({ children, publicPage = false }) {
 
   return (
     <main className="workbench-app flex flex-col">
-      <header className="workbench-nav">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-          <Link href="/" className="group">
-            <p className="text-sm font-bold uppercase tracking-[0.08em] text-[#f5f0e6]">
-              Gene Autoannotator
-            </p>
-            <p className="workbench-nav-subtitle mt-1 text-sm">
-              Web queue for long-running annotation jobs
-            </p>
+      <header className="sticky top-0 z-30 border-b border-line bg-surface">
+        <div className="flex min-h-16 flex-wrap items-center gap-x-8 gap-y-2 px-4 py-3 sm:px-6 lg:px-8 lg:py-0">
+          <Link href="/" className="flex items-center gap-2.5 text-base font-semibold text-fg">
+            <LogoMark />
+            Gene Autoannotator
           </Link>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <nav className="flex flex-wrap gap-2">
-              {visibleNavItems.map((item) => (
+          <nav aria-label="Main" className="flex flex-wrap gap-1">
+            {visibleNavItems.map((item) => {
+              const active = isNavItemActive(pathname, item.href);
+              return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                    isNavItemActive(pathname, item.href)
-                      ? "workbench-nav-link-active"
-                      : "workbench-nav-link"
+                  aria-current={active ? "page" : undefined}
+                  className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+                    active
+                      ? "bg-surface-muted text-fg"
+                      : "text-fg-muted hover:bg-surface-muted hover:text-fg-secondary"
                   }`}
                 >
                   {item.label}
                 </Link>
-              ))}
-            </nav>
+              );
+            })}
+          </nav>
 
+          <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle />
+            {signedIn ? (
+              <Link
+                href="/jobs"
+                className="workbench-button workbench-button-secondary hidden sm:inline-flex"
+              >
+                <PlusIcon />
+                New job
+              </Link>
+            ) : null}
             {signedIn || suspended ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {signedIn ? <span className="text-sm text-[#f5f0e6]">{user.email}</span> : null}
+              <div className="flex items-center gap-3">
+                {signedIn ? (
+                  <span
+                    role="img"
+                    aria-label={`Signed in as ${user.email}`}
+                    title={user.email}
+                    className="grid size-9 place-items-center rounded-full bg-brand-tint-strong text-sm font-semibold text-brand-fg"
+                  >
+                    {initialsFor(user)}
+                  </span>
+                ) : null}
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="rounded-full border px-4 py-2 text-sm font-semibold transition workbench-nav-link"
                   disabled={loading}
+                  className="text-sm font-semibold text-fg-muted transition hover:text-fg"
                 >
                   Sign out
                 </button>
@@ -126,7 +152,7 @@ export default function AppShell({ children, publicPage = false }) {
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
+      <div className={fullWidth ? "w-full flex-1" : "mx-auto w-full max-w-7xl flex-1 px-6 py-8"}>
         {publicPage ? children : loading ? <SessionLoading /> : suspended ? <SuspendedCard /> : children}
       </div>
       <SiteFooter />

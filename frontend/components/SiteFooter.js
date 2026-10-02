@@ -10,13 +10,13 @@ const DATA_SOURCES = [
 
 export default function SiteFooter() {
   return (
-    <footer className="border-t workbench-border">
-      <div className="workbench-muted mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-sm">
+    <footer className="border-t border-line bg-surface">
+      <div className="text-fg-muted mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-sm">
         <nav aria-label="Legal" className="flex flex-wrap gap-x-2 gap-y-1">
           {LEGAL_LINKS.map((item, index) => (
             <span key={item.href} className="flex gap-2">
               {index > 0 ? <span aria-hidden="true">·</span> : null}
-              <Link href={item.href} className="font-semibold underline-offset-2 hover:underline">
+              <Link href={item.href} className="font-semibold text-fg-secondary underline-offset-2 hover:text-fg hover:underline">
                 {item.label}
               </Link>
             </span>
