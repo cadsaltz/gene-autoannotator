@@ -38,7 +38,7 @@ export default function AnnotationTabs({ tabs, active, onChange }) {
               tabIndex={selected ? 0 : -1}
               onClick={() => onChange(tab.id)}
               onKeyDown={(event) => onKeyDown(event, index)}
-              className={`flex shrink-0 items-center gap-2 border-b-2 px-1 pb-3 text-sm font-semibold transition ${
+              className={`flex shrink-0 items-center gap-2 border-b-2 px-1 pb-3 text-sm font-semibold transition focus-visible:-outline-offset-2 ${
                 selected
                   ? "border-brand-fg text-brand-fg"
                   : "border-transparent text-fg-muted hover:border-line-strong hover:text-fg-secondary"
