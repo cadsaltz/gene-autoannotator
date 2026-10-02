@@ -1,4 +1,6 @@
-const CITATION_PATTERN = /\(\s*PMIDs?\s*:?\s*(\d+(?:\s*[,;]\s*(?:PMIDs?\s*:?\s*)?\d+)*)\s*\)/gi;
+const PMID_LIST = String.raw`\bPMIDs?\s*:?\s*\d+(?:\s*(?:[,;]|\band\b)\s*(?:PMIDs?\s*:?\s*)?\d+)*`;
+// A parenthetical holding only citations is consumed whole; otherwise only the PMID text is.
+const CITATION_PATTERN = new RegExp(String.raw`\(\s*${PMID_LIST}\s*\)|${PMID_LIST}`, "gi");
 
 export function splitCitations(text) {
   const source = text == null ? "" : String(text);
@@ -7,7 +9,7 @@ export function splitCitations(text) {
   for (const match of source.matchAll(CITATION_PATTERN)) {
     const before = source.slice(lastIndex, match.index);
     if (before) segments.push({ type: "text", value: before });
-    for (const pmid of match[1].match(/\d+/g)) {
+    for (const pmid of match[0].match(/\d+/g)) {
       segments.push({ type: "pmid", value: pmid });
     }
     lastIndex = match.index + match[0].length;

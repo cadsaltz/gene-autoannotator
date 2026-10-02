@@ -3,7 +3,6 @@ import test from "node:test";
 
 import {
   filterMatchesByOrganism,
-  formatRunTime,
   getAnnotationNotes,
   getFieldCoverage,
   getNameSource,
@@ -33,17 +32,10 @@ const LITERATURE = {
   ],
 };
 
-test("formatRunTime", () => {
-  assert.equal(formatRunTime(45), "45 s");
-  assert.equal(formatRunTime(486.2), "8 min");
-  assert.equal(formatRunTime(4320), "1 h 12 min");
-  assert.equal(formatRunTime(undefined), "—");
-});
-
 test("getStatCells summarises the run", () => {
   const cells = getStatCells(
     annotationWith({ literature: LITERATURE, duration_sec: 486.2, quality_flags: [] }),
-    { locale: "en-US" },
+    { locale: "en-US", timeZone: "UTC" },
   );
   const byKey = Object.fromEntries(cells.map((cell) => [cell.key, cell]));
   assert.deepEqual(cells.map((cell) => cell.key), ["generated", "papers", "sections", "relevance", "runtime", "flags"]);
@@ -54,7 +46,7 @@ test("getStatCells summarises the run", () => {
   assert.equal(byKey.relevance.value, "6.96");
   assert.equal(byKey.relevance.detail, "/ 9.0");
   assert.ok(Math.abs(byKey.relevance.meter - 6.961 / 9) < 1e-9);
-  assert.equal(byKey.runtime.value, "8 min");
+  assert.equal(byKey.runtime.value, "8m 6s");
   assert.equal(byKey.flags.value, "None");
 });
 
@@ -139,4 +131,6 @@ test("organism filter", () => {
   assert.deepEqual(getOrganismOptions(matches), ["Leishmania major Friedlin", "Trypanosoma cruzi CL Brener"]);
   assert.deepEqual(filterMatchesByOrganism(matches, "Leishmania major Friedlin").map((m) => m.id), [2]);
   assert.equal(filterMatchesByOrganism(matches, ""), matches);
+  assert.deepEqual(filterMatchesByOrganism(undefined, ""), []);
+  assert.deepEqual(filterMatchesByOrganism(null, ""), []);
 });

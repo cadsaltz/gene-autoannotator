@@ -26,19 +26,19 @@ const METADATA_FIELDS = [
   ["duration", "Duration"],
 ];
 
-function getAnnotationPayload(annotation) {
+export function getAnnotationPayload(annotation) {
   return annotation?.result?.annotation || {};
 }
 
-function getMetadata(annotation) {
+export function getMetadata(annotation) {
   return getAnnotationPayload(annotation).annotation_metadata || {};
 }
 
-function getLiterature(annotation) {
+export function getLiterature(annotation) {
   return getMetadata(annotation).literature || {};
 }
 
-function formatDuration(seconds) {
+export function formatDuration(seconds) {
   if (seconds == null || Number.isNaN(Number(seconds))) {
     return "No supported data";
   }
