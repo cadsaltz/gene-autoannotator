@@ -128,7 +128,7 @@ export default function ResultsRail({
           </div>
         ) : null}
 
-        <ul className="grid gap-0.5">
+        <ul className="grid grid-cols-1 gap-0.5">
           {matches.map((match) => {
             const isSelected = match.id === selectedId;
             return (

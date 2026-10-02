@@ -9,7 +9,7 @@ export function Badge({ tone = "neutral", dot = false, title, className = "", ch
   return (
     <span
       title={title}
-      className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium leading-[18px] ${BADGE_TONES[tone]} ${className}`}
+      className={`inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium leading-[18px] ${BADGE_TONES[tone]} ${className}`}
     >
       {dot ? <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" /> : null}
       <span className="truncate">{children}</span>
@@ -28,7 +28,7 @@ export function Card({ as: Tag = "section", className = "", children, ...props }
 export function CardHeader({ title, aside = null }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <h3 className="text-sm font-semibold text-fg">{title}</h3>
+      <h3 className="shrink-0 text-sm font-semibold text-fg">{title}</h3>
       {aside}
     </div>
   );
