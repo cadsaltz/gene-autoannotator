@@ -79,11 +79,35 @@ test("every light token has a dark-theme value", async () => {
   assert.deepEqual(names(block('[data-theme="dark"]')), light);
 });
 
-test("component vocabulary lives in the components layer so utilities can override it", async () => {
+function removeBlock(css, start) {
+  const open = css.indexOf("{", start);
+  let depth = 0;
+  for (let index = open; index < css.length; index += 1) {
+    if (css[index] === "{") depth += 1;
+    if (css[index] === "}") depth -= 1;
+    if (depth === 0) {
+      return css.slice(0, start) + css.slice(index + 1);
+    }
+  }
+  assert.fail("unbalanced braces in globals.css");
+}
+
+test("every rule outside the token blocks is layered so utilities can override it", async () => {
   const css = await readFile(path.join(projectRoot, "app/globals.css"), "utf8");
-  const marker = css.indexOf("@layer components {");
-  assert.notEqual(marker, -1, "missing @layer components block");
-  assert.doesNotMatch(css.slice(0, marker), /\.workbench-/);
+  assert.match(css, /@layer base \{/);
+  assert.match(css, /@layer components \{/);
+
+  let rest = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (let match = rest.match(/@layer [a-z-]+ \{/); match; match = rest.match(/@layer [a-z-]+ \{/)) {
+    rest = removeBlock(rest, match.index);
+  }
+  for (const prelude of [":root {", '[data-theme="dark"] {', "@theme inline {"]) {
+    const start = rest.indexOf(prelude);
+    assert.notEqual(start, -1, `missing ${prelude} block`);
+    rest = removeBlock(rest, start);
+  }
+  rest = rest.replace('@import "tailwindcss";', "");
+  assert.equal(rest.trim(), "", `unlayered CSS found:\n${rest.trim()}`);
 });
 
 test("root layout loads Inter and injects the theme script", async () => {

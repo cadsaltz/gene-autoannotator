@@ -122,27 +122,29 @@
   --font-mono: var(--font-roboto-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-body {
-  background: var(--page);
-  color: var(--fg);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-}
+@layer base {
+  body {
+    background: var(--page);
+    color: var(--fg);
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
 
-:where(a, button, select, summary):focus-visible {
-  outline: 2px solid var(--brand-fg);
-  outline-offset: 2px;
-}
+  :where(a, button, select, summary):focus-visible {
+    outline: 2px solid var(--brand-fg);
+    outline-offset: 2px;
+  }
 
-@media (prefers-reduced-motion: no-preference) {
-  html {
-    scroll-behavior: smooth;
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
   }
 }
 
