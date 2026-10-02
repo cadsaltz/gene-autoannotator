@@ -79,6 +79,13 @@ test("every light token has a dark-theme value", async () => {
   assert.deepEqual(names(block('[data-theme="dark"]')), light);
 });
 
+test("component vocabulary lives in the components layer so utilities can override it", async () => {
+  const css = await readFile(path.join(projectRoot, "app/globals.css"), "utf8");
+  const marker = css.indexOf("@layer components {");
+  assert.notEqual(marker, -1, "missing @layer components block");
+  assert.doesNotMatch(css.slice(0, marker), /\.workbench-/);
+});
+
 test("root layout loads Inter and injects the theme script", async () => {
   const layout = await readFile(path.join(projectRoot, "app/layout.js"), "utf8");
   assert.match(layout, /Inter\(/);

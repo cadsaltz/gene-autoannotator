@@ -146,301 +146,303 @@ textarea {
   }
 }
 
-.workbench-app {
-  min-height: 100vh;
-  background: var(--page);
-  color: var(--fg);
-}
-
-.workbench-card {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: var(--elev-xs);
-}
-
-.workbench-surface {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-}
-
-.workbench-surface-bg {
-  background: var(--surface);
-}
-
-.workbench-muted-bg {
-  background: var(--surface-muted);
-}
-
-.workbench-amber-bg {
-  background: var(--warning-tint);
-}
-
-.workbench-foreground {
-  color: var(--fg);
-}
-
-.workbench-muted {
-  color: var(--fg-muted);
-}
-
-.workbench-green {
-  color: var(--brand-fg);
-}
-
-.workbench-amber {
-  color: var(--warning-fg);
-}
-
-.workbench-red {
-  color: var(--error-fg);
-}
-
-.workbench-border {
-  border-color: var(--line);
-}
-
-.workbench-border-green {
-  border-color: var(--brand-line);
-}
-
-.workbench-border-amber {
-  border-color: var(--warning-line);
-}
-
-.workbench-border-blue {
-  border-color: var(--info-line);
-}
-
-.workbench-border-red {
-  border-color: var(--error-line);
-}
-
-.health-status-ok {
-  border-top: 4px solid var(--success-solid);
-}
-
-.health-status-warn {
-  border-top: 4px solid var(--warning-solid);
-}
-
-.workbench-kicker {
-  color: var(--brand-fg);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.workbench-button {
-  display: inline-flex;
-  min-height: 2.5rem;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  border-radius: 8px;
-  padding: 0 0.875rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow: var(--elev-xs);
-  transition:
-    border-color 150ms ease,
-    background-color 150ms ease,
-    color 150ms ease,
-    opacity 150ms ease;
-}
-
-.workbench-button-primary {
-  border: 1px solid var(--brand);
-  background: var(--brand);
-  color: #fff;
-}
-
-.workbench-button-primary:hover {
-  border-color: var(--brand-hover);
-  background: var(--brand-hover);
-}
-
-.workbench-button-secondary {
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--fg-secondary);
-}
-
-.workbench-button-secondary:hover {
-  background: var(--surface-muted);
-  color: var(--fg);
-}
-
-.workbench-input {
-  min-height: 2.5rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--surface);
-  padding: 0.5rem 0.75rem;
-  color: var(--fg);
-  box-shadow: var(--elev-xs);
-  outline: none;
-}
-
-.workbench-input::placeholder {
-  color: var(--fg-subtle);
-}
-
-.workbench-input:focus {
-  border-color: var(--brand-line);
-  box-shadow: 0 0 0 4px var(--focus-ring);
-}
-
-.annotation-raw-json {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  overflow: auto;
-  white-space: pre;
-}
-
-.job-card-running {
-  border-left-color: var(--brand-fg);
-  background: linear-gradient(90deg, var(--brand-tint), var(--surface) 42%);
-}
-
-.job-card-completed {
-  border-left-color: var(--success-solid);
-  background: var(--surface);
-}
-
-.job-card-failed {
-  border-left-color: var(--error-solid);
-  background: var(--error-tint);
-}
-
-.job-card-queued {
-  border-left-color: var(--line-strong);
-  background: var(--surface);
-}
-
-.job-card-cancelled {
-  border-left-color: var(--line);
-  background: var(--surface-muted);
-}
-
-.guide-hero {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background:
-    radial-gradient(circle at 88% 12%, var(--brand-tint-strong), transparent 46%),
-    var(--surface);
-  color: var(--fg);
-  box-shadow: var(--elev-xs);
-}
-
-.guide-kicker-amber {
-  color: var(--warning-fg);
-}
-
-.guide-hero-muted {
-  color: var(--fg-tertiary);
-}
-
-.guide-hero-stat {
-  border-top: 1px solid var(--line);
-}
-
-.guide-button-light {
-  background: var(--brand);
-  color: #fff;
-}
-
-.guide-button-light:hover {
-  background: var(--brand-hover);
-}
-
-.guide-button-outline {
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--fg-secondary);
-}
-
-.guide-button-outline:hover {
-  background: var(--surface-muted);
-  color: var(--fg);
-}
-
-.guide-toc-link {
-  border: 1px solid var(--line);
-  color: var(--fg-secondary);
-  transition:
-    border-color 150ms ease,
-    background-color 150ms ease;
-}
-
-@media (min-width: 64rem) {
-  .guide-toc-link {
-    border-color: transparent;
+@layer components {
+  .workbench-app {
+    min-height: 100vh;
+    background: var(--page);
+    color: var(--fg);
   }
-}
 
-.guide-toc-link:hover {
-  border-color: var(--brand-line);
-  background: var(--brand-tint);
-}
+  .workbench-card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: var(--elev-xs);
+  }
 
-.guide-step-badge {
-  display: inline-flex;
-  width: 2rem;
-  height: 2rem;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: var(--brand-tint-strong);
-  color: var(--brand-fg);
-  font-family: var(--font-roboto-mono), monospace;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
+  .workbench-surface {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+  }
 
-.guide-chip {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface-muted);
-  padding: 0.125rem 0.625rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--fg-secondary);
-}
+  .workbench-surface-bg {
+    background: var(--surface);
+  }
 
-.guide-chip-green {
-  border-color: var(--success-line);
-  background: var(--success-tint);
-  color: var(--success-fg);
-}
+  .workbench-muted-bg {
+    background: var(--surface-muted);
+  }
 
-.guide-chip-amber {
-  border-color: var(--warning-line);
-  background: var(--warning-tint);
-  color: var(--warning-fg);
-}
+  .workbench-amber-bg {
+    background: var(--warning-tint);
+  }
 
-.guide-faq summary {
-  list-style: none;
-}
+  .workbench-foreground {
+    color: var(--fg);
+  }
 
-.guide-faq summary::-webkit-details-marker {
-  display: none;
-}
+  .workbench-muted {
+    color: var(--fg-muted);
+  }
 
-.guide-faq summary::after {
-  content: "+";
-  margin-left: auto;
-  color: var(--brand-fg);
-  font-weight: 600;
-}
+  .workbench-green {
+    color: var(--brand-fg);
+  }
 
-.guide-faq[open] summary::after {
-  content: "–";
+  .workbench-amber {
+    color: var(--warning-fg);
+  }
+
+  .workbench-red {
+    color: var(--error-fg);
+  }
+
+  .workbench-border {
+    border-color: var(--line);
+  }
+
+  .workbench-border-green {
+    border-color: var(--brand-line);
+  }
+
+  .workbench-border-amber {
+    border-color: var(--warning-line);
+  }
+
+  .workbench-border-blue {
+    border-color: var(--info-line);
+  }
+
+  .workbench-border-red {
+    border-color: var(--error-line);
+  }
+
+  .health-status-ok {
+    border-top: 4px solid var(--success-solid);
+  }
+
+  .health-status-warn {
+    border-top: 4px solid var(--warning-solid);
+  }
+
+  .workbench-kicker {
+    color: var(--brand-fg);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .workbench-button {
+    display: inline-flex;
+    min-height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 8px;
+    padding: 0 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: var(--elev-xs);
+    transition:
+      border-color 150ms ease,
+      background-color 150ms ease,
+      color 150ms ease,
+      opacity 150ms ease;
+  }
+
+  .workbench-button-primary {
+    border: 1px solid var(--brand);
+    background: var(--brand);
+    color: #fff;
+  }
+
+  .workbench-button-primary:hover {
+    border-color: var(--brand-hover);
+    background: var(--brand-hover);
+  }
+
+  .workbench-button-secondary {
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--fg-secondary);
+  }
+
+  .workbench-button-secondary:hover {
+    background: var(--surface-muted);
+    color: var(--fg);
+  }
+
+  .workbench-input {
+    min-height: 2.5rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: 0.5rem 0.75rem;
+    color: var(--fg);
+    box-shadow: var(--elev-xs);
+    outline: none;
+  }
+
+  .workbench-input::placeholder {
+    color: var(--fg-subtle);
+  }
+
+  .workbench-input:focus {
+    border-color: var(--brand-line);
+    box-shadow: 0 0 0 4px var(--focus-ring);
+  }
+
+  .annotation-raw-json {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: auto;
+    white-space: pre;
+  }
+
+  .job-card-running {
+    border-left-color: var(--brand-fg);
+    background: linear-gradient(90deg, var(--brand-tint), var(--surface) 42%);
+  }
+
+  .job-card-completed {
+    border-left-color: var(--success-solid);
+    background: var(--surface);
+  }
+
+  .job-card-failed {
+    border-left-color: var(--error-solid);
+    background: var(--error-tint);
+  }
+
+  .job-card-queued {
+    border-left-color: var(--line-strong);
+    background: var(--surface);
+  }
+
+  .job-card-cancelled {
+    border-left-color: var(--line);
+    background: var(--surface-muted);
+  }
+
+  .guide-hero {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background:
+      radial-gradient(circle at 88% 12%, var(--brand-tint-strong), transparent 46%),
+      var(--surface);
+    color: var(--fg);
+    box-shadow: var(--elev-xs);
+  }
+
+  .guide-kicker-amber {
+    color: var(--warning-fg);
+  }
+
+  .guide-hero-muted {
+    color: var(--fg-tertiary);
+  }
+
+  .guide-hero-stat {
+    border-top: 1px solid var(--line);
+  }
+
+  .guide-button-light {
+    background: var(--brand);
+    color: #fff;
+  }
+
+  .guide-button-light:hover {
+    background: var(--brand-hover);
+  }
+
+  .guide-button-outline {
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--fg-secondary);
+  }
+
+  .guide-button-outline:hover {
+    background: var(--surface-muted);
+    color: var(--fg);
+  }
+
+  .guide-toc-link {
+    border: 1px solid var(--line);
+    color: var(--fg-secondary);
+    transition:
+      border-color 150ms ease,
+      background-color 150ms ease;
+  }
+
+  @media (min-width: 64rem) {
+    .guide-toc-link {
+      border-color: transparent;
+    }
+  }
+
+  .guide-toc-link:hover {
+    border-color: var(--brand-line);
+    background: var(--brand-tint);
+  }
+
+  .guide-step-badge {
+    display: inline-flex;
+    width: 2rem;
+    height: 2rem;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--brand-tint-strong);
+    color: var(--brand-fg);
+    font-family: var(--font-roboto-mono), monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .guide-chip {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-muted);
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--fg-secondary);
+  }
+
+  .guide-chip-green {
+    border-color: var(--success-line);
+    background: var(--success-tint);
+    color: var(--success-fg);
+  }
+
+  .guide-chip-amber {
+    border-color: var(--warning-line);
+    background: var(--warning-tint);
+    color: var(--warning-fg);
+  }
+
+  .guide-faq summary {
+    list-style: none;
+  }
+
+  .guide-faq summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .guide-faq summary::after {
+    content: "+";
+    margin-left: auto;
+    color: var(--brand-fg);
+    font-weight: 600;
+  }
+
+  .guide-faq[open] summary::after {
+    content: "–";
+  }
 }

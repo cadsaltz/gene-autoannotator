@@ -63,7 +63,11 @@ export default function ThemeToggle() {
   }, [choice]);
 
   function select(next) {
-    window.localStorage.setItem(THEME_STORAGE_KEY, next);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, next);
+    } catch {
+      // Storage may be blocked; still apply the theme for this page.
+    }
     applyChoice(next);
     window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
   }

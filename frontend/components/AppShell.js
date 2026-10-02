@@ -142,7 +142,7 @@ export default function AppShell({ children, publicPage = false, fullWidth = fal
                   type="button"
                   onClick={handleSignOut}
                   disabled={loading}
-                  className="text-sm font-semibold text-fg-muted transition hover:text-fg"
+                  className="text-sm font-semibold text-fg-muted transition hover:text-fg disabled:opacity-60"
                 >
                   Sign out
                 </button>
