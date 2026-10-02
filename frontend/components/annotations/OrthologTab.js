@@ -6,6 +6,14 @@ export default function OrthologTab({ annotation, profileFields }) {
   const rows = getGeneratedFieldRows(annotation, profileFields).filter((row) => row.orthologDerived);
   const goTerms = getOrthologGoTerms(annotation);
 
+  if (rows.length === 0 && goTerms.length === 0) {
+    return (
+      <Card className="px-6 py-5">
+        <p className="text-sm text-fg-muted">No ortholog evidence was stored with this annotation.</p>
+      </Card>
+    );
+  }
+
   return (
     <div className="grid gap-5">
       {rows.length > 0 ? (

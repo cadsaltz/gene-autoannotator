@@ -82,7 +82,7 @@ export default function AnnotationHeader({ annotation, view, versions, selectedV
         </div>
 
         <div className="flex shrink-0 flex-wrap gap-3">
-          {total > 1 ? (
+          {options.length > 1 ? (
             <label className="relative">
               <span className="sr-only">Version</span>
               <select

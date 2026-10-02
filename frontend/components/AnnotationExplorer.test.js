@@ -22,6 +22,19 @@ test("selecting a result opens the Annotation tab", async () => {
   assert.match(explorer, /async function loadAnnotation\(annotationId\) \{[\s\S]*?setActiveTab\("annotation"\)/);
 });
 
+test("stale search and load responses cannot overwrite newer ones", async () => {
+  const explorer = await read("components/AnnotationExplorer.js");
+  assert.match(explorer, /const searchRequest = useRef\(0\)/);
+  assert.match(explorer, /const loadRequest = useRef\(0\)/);
+  assert.match(
+    explorer,
+    /await searchAnnotations\(trimmed\);\s*if \(id !== searchRequest\.current\) return;/,
+  );
+  assert.match(explorer, /async function runSearch[\s\S]*?loadRequest\.current \+= 1/);
+  assert.match(explorer, /await getAnnotation\(annotationId\);\s*if \(!isCurrent\(\)\) return;/);
+  assert.match(explorer, /async function fetchVersions\(annotationId, id\)/);
+});
+
 test("ortholog content gets its own tab only when the annotation has it", async () => {
   const detail = await read("components/annotations/AnnotationDetail.js");
   assert.match(detail, /const showOrtholog = hasOrthologColumn\(view\)/);

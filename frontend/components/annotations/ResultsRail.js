@@ -76,11 +76,9 @@ export default function ResultsRail({
             )}
           </div>
         </form>
-        {message ? (
-          <p className="mt-3 text-sm text-warning-fg" role="status">
-            {message}
-          </p>
-        ) : null}
+        <p className={message ? "mt-3 text-sm text-warning-fg" : "sr-only"} role="status">
+          {message}
+        </p>
         {searchedQuery ? (
           <div className="mt-3 flex items-center justify-between gap-2 text-xs text-fg-muted">
             <span>

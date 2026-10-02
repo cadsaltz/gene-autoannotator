@@ -60,6 +60,11 @@ export default function AnnotationDetail({
     onTabChange("annotation");
   }
 
+  function selectHeaderVersion(key) {
+    onSelectVersion(key);
+    if (current !== activeTab) onTabChange(current);
+  }
+
   return (
     <article className="mx-auto min-w-0 max-w-[105rem]">
       <AnnotationHeader
@@ -67,7 +72,7 @@ export default function AnnotationDetail({
         view={view}
         versions={versions}
         selectedVersionKey={selectedVersionKey}
-        onSelectVersion={onSelectVersion}
+        onSelectVersion={selectHeaderVersion}
       />
       <StatStrip annotation={view} />
       <AnnotationTabs tabs={tabs} active={current} onChange={onTabChange} />
