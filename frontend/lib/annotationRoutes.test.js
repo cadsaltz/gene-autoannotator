@@ -54,10 +54,11 @@ test("annotations page checks the session before searching", async () => {
 });
 
 test("AnnotationExplorer hides job ids when the API omits them", async () => {
-  const explorer = await readProjectFile("components/AnnotationExplorer.js");
-  assert.match(explorer, /\{displayAnnotation\.job_id \? \(/);
-  assert.match(explorer, /\{option\.job_id \? ` · job \$\{option\.job_id\}` : ""\}/);
-  assert.doesNotMatch(explorer, /job_id \|\| "Unknown"/);
+  const metadata = await readProjectFile("components/annotations/MetadataTab.js");
+  const versions = await readProjectFile("components/annotations/VersionsTab.js");
+  assert.match(metadata, /\{annotation\.job_id \? \(/);
+  assert.match(versions, /\{option\.job_id \? ` · job \$\{option\.job_id\}` : ""\}/);
+  assert.doesNotMatch(metadata + versions, /job_id \|\| "Unknown"/);
 });
 
 test("auth pages render AppShell as public pages", async () => {

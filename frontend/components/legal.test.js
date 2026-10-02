@@ -189,8 +189,8 @@ test("annotation detail shows the research disclaimer", async () => {
     RESEARCH_DISCLAIMER,
     "Research use only. AI-generated annotations can be incomplete or wrong. Verify against primary sources before relying on them.",
   );
-  const explorer = await readProjectFile("components/AnnotationExplorer.js");
-  assert.match(explorer, /import \{ RESEARCH_DISCLAIMER \} from "\.\.\/lib\/legal"/);
-  assert.match(explorer, /\{RESEARCH_DISCLAIMER\}/);
-  assert.match(explorer, /href="\/legal\/disclaimer"/);
+  const header = await readProjectFile("components/annotations/AnnotationHeader.js");
+  assert.match(header, /import \{ RESEARCH_DISCLAIMER \} from "\.\.\/\.\.\/lib\/legal"/);
+  assert.match(header, /\{RESEARCH_DISCLAIMER\}/);
+  assert.match(header, /href="\/legal\/disclaimer"/);
 });

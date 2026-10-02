@@ -31,7 +31,7 @@ export default async function AnnotationsPage({ searchParams }) {
   }
 
   return (
-    <AppShell>
+    <AppShell fullWidth>
       <Suspense
         fallback={
           <div className="workbench-card p-8 text-sm workbench-muted">

@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 
 const projectRoot = process.cwd();
-const SKIPPED = new Set(["components/AnnotationExplorer.js"]);
+const SKIPPED = new Set();
 
 const HARD_CODED_COLOUR =
   /\[#[0-9a-fA-F]{3,8}\]|\b(?:bg|text|border|from|to|ring|divide)-(?:slate|gray|zinc|stone|neutral|black)\b[-\w/]*|\bbg-white\b[\w/]*/g;

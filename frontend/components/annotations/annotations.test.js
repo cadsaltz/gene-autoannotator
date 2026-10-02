@@ -45,3 +45,32 @@ test("CitedText links PMIDs to PubMed in a new tab", async () => {
   assert.match(cited, /href=\{pubmedUrl\(segment\.value\)\}/);
   assert.match(cited, /rel="noopener noreferrer"/);
 });
+
+test("tabs follow the WAI-ARIA tabs pattern", async () => {
+  const tabs = await read("AnnotationTabs.js");
+  assert.match(tabs, /role="tablist"/);
+  assert.match(tabs, /role="tab"/);
+  assert.match(tabs, /aria-selected=\{selected\}/);
+  assert.match(tabs, /tabIndex=\{selected \? 0 : -1\}/);
+  assert.match(tabs, /ArrowRight/);
+  const detail = await read("AnnotationDetail.js");
+  assert.match(detail, /role="tabpanel"/);
+});
+
+test("results rail focuses search on Cmd/Ctrl-K and keeps the submit-a-gene path", async () => {
+  const rail = await read("ResultsRail.js");
+  assert.match(rail, /\(event\.metaKey \|\| event\.ctrlKey\) && event\.key\.toLowerCase\(\) === "k"/);
+  assert.match(rail, /href=\{`\/jobs\?locus=\$\{encodeURIComponent\(searchedQuery\)\}`\}/);
+  assert.match(rail, /Submit this gene for annotation/);
+});
+
+test("disclaimer can be hidden for the browser session only", async () => {
+  const header = await read("AnnotationHeader.js");
+  assert.match(header, /sessionStorage/);
+  assert.doesNotMatch(header, /localStorage/);
+});
+
+test("re-run is offered only on the latest version", async () => {
+  const header = await read("AnnotationHeader.js");
+  assert.match(header, /!viewingHistorical \? \(\s*<Link\s+href=\{buildJobPrefillHref\(annotation\)\}/);
+});
