@@ -33,17 +33,26 @@ test("splitCitations finds bare PMIDs inside prose and keeps the surrounding tex
   ]);
 });
 
-test("splitCitations expands bare lists joined by commas and 'and'", () => {
-  assert.deepEqual(splitCitations("PMID: 1, 2 and 3"), [
+test("splitCitations joins bare citations only when each ID has its own PMID prefix", () => {
+  assert.deepEqual(splitCitations("PMID: 1 and PMID: 2"), [
     { type: "pmid", value: "1" },
     { type: "pmid", value: "2" },
-    { type: "pmid", value: "3" },
   ]);
-  assert.deepEqual(splitCitations("see PMIDs 4; 5 and others"), [
-    { type: "text", value: "see " },
-    { type: "pmid", value: "4" },
-    { type: "pmid", value: "5" },
-    { type: "text", value: " and others" },
+});
+
+test("splitCitations does not treat ordinary numbers after a bare PMID as citations", () => {
+  assert.deepEqual(splitCitations("PMID: 19320832, 2009 data"), [
+    { type: "pmid", value: "19320832" },
+    { type: "text", value: ", 2009 data" },
+  ]);
+  assert.deepEqual(splitCitations("(PMID: 19320832 and 3 other papers)"), [
+    { type: "text", value: "(" },
+    { type: "pmid", value: "19320832" },
+    { type: "text", value: " and 3 other papers)" },
+  ]);
+  assert.deepEqual(splitCitations("PMID: 19320832; 12 genes were affected"), [
+    { type: "pmid", value: "19320832" },
+    { type: "text", value: "; 12 genes were affected" },
   ]);
 });
 

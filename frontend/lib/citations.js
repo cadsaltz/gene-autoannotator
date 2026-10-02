@@ -1,6 +1,10 @@
-const PMID_LIST = String.raw`\bPMIDs?\s*:?\s*\d+(?:\s*(?:[,;]|\band\b)\s*(?:PMIDs?\s*:?\s*)?\d+)*`;
-// A parenthetical holding only citations is consumed whole; otherwise only the PMID text is.
-const CITATION_PATTERN = new RegExp(String.raw`\(\s*${PMID_LIST}\s*\)|${PMID_LIST}`, "gi");
+const SEPARATOR = String.raw`\s*(?:[,;]|\band\b)\s*`;
+const PMID = String.raw`\bPMIDs?\s*:?\s*\d+`;
+// Bare IDs may only be listed inside a citation-only parenthetical; in prose each ID
+// needs its own PMID prefix, so trailing numbers like "2009" or "12 genes" are not cited.
+const PAREN_LIST = String.raw`\(\s*${PMID}(?:${SEPARATOR}(?:PMIDs?\s*:?\s*)?\d+)*\s*\)`;
+const BARE_LIST = String.raw`${PMID}(?:${SEPARATOR}${PMID})*`;
+const CITATION_PATTERN = new RegExp(`${PAREN_LIST}|${BARE_LIST}`, "gi");
 
 export function splitCitations(text) {
   const source = text == null ? "" : String(text);
