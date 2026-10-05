@@ -298,7 +298,7 @@
 
   .job-card-running {
     border-left-color: var(--brand-fg);
-    background: linear-gradient(90deg, var(--brand-tint), var(--surface) 42%);
+    background: var(--brand-tint);
   }
 
   .job-card-completed {
@@ -324,9 +324,7 @@
   .guide-hero {
     border: 1px solid var(--line);
     border-radius: 12px;
-    background:
-      radial-gradient(circle at 88% 12%, var(--brand-tint-strong), transparent 46%),
-      var(--surface);
+    background: var(--surface);
     color: var(--fg);
     box-shadow: var(--elev-xs);
   }

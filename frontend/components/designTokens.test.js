@@ -44,3 +44,9 @@ test("components use theme tokens instead of hard-coded colours", async () => {
 test("components stay on the Untitled UI type scale and radii", async () => {
   assert.deepEqual(await offenders(OFF_SYSTEM_TYPE_AND_RADIUS), []);
 });
+
+test("surfaces use solid backgrounds, never gradients", async () => {
+  assert.deepEqual(await offenders(/gradient|\bbg-(?:linear|radial|conic|gradient)-[\w-]+/g), []);
+  const css = await readFile(path.join(projectRoot, "app/globals.css"), "utf8");
+  assert.doesNotMatch(css, /gradient\(/);
+});
