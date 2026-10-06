@@ -8,6 +8,7 @@ import {
   isProtectedPath,
   loginPathFor,
   sanitizeNextPath,
+  signupPathFor,
 } from "./authPaths.js";
 
 test("guide and auth pages are public", () => {
@@ -55,6 +56,24 @@ test("authLinkWithNext forwards a sanitized next only when one was given", () =>
   assert.equal(authLinkWithNext("/signup", ""), "/signup");
   assert.equal(authLinkWithNext("/login", "/annotations?query=a"), "/login?next=%2Fannotations%3Fquery%3Da");
   assert.equal(authLinkWithNext("/login", "https://evil.example"), "/login?next=%2Fjobs");
+});
+
+test("signupPathFor prefills the email and forwards a sanitized next", () => {
+  assert.equal(signupPathFor("a+b@example.com", null), "/signup?email=a%2Bb%40example.com");
+  assert.equal(signupPathFor("  a@example.com ", ""), "/signup?email=a%40example.com");
+  assert.equal(
+    signupPathFor("a@example.com", "/annotations?query=a"),
+    "/signup?email=a%40example.com&next=%2Fannotations%3Fquery%3Da",
+  );
+  assert.equal(signupPathFor("a@example.com", "//evil.example"), "/signup?email=a%40example.com&next=%2Fjobs");
+  assert.equal(signupPathFor("", null), "/signup");
+});
+
+test("login offers sign-up when the account does not exist, and signup prefills the email", async () => {
+  const authForms = await readFile(path.join(process.cwd(), "components/AuthForms.js"), "utf8");
+  assert.match(authForms, /err\.code === "account_not_found"/);
+  assert.match(authForms, /signupPathFor\(missingEmail, searchParams\.get\("next"\)\)/);
+  assert.match(authForms, /useState\(searchParams\.get\("email"\) \|\| ""\)/);
 });
 
 test("isAdminPath is no longer exported", async () => {

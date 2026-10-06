@@ -121,14 +121,14 @@ def test_ip_rejected_signup_does_not_consume_otp_limit(tmp_path, monkeypatch):
     client = make_client(tmp_path)
     assert _signup(client, "a@example.com").status_code == 200
     assert _signup(client, "b@example.com").status_code == 429
-    assert client.post("/auth/login", json={"email": "b@example.com"}).status_code == 200
+    assert client.post("/auth/login", json={"email": "b@example.com"}).status_code == 404
 
 
 def test_login_ip_limit_applies_to_unknown_emails(tmp_path, monkeypatch):
     monkeypatch.setenv("IP_LOGINS_PER_HOUR", "2")
     client = make_client(tmp_path)
-    assert client.post("/auth/login", json={"email": "x@example.com"}).status_code == 200
-    assert client.post("/auth/login", json={"email": "y@example.com"}).status_code == 200
+    assert client.post("/auth/login", json={"email": "x@example.com"}).status_code == 404
+    assert client.post("/auth/login", json={"email": "y@example.com"}).status_code == 404
     resp = client.post("/auth/login", json={"email": "z@example.com"})
     assert resp.status_code == 429
     assert resp.json()["code"] == "rate_limited"
@@ -141,16 +141,16 @@ def test_login_ip_rejection_does_not_consume_otp_limit(tmp_path, monkeypatch):
     client = make_client(tmp_path)
     first = {"x-forwarded-for": "9.9.9.9"}
     other = {"x-forwarded-for": "8.8.8.8"}
-    assert client.post("/auth/login", json={"email": "x@example.com"}, headers=first).status_code == 200
+    assert client.post("/auth/login", json={"email": "x@example.com"}, headers=first).status_code == 404
     assert client.post("/auth/login", json={"email": "y@example.com"}, headers=first).status_code == 429
-    assert client.post("/auth/login", json={"email": "y@example.com"}, headers=other).status_code == 200
+    assert client.post("/auth/login", json={"email": "y@example.com"}, headers=other).status_code == 404
 
 
 def test_zero_login_ip_limit_means_unlimited(tmp_path, monkeypatch):
     monkeypatch.setenv("IP_LOGINS_PER_HOUR", "0")
     client = make_client(tmp_path)
     for index in range(3):
-        assert client.post("/auth/login", json={"email": f"u{index}@example.com"}).status_code == 200
+        assert client.post("/auth/login", json={"email": f"u{index}@example.com"}).status_code == 404
 
 
 def test_rate_limited_is_a_quota_exceeded():
@@ -177,7 +177,7 @@ def test_otp_send_limit_per_email(tmp_path, monkeypatch):
     resp = client.post("/auth/login", json={"email": "a@example.com"})
     assert resp.status_code == 429
     assert resp.json()["code"] == "rate_limited"
-    assert client.post("/auth/login", json={"email": "b@example.com"}).status_code == 200
+    assert client.post("/auth/login", json={"email": "b@example.com"}).status_code == 404
 
 
 def test_otp_send_limit_ignores_email_case(tmp_path, monkeypatch):
@@ -190,7 +190,7 @@ def test_otp_send_limit_ignores_email_case(tmp_path, monkeypatch):
 def test_login_for_unknown_email_counts_toward_otp_limit(tmp_path, monkeypatch):
     monkeypatch.setenv("OTP_SENDS_PER_EMAIL_PER_HOUR", "1")
     client = make_client(tmp_path)
-    assert client.post("/auth/login", json={"email": "ghost@example.com"}).status_code == 200
+    assert client.post("/auth/login", json={"email": "ghost@example.com"}).status_code == 404
     assert client.post("/auth/login", json={"email": "ghost@example.com"}).status_code == 429
 
 

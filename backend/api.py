@@ -1027,7 +1027,15 @@ def create_app(
         email = str(body.email)
         _enforce_rate_limits(_login_ip_check(request), _otp_send_check(email))
         user = auth.get_user_by_email(email)
-        if user is None or user["status"] != "active":
+        if user is None:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "detail": "No account exists for this email. Sign up to create one.",
+                    "code": "account_not_found",
+                },
+            )
+        if user["status"] != "active":
             return AuthOkResponse()
         _issue_login_code(request, user=user, email=email, purpose="login")
         return AuthOkResponse()

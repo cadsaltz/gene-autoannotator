@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { login, signup, verifyCode } from "../lib/authApi";
-import { authLinkWithNext, sanitizeNextPath } from "../lib/authPaths";
+import { authLinkWithNext, sanitizeNextPath, signupPathFor } from "../lib/authPaths";
 
 const SHOW_CONSOLE_EMAIL_HINT = process.env.NODE_ENV !== "production";
 
@@ -46,7 +46,7 @@ function verifyPageUrl(email, nextRaw) {
 export function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(searchParams.get("email") || "");
   const [username, setUsername] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState("");
@@ -169,17 +169,23 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [missingEmail, setMissingEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    setMissingEmail("");
     setSubmitting(true);
     try {
       await login(email.trim());
       router.push(verifyPageUrl(email, searchParams.get("next")));
     } catch (err) {
-      setError(err.message || "Login failed");
+      if (err.code === "account_not_found") {
+        setMissingEmail(email.trim());
+      } else {
+        setError(err.message || "Login failed");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -212,20 +218,42 @@ export function LoginForm() {
           <input
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setMissingEmail("");
+            }}
             className="workbench-input"
             required
             autoComplete="email"
           />
         </label>
         <ErrorText message={error} />
-        <button
-          type="submit"
-          className="workbench-button workbench-button-primary min-h-11 px-5 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={submitting}
-        >
-          {submitting ? "Sending code…" : "Continue"}
-        </button>
+        {missingEmail ? (
+          <div
+            role="status"
+            className="grid gap-3 rounded-xl border workbench-border bg-brand-tint p-4 text-sm"
+          >
+            <p>
+              There&apos;s no account for{" "}
+              <span className="font-semibold workbench-foreground">{missingEmail}</span>.
+              Sign up to create one.
+            </p>
+            <Link
+              href={signupPathFor(missingEmail, searchParams.get("next"))}
+              className="workbench-button workbench-button-primary min-h-11 px-5"
+            >
+              Sign up with this email
+            </Link>
+          </div>
+        ) : (
+          <button
+            type="submit"
+            className="workbench-button workbench-button-primary min-h-11 px-5 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={submitting}
+          >
+            {submitting ? "Sending code…" : "Continue"}
+          </button>
+        )}
       </form>
     </AuthCard>
   );

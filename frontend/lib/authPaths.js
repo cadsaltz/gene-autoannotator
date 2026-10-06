@@ -55,3 +55,13 @@ export function authLinkWithNext(base, nextRaw) {
   if (!nextRaw) return base;
   return `${base}?next=${encodeURIComponent(sanitizeNextPath(nextRaw))}`;
 }
+
+/** `/signup` URL with the email prefilled, carrying a sanitized `next` forward. */
+export function signupPathFor(email, nextRaw) {
+  const params = new URLSearchParams();
+  const trimmed = (email || "").trim();
+  if (trimmed) params.set("email", trimmed);
+  if (nextRaw) params.set("next", sanitizeNextPath(nextRaw));
+  const query = params.toString();
+  return query ? `/signup?${query}` : "/signup";
+}

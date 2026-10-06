@@ -45,11 +45,12 @@ def test_verify_rejects_wrong_code(tmp_path, monkeypatch):
     assert response.status_code == 401
 
 
-def test_login_unknown_email_still_returns_ok(tmp_path, monkeypatch):
+def test_login_unknown_email_says_to_sign_up(tmp_path, monkeypatch):
     client = TestClient(_app(tmp_path, monkeypatch))
     response = client.post("/auth/login", json={"email": "missing@example.com"})
-    assert response.status_code == 200
-    assert response.json()["ok"] is True
+    assert response.status_code == 404
+    assert response.json()["code"] == "account_not_found"
+    assert "sign up" in response.json()["detail"].lower()
     assert email_sender._CONSOLE_OUTBOX == []
 
 
