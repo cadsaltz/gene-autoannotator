@@ -1,31 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 
-import { getMe } from "../../lib/authApi";
+import { useSession } from "../SessionProvider";
 
 const SIGNED_OUT_NOTE = "Passwordless: you sign in with a 6-digit code sent to your email.";
 const SIGNED_IN_NOTE = "You're signed in. Submit a gene or check on your jobs.";
 
 export default function HeroActions() {
-  const [signedIn, setSignedIn] = useState(false);
+  const { user } = useSession();
 
-  useEffect(() => {
-    let cancelled = false;
-    getMe()
-      .then((me) => {
-        if (!cancelled) setSignedIn(Boolean(me));
-      })
-      .catch(() => {
-        if (!cancelled) setSignedIn(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (signedIn) {
+  if (user) {
     return (
       <div className="mt-8">
         <div className="flex flex-wrap gap-3">

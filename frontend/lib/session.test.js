@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { getServerSession, requireAdminPage } from "./session.js";
+import { getServerSession, requireAdminPage, toClientSession } from "./session.js";
 
 const originalBackendApiBaseUrl = process.env.BACKEND_API_BASE_URL;
 
@@ -51,6 +51,13 @@ class RedirectSignal extends Error {
 function throwingRedirect(location) {
   throw new RedirectSignal(location);
 }
+
+test("toClientSession keeps only what the shell needs", () => {
+  assert.deepEqual(toClientSession({ user: USER }), { user: USER, suspended: false });
+  assert.deepEqual(toClientSession({ user: null, reason: "signed_out" }), { user: null, suspended: false });
+  assert.deepEqual(toClientSession({ user: null, reason: "unavailable" }), { user: null, suspended: false });
+  assert.deepEqual(toClientSession({ user: null, reason: "suspended" }), { user: null, suspended: true });
+});
 
 test("getServerSession forwards the request cookie to backend /auth/me", async () => {
   process.env.BACKEND_API_BASE_URL = "http://backend.test";

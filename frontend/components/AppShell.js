@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { getMe, logout } from "../lib/authApi";
+import { logout } from "../lib/authApi";
 import { isNavItemActive, navItemsFor } from "../lib/navItems";
 import { LogoMark, PlusIcon } from "./icons";
+import { useSession } from "./SessionProvider";
 import SiteFooter from "./SiteFooter";
 import ThemeToggle from "./ThemeToggle";
 
@@ -26,14 +27,6 @@ function SuspendedCard() {
   );
 }
 
-function SessionLoading() {
-  return (
-    <p className="p-6 text-sm workbench-muted" role="status">
-      Loading…
-    </p>
-  );
-}
-
 function initialsFor(user) {
   const source = String(user?.username || user?.email || "?").trim();
   return source.slice(0, 2).toUpperCase();
@@ -42,46 +35,19 @@ function initialsFor(user) {
 export default function AppShell({ children, publicPage = false, fullWidth = false }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState(null);
-  const [suspended, setSuspended] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    getMe()
-      .then((me) => {
-        if (!cancelled) {
-          setUser(me);
-          setSuspended(false);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setUser(null);
-          setSuspended(error?.status === 403);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { user, suspended } = useSession();
+  const [signingOut, setSigningOut] = useState(false);
 
   const signedIn = Boolean(user);
   const visibleNavItems = suspended ? navItemsFor(null).slice(0, 1) : navItemsFor(user);
 
   async function handleSignOut() {
+    setSigningOut(true);
     try {
       await logout();
     } catch {
-      // Clear local state even if logout request fails.
+      // Still leave and refresh so the server re-resolves the session.
     }
-    setUser(null);
-    setSuspended(false);
     router.push("/login");
     router.refresh();
   }
@@ -141,7 +107,7 @@ export default function AppShell({ children, publicPage = false, fullWidth = fal
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  disabled={loading}
+                  disabled={signingOut}
                   className="text-sm font-semibold text-fg-muted transition hover:text-fg disabled:opacity-60"
                 >
                   Sign out
@@ -153,7 +119,7 @@ export default function AppShell({ children, publicPage = false, fullWidth = fal
       </header>
 
       <div className={fullWidth ? "w-full flex-1" : "mx-auto w-full max-w-7xl flex-1 px-6 py-8"}>
-        {publicPage ? children : loading ? <SessionLoading /> : suspended ? <SuspendedCard /> : children}
+        {suspended && !publicPage ? <SuspendedCard /> : children}
       </div>
       <SiteFooter />
     </main>

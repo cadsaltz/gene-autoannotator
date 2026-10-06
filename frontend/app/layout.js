@@ -1,5 +1,7 @@
 import { Inter, Roboto_Mono } from "next/font/google";
 
+import { SessionProvider } from "../components/SessionProvider";
+import { getServerSession, toClientSession } from "../lib/session";
 import { THEME_INIT_SCRIPT } from "../lib/theme";
 import "./globals.css";
 
@@ -18,7 +20,8 @@ export const metadata = {
   description: "Web UI for queued gene annotation jobs and generated annotation history",
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const session = toClientSession(await getServerSession());
   return (
     <html
       lang="en"
@@ -28,7 +31,9 @@ export default function RootLayout({ children }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <SessionProvider session={session}>{children}</SessionProvider>
+      </body>
     </html>
   );
 }

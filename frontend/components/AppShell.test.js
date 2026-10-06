@@ -86,17 +86,33 @@ test("fleet page requires an admin before rendering", async () => {
   assert.match(page, /await requireAdminPage\("\/fleet"\)/);
 });
 
-test("AppShell does not mount page content until the session check finishes", async () => {
+test("AppShell renders the server-resolved session instead of fetching it on mount", async () => {
   const shell = await readProjectFile("components/AppShell.js");
-  assert.match(shell, /loading \? \(?\s*<SessionLoading \/>/);
-  assert.match(shell, /function SessionLoading\(/);
+  assert.match(shell, /const \{ user, suspended \} = useSession\(\);/);
+  assert.doesNotMatch(shell, /getMe/);
+  assert.doesNotMatch(shell, /SessionLoading|useEffect/);
 });
 
-test("AppShell replaces page content with a suspended card on 403", async () => {
+test("root layout resolves the session once and shares it with every page", async () => {
+  const layout = await readProjectFile("app/layout.js");
+  assert.match(layout, /export default async function RootLayout/);
+  assert.match(layout, /toClientSession\(await getServerSession\(\)\)/);
+  assert.match(layout, /<SessionProvider session=\{session\}>\{children\}<\/SessionProvider>/);
+  const provider = await readProjectFile("components/SessionProvider.js");
+  assert.match(provider, /^"use client";/);
+  assert.match(provider, /export function useSession\(\)/);
+});
+
+test("AppShell replaces page content with a suspended card for suspended accounts", async () => {
   const shell = await readProjectFile("components/AppShell.js");
-  assert.match(shell, /status === 403/);
+  assert.match(shell, /suspended && !publicPage \? <SuspendedCard \/> : children/);
   assert.match(shell, /This account is suspended/);
   assert.match(shell, /Contact the site administrators/);
+});
+
+test("signing out refreshes the server-resolved session", async () => {
+  const shell = await readProjectFile("components/AppShell.js");
+  assert.match(shell, /await logout\(\);[\s\S]*router\.push\("\/login"\);\s*router\.refresh\(\);/);
 });
 
 test("AppShell supports a full-width content area", async () => {

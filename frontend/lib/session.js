@@ -63,6 +63,11 @@ export async function getServerSession(source, fetchImpl = fetch) {
   return { user };
 }
 
+/** The serializable slice of a server session that client components render from. */
+export function toClientSession(session) {
+  return { user: session?.user ?? null, suspended: session?.reason === "suspended" };
+}
+
 async function defaultRedirect(location) {
   const { redirect } = await import("next/navigation");
   redirect(location);

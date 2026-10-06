@@ -107,7 +107,8 @@ test("only the signed-in-aware widgets are client components", async () => {
 
 test("hero actions switch between sign-up/sign-in and Go to Jobs", async () => {
   const actions = await readProjectFile("components/guide/HeroActions.js");
-  assert.match(actions, /import \{ getMe \} from "\.\.\/\.\.\/lib\/authApi"/);
+  assert.match(actions, /const \{ user \} = useSession\(\);/);
+  assert.doesNotMatch(actions, /getMe|useEffect/);
   assert.match(actions, /href="\/signup"/);
   assert.match(actions, /href="\/login"/);
   assert.match(actions, /Go to Jobs/);
@@ -123,6 +124,9 @@ test("limits widget reads queue-status and falls back to generic copy", async ()
   assert.match(limits, /your_daily_limit/);
   assert.match(limits, /batch_limit/);
   assert.match(limits, /SIGNED_OUT_COPY/);
+  assert.match(limits, /const \{ user \} = useSession\(\);/);
+  assert.match(limits, /if \(!user\) return undefined;/);
+  assert.match(limits, /: user \? \(\s*<p[^>]*>\{LOADING_COPY\}<\/p>/);
   assert.match(limits, /queueStatus\.paused === true/);
   assert.match(limits, /queue full/);
   const section = await readProjectFile("components/guide/LimitsSection.js");

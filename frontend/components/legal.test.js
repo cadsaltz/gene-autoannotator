@@ -151,7 +151,7 @@ test("contact placeholder stays an obvious placeholder", () => {
 test("AppShell renders public pages without waiting on the session check", async () => {
   const shell = await readProjectFile("components/AppShell.js");
   assert.match(shell, /export default function AppShell\(\{ children, publicPage = false(, fullWidth = false)? \}\)/);
-  assert.match(shell, /\{publicPage\s*\?\s*children\s*:\s*loading \?/);
+  assert.match(shell, /\{suspended && !publicPage \? <SuspendedCard \/> : children\}/);
 });
 
 test("homepage is a public page", async () => {

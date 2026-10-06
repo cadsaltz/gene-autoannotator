@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 
 import { getQueueStatus } from "../../lib/api";
 import { formatQueuedCount, formatUsage } from "../../lib/queueStatus";
+import { useSession } from "../SessionProvider";
 
 const HEADING = "Your limits";
+const LOADING_COPY = "Loading your current usage…";
 const SIGNED_OUT_COPY =
   "Sign in to see your current usage and the limits on your account. Unless the operator changes them, each account can have 20 active jobs, submit 50 jobs per 24 hours, and send batches of up to 25 genes.";
 
@@ -25,9 +27,11 @@ function Stat({ label, value }) {
 }
 
 export default function QueueLimits() {
+  const { user } = useSession();
   const [queueStatus, setQueueStatus] = useState(null);
 
   useEffect(() => {
+    if (!user) return undefined;
     let cancelled = false;
     getQueueStatus()
       .then((data) => {
@@ -39,7 +43,7 @@ export default function QueueLimits() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user]);
 
   return (
     <div className="workbench-card p-6" aria-live="polite">
@@ -60,6 +64,8 @@ export default function QueueLimits() {
             value={`${formatQueuedCount(queueStatus.queued)} · ${describeQueueState(queueStatus)}`}
           />
         </dl>
+      ) : user ? (
+        <p className="workbench-muted mt-2 text-sm leading-6">{LOADING_COPY}</p>
       ) : (
         <p className="workbench-muted mt-2 text-sm leading-6">{SIGNED_OUT_COPY}</p>
       )}
