@@ -1,0 +1,9 @@
+experiment_id: consensus-arms-pilot
+source_records: /home/caden-saltzberg/Downloads/model_spread_15k/records.jsonl
+labels_dir: experiments/paper/results/model_spread_15k/labels
+judge_model: gemma4:26b
+trio_b: [gemma4:12b, phi4:14b, dolphin3:8b]
+trio_bref: [gemma4:12b, phi4:14b, granite4.2:8b]
+classifiers: [minicheck_ft5, hhem, bespoke_minicheck_7b]
+# D threshold tuned later; pilot default:
+d_threshold: 0.5
