@@ -72,6 +72,10 @@ class ArmAborted(RuntimeError):
     """Backend-level failure: the whole arm cannot continue."""
 
 
+class DryRunMismatch(RuntimeError):
+    """Existing manifest was produced with a different --dry-run setting."""
+
+
 def safe_arm_name(arm: str) -> str:
     return arm.replace(":", "_")
 
@@ -276,6 +280,17 @@ def run_arm(
     max_trials: int | None = None,
 ) -> dict[str, Any]:
     arm_dir = out_root / run_id / f"arm_{safe_arm_name(arm)}"
+    manifest_path = arm_dir / "manifest.json"
+    if manifest_path.exists():
+        prior = json.loads(manifest_path.read_text())
+        prior_dry = prior.get("dry_run")
+        if prior_dry is not dry_run:
+            prior_mode = "dry-run" if prior_dry else "live"
+            this_mode = "dry-run" if dry_run else "live"
+            raise DryRunMismatch(
+                f"{manifest_path}: existing run used {prior_mode} mode but this "
+                f"invocation uses {this_mode}; pick a new --run-id or match --dry-run"
+            )
     records_path = arm_dir / "records.jsonl"
     errors_path = arm_dir / "errors.jsonl"
     source = resolve_path(config["source_records"])
@@ -371,19 +386,27 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     config = load_yaml_config(resolve_path(args.config))
-    manifest = run_arm(
-        arm=args.arm,
-        config=config,
-        run_id=args.run_id or new_run_id(),
-        out_root=resolve_path(args.out_root),
-        dry_run=args.dry_run,
-        max_trials=args.max_trials,
-    )
+    try:
+        manifest = run_arm(
+            arm=args.arm,
+            config=config,
+            run_id=args.run_id or new_run_id(),
+            out_root=resolve_path(args.out_root),
+            dry_run=args.dry_run,
+            max_trials=args.max_trials,
+        )
+    except DryRunMismatch as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     print(
         f"arm={manifest['arm']} status={manifest['status']} "
         f"trials={manifest['n_trials']} new={manifest['n_new']} errors={manifest['n_errors']}"
     )
-    return 2 if manifest["status"] == "aborted" else 0
+    if manifest["status"] == "aborted":
+        return 2
+    if manifest.get("n_errors", 0) > 0:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -133,3 +133,21 @@ def test_rejects_unknown_arm(setup):
     tmp_path, config = setup
     with pytest.raises(SystemExit):
         runner.main(["--config", str(config), "--run-id", "r1", "--arm", "Z", "--dry-run"])
+
+
+def test_rejects_dry_run_flag_mismatch_on_resume(setup):
+    tmp_path, config = setup
+    out_root = tmp_path / "out"
+    base = [
+        "--config",
+        str(config),
+        "--run-id",
+        "r1",
+        "--arm",
+        "A",
+        "--out-root",
+        str(out_root),
+    ]
+    assert runner.main([*base, "--dry-run"]) == 0
+    rc = runner.main(base)
+    assert rc == 1
