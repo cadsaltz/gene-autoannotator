@@ -4,10 +4,13 @@ import copy
 from typing import Any, Callable
 
 from autoannotation.consensus import hybrid_section_consensus
+from experiments.paper.runners.consensus_arms_judge_c import (
+    JUDGE_MODEL,
+    select_supported_verbatim,
+)
 
 TRIO_B = ("gemma4:12b", "phi4:14b", "dolphin3:8b")
 TRIO_BREF = ("gemma4:12b", "phi4:14b", "granite4.2:8b")
-JUDGE_MODEL = "gemma4:26b"
 
 
 def decide_arm_a(by_model: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -71,3 +74,30 @@ def decide_arm_b(
         field_defs_profile=field_defs_profile,
         batch_merger=batch_merger,
     )
+
+
+def decide_arm_c(
+    by_model: dict[str, dict[str, Any]],
+    *,
+    models: tuple[str, ...],
+    judge_fn: Callable[..., dict[str, Any]],
+    expected_gene_id: str | None,
+    expected_name: str,
+    excerpt: str | None,
+    field_keys: list[str],
+) -> dict[str, Any]:
+    """Arm C: excerpt-aware verbatim judge over ALL trio candidates.
+
+    No vote gate: every candidate (including null-filled ones) is sent to the
+    judge. The judge's per-field selections are post-filtered so only values
+    supported by a candidate survive; inventions become None.
+    """
+    candidates = [copy.deepcopy(by_model[m]) for m in models]
+    payload = judge_fn(
+        candidates=candidates,
+        field_keys=list(field_keys),
+        excerpt=excerpt,
+        gene_id=expected_gene_id,
+        gene_name=expected_name,
+    )
+    return select_supported_verbatim(payload, candidates, list(field_keys))

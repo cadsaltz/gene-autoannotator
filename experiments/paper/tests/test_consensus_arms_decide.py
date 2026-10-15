@@ -4,6 +4,7 @@ from experiments.paper.runners.consensus_arms_decide import (
     TRIO_BREF,
     decide_arm_a,
     decide_arm_b,
+    decide_arm_c,
     make_production_batch_merger,
 )
 
@@ -94,3 +95,59 @@ def test_production_batch_merger_wraps_handler_with_judge_model():
     assert seen["fields"] == ["function"]
     assert seen["organism_profile"] == "org"
     assert seen["field_defs_profile"] == "defs"
+
+
+def test_arm_c_no_vote_gate_sends_all_candidates():
+    seen = {}
+
+    def judge_fn(candidates, field_keys, excerpt, gene_id, gene_name):
+        seen.update(
+            n=len(candidates),
+            candidates=candidates,
+            excerpt=excerpt,
+            gene_id=gene_id,
+            gene_name=gene_name,
+        )
+        return {k: candidates[0].get(k) for k in field_keys}
+
+    by_model = {
+        "gemma4:12b": {"function": "a"},
+        "phi4:14b": {"function": None},
+        "dolphin3:8b": {"function": "c"},
+        "granite4.2:8b": {"function": "not-in-trio"},
+    }
+    out = decide_arm_c(
+        by_model,
+        models=TRIO_B,
+        judge_fn=judge_fn,
+        expected_gene_id="b0090",
+        expected_name="murG",
+        excerpt="text",
+        field_keys=["function"],
+    )
+    assert seen["n"] == 3
+    assert [c["function"] for c in seen["candidates"]] == ["a", None, "c"]
+    assert seen["excerpt"] == "text"
+    assert seen["gene_id"] == "b0090" and seen["gene_name"] == "murG"
+    assert out == {"function": "a"}
+
+
+def test_arm_c_filters_invented_judge_values():
+    def judge_fn(candidates, field_keys, excerpt, gene_id, gene_name):
+        return {"function": "totally invented wording", "cats": ["x", "y"]}
+
+    by_model = {
+        "gemma4:12b": {"function": "real function text", "cats": ["x"]},
+        "phi4:14b": {"function": None, "cats": None},
+        "dolphin3:8b": {"function": "other", "cats": ["y"]},
+    }
+    out = decide_arm_c(
+        by_model,
+        models=TRIO_B,
+        judge_fn=judge_fn,
+        expected_gene_id="b0090",
+        expected_name="murG",
+        excerpt="text",
+        field_keys=["function", "cats"],
+    )
+    assert out == {"function": None, "cats": None}

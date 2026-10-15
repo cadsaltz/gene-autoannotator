@@ -1,57 +1,25 @@
-# Task 3 Report: Phase B — strip client filesystem paths from public jobs
+# Task 3 report: Arm C excerpt-aware verbatim judge
 
-## Status
+Status: DONE
 
-**Complete.** Implemented with TDD, tested, and committed on `feat/passwordless-otp-accounts`.
+## Changes
+- `experiments/paper/runners/consensus_arms_judge_c.py` (new): `ARM_C_JUDGE_PROMPT`, `build_arm_c_prompt`,
+  `select_supported_verbatim`, `make_ollama_judge_fn` (thin live wiring, model gemma4:26b, think=False,
+  schema via `_batch_consensus_schema`), `JUDGE_MODEL`.
+- `experiments/paper/runners/consensus_arms_decide.py`: added `decide_arm_c`; `JUDGE_MODEL` now imported from judge_c
+  (avoids circular import; `TRIO_*`/`JUDGE_MODEL` still exported from decide).
+- Tests: `test_consensus_arms_judge_c.py` (new, 14), `test_consensus_arms_decide.py` (+2 arm C tests).
 
-## Commit
+## Behavior
+- No vote gate: all trio candidates (incl. null-filled) deep-copied and sent to `judge_fn(candidates=, field_keys=, excerpt=, gene_id=, gene_name=)`.
+- Post-filter: strings exact or `token_jaccard` >= 0.85 (returns the candidate's wording, best match); arrays set-equal
+  (returns the candidate list); booleans exact `bool` (no 1/"true"); null/empty/type mismatch -> None.
 
-- `a8cbbe11380c9a74b520c9a963368e3bdacea42c` — fix: ignore client cache/output paths on public job APIs
+## Tests
+`pytest experiments/paper/tests` all pass (see commit). Tests/impl were written together; red phase not separately observed.
 
-## What changed
-
-### `backend/api.py`
-
-- Added module-level server path constants (`SERVER_CACHE_DIR`, `SERVER_OUTPUT_DIR`, `SERVER_GENE_NAME_CACHE`) and `_SERVER_PATH_UPDATES`.
-- Added `_server_owned_job_request()`; `POST /jobs` applies it before target resolution and persistence.
-- `POST /batches` applies the same overrides via `request.model_copy(update=_SERVER_PATH_UPDATES)` before preview/queueing, so stored batch `options` and materialized per-entry jobs both use server paths.
-
-### `shared/job_contract.py`
-
-- Updated doc comment on `AnnotationJobRequest` path fields: ignored on public API; workers receive server defaults from the coordinator.
-
-### `backend/schemas.py`
-
-- Comment on `BatchJobOptions` path fields that public API ignores client values.
-
-### `tests/test_coordinator_api.py`
-
-- `test_create_job_ignores_client_filesystem_paths` — POST malicious paths, assert persisted request uses `./.cache`, `gen_json`, and server gene-name cache (no `/etc`).
-
-## TDD evidence
-
-1. Added test first; failed with `cache_dir == '/etc/passwd'` before implementation.
-2. After overrides in `create_job` / `create_batch`, targeted test passed; full `tests/test_coordinator_api.py` — 69 passed.
-
-## Test results
-
-```text
-pytest tests/test_coordinator_api.py::test_create_job_ignores_client_filesystem_paths -v → PASSED
-pytest tests/test_coordinator_api.py -q → 69 passed
-```
-
-Note: Brief example used `200` and `response.json()['id']`; actual API returns **201** and `job_id` — test matches production contract.
-
-## Self-review
-
-**Correctness:** Client-supplied `cache_dir`, `output_dir`, and `gene_name_cache` never reach the job store on public create endpoints. Batch path fields in stored batch metadata are also normalized because the batch request is copied before `_batch_options_from_request` and `_job_request_for_batch_entry`.
-
-**Scope:** Path stripping only at public queue boundaries; CLI/local callers using `AnnotationJobRequest` directly outside HTTP are unchanged (intentional).
-
-**Gaps / follow-ups:**
-
-- No dedicated batch integration test for path stripping; batch behavior follows the same `model_copy` on `BatchCreateRequest`. Add `test_create_batch_ignores_client_filesystem_paths` if batch regressions become a concern.
-- `POST /batches/validate` still accepts path fields in the body (not persisted); harmless unless clients rely on echoing those values.
-- Task 8 session gating will require updating the job test to use an authenticated client; test currently uses unauthenticated POST as specified for pre-Task-8 ordering.
-
-**Risk:** Low. Defaults match existing server defaults; no change to worker execution semantics beyond rejecting attacker-controlled paths.
+## Concerns
+- Brief names kwarg `fields` but its test uses `field_keys`; implemented `field_keys`.
+- Imports private `_batch_consensus_schema` from `autoannotation.llms` (exists; production untouched).
+- `token_jaccard` uses content tokens; stopword-only strings could soft-match loosely (edge case).
+- `make_ollama_judge_fn` only mock-tested; not run against live Ollama.
