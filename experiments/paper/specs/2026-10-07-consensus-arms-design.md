@@ -1,7 +1,7 @@
 # Consensus arms: can a multi-extractor crowd beat gemma4 alone?
 
 Date: 2026-10-07
-Status: approved design, pending implementation plan
+Status: approved design; implementation plan at `experiments/paper/plans/2026-10-15-consensus-arms.md`
 
 ## Goal
 
