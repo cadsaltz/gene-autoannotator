@@ -45,6 +45,29 @@ def test_slice_excerpt_rejects_bad_stride():
         slice_excerpt("abc", max_chars=10, stride=0)
 
 
+def test_slice_excerpt_rejects_stride_gt_max_chars():
+    with pytest.raises(ValueError):
+        slice_excerpt("abc", max_chars=10, stride=11)
+
+
+def test_bespoke_skipped_when_vram_below_full_precision(monkeypatch):
+    class _FakeCuda:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+        @staticmethod
+        def mem_get_info():
+            return (2 * 1024**3, 8 * 1024**3)
+
+    class _FakeTorch:
+        cuda = _FakeCuda
+
+    monkeypatch.setitem(sys.modules, "torch", _FakeTorch())
+    with pytest.raises(ClassifierSkipped, match="4-bit"):
+        cls._score_bespoke_minicheck_7b("claim", "passage")
+
+
 def test_nimble_raises_skipped():
     with pytest.raises(ClassifierSkipped) as exc:
         score_claim("nimble", "claim", "excerpt")

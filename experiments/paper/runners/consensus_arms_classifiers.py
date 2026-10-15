@@ -7,8 +7,19 @@ tests never download models.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Callable, TypedDict
+
+_BESPOKE_MINICHECK_FULL_PRECISION_VRAM_BYTES = 14 * 1024**3
+
+
+def _minicheck_cache_dir() -> str:
+    override = os.environ.get("CONSENSUS_ARMS_CKPT_DIR")
+    if override:
+        return str(Path(override).expanduser())
+    return str(Path.home() / ".cache" / "consensus-arms-ckpts")
 
 
 class ClassifierSkipped(Exception):
@@ -34,6 +45,8 @@ def slice_excerpt(
     """
     if max_chars <= 0 or stride <= 0:
         raise ValueError("max_chars and stride must be positive")
+    if stride > max_chars:
+        raise ValueError("stride must not exceed max_chars")
     if len(excerpt) <= max_chars:
         return [excerpt]
     slices: list[str] = []
@@ -53,7 +66,7 @@ def _load_minicheck(model_name: str):
         from minicheck.minicheck import MiniCheck
     except ImportError as exc:
         raise ClassifierSkipped(f"minicheck package not installed: {exc}") from exc
-    return MiniCheck(model_name=model_name, cache_dir="./ckpts")
+    return MiniCheck(model_name=model_name, cache_dir=_minicheck_cache_dir())
 
 
 def _score_minicheck(model_name: str, claim: str, passage: str) -> float:
@@ -74,9 +87,11 @@ def _score_bespoke_minicheck_7b(claim: str, passage: str) -> float:
     if not torch.cuda.is_available():
         raise ClassifierSkipped("Bespoke-MiniCheck-7B requires a CUDA GPU")
     free_bytes, _total = torch.cuda.mem_get_info()
-    # ~7B params in 4-bit needs roughly 6 GiB; skip otherwise.
-    if free_bytes < 6 * 1024**3:
-        raise ClassifierSkipped("insufficient free VRAM for Bespoke-MiniCheck-7B")
+    if free_bytes < _BESPOKE_MINICHECK_FULL_PRECISION_VRAM_BYTES:
+        raise ClassifierSkipped(
+            "Bespoke-MiniCheck-7B requires ≥14 GiB free VRAM for full-precision "
+            "load; 4-bit quantization is not wired yet — skipped"
+        )
     return _score_minicheck("Bespoke-MiniCheck-7B", claim, passage)
 
 
