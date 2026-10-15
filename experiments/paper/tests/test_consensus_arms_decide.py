@@ -5,6 +5,7 @@ from experiments.paper.runners.consensus_arms_decide import (
     decide_arm_a,
     decide_arm_b,
     decide_arm_c,
+    decide_arm_d,
     make_production_batch_merger,
 )
 
@@ -151,3 +152,108 @@ def test_arm_c_filters_invented_judge_values():
         field_keys=["function", "cats"],
     )
     assert out == {"function": None, "cats": None}
+
+
+def _arm_d_fixture():
+    from experiments.paper.runners.consensus_arms_claims import build_claims_for_trio
+
+    models = TRIO_B
+    by_model = {
+        "gemma4:12b": {
+            "function": "Builds the cell wall. Totally invented sentence.",
+            "functional_category": ["peptidoglycan biosynthesis", "made up pathway"],
+            "drug_susc_impact": "Mutants resist drug X.",
+            "infection_impact": "Unsupported infection claim.",
+            "essential_in_vitro": True,
+            "essential_in_vivo": False,
+        },
+        "phi4:14b": {
+            "function": None,
+            "functional_category": None,
+            "essential_in_vitro": True,
+        },
+        "dolphin3:8b": {
+            "function": None,
+            "functional_category": None,
+            "essential_in_vitro": False,
+        },
+    }
+    claims = build_claims_for_trio(
+        by_model, models, organism="Mtb", gene_id="Rv0001", gene_name="murA"
+    )
+    return models, by_model, claims
+
+
+def _score_by_text(claims, passing):
+    """Score 0.9 if any `passing` substring occurs in the claim text, else 0.1."""
+    return {
+        c["claim_index"]: 0.9 if any(p in c["text"] for p in passing) else 0.1
+        for c in claims
+    }
+
+
+def test_decide_arm_d_keeps_passing_tags_only():
+    from experiments.paper.runners.consensus_arms_decide import decide_arm_d
+
+    models, by_model, claims = _arm_d_fixture()
+    scores = _score_by_text(claims, ["peptidoglycan biosynthesis"])
+    out = decide_arm_d(
+        by_model, models=models, claims=claims,
+        scores_by_claim_id=scores, threshold=0.5,
+    )
+    assert out["functional_category"] == ["peptidoglycan biosynthesis"]
+
+
+def test_decide_arm_d_reassembles_strings_and_bools():
+    from experiments.paper.runners.consensus_arms_decide import decide_arm_d
+
+    models, by_model, claims = _arm_d_fixture()
+    scores = _score_by_text(
+        claims,
+        ["Builds the cell wall.", "Mutants resist", "is essential in vitro",
+         "is not essential in vitro"],
+    )
+    out = decide_arm_d(
+        by_model, models=models, claims=claims,
+        scores_by_claim_id=scores, threshold=0.5,
+    )
+    assert out["function"] == "Builds the cell wall."
+    assert "invented" not in out["function"]
+    assert out["drug_susc_impact"].endswith("Mutants resist drug X.")
+    # infection claim failed -> null
+    assert out["infection_impact"] is None
+    # 2 passing True vs 1 passing False -> majority True
+    assert out["essential_in_vitro"] is True
+    # in vivo claim failed -> null
+    assert out["essential_in_vivo"] is None
+
+
+def test_decide_arm_d_joins_multiple_kept_sentences_and_nulls_empty_fields():
+    from experiments.paper.runners.consensus_arms_decide import decide_arm_d
+
+    models, by_model, claims = _arm_d_fixture()
+    scores = _score_by_text(claims, ["Builds the cell wall.", "invented sentence"])
+    out = decide_arm_d(
+        by_model, models=models, claims=claims,
+        scores_by_claim_id=scores, threshold=0.5,
+    )
+    assert out["function"] == "Builds the cell wall. Totally invented sentence."
+    assert out["functional_category"] is None
+
+
+def test_decide_arm_d_threshold_is_inclusive_and_bool_tie_is_null():
+    from experiments.paper.runners.consensus_arms_decide import decide_arm_d
+
+    models, by_model, claims = _arm_d_fixture()
+    in_vitro = [c for c in claims if c["field"] == "essential_in_vitro"]
+    scores = {c["claim_index"]: 0.0 for c in claims}
+    # keep exactly one True and one False in-vitro claim, at the threshold
+    keep_true = next(c for c in in_vitro if c["source_value"] is True)
+    keep_false = next(c for c in in_vitro if c["source_value"] is False)
+    scores[keep_true["claim_index"]] = 0.5
+    scores[keep_false["claim_index"]] = 0.5
+    out = decide_arm_d(
+        by_model, models=models, claims=claims,
+        scores_by_claim_id=scores, threshold=0.5,
+    )
+    assert out["essential_in_vitro"] is None

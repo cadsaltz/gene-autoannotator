@@ -4,6 +4,7 @@ import copy
 from typing import Any, Callable
 
 from autoannotation.consensus import hybrid_section_consensus
+from experiments.paper.runners.common import BIOLOGY_FIELDS
 from experiments.paper.runners.consensus_arms_judge_c import (
     JUDGE_MODEL,
     select_supported_verbatim,
@@ -101,3 +102,65 @@ def decide_arm_c(
         gene_name=expected_name,
     )
     return select_supported_verbatim(payload, candidates, list(field_keys))
+
+
+def _dedupe(items: list[Any]) -> list[Any]:
+    seen: set[Any] = set()
+    out: list[Any] = []
+    for item in items:
+        key = str(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
+def decide_arm_d(
+    by_model: dict[str, dict[str, Any]],
+    *,
+    models: tuple[str, ...],
+    claims: list[dict[str, Any]],
+    scores_by_claim_id: dict[int, float],
+    threshold: float,
+) -> dict[str, Any]:
+    """Arm D: keep only claim pieces whose classifier score >= threshold.
+
+    ``claims`` come from ``build_claims_for_trio`` (global ``claim_index``);
+    ``scores_by_claim_id`` maps ``claim_index`` to a support score. Fields are
+    reassembled from surviving pieces:
+
+    - function / drug_susc_impact / infection_impact: kept pieces joined by a
+      space (exact duplicates dropped)
+    - functional_category: list of kept tags (duplicates dropped)
+    - essential_in_vitro / essential_in_vivo: strict majority of kept bool
+      claims; a tie yields None
+
+    A field with no passing claims is None. ``by_model`` is accepted for
+    interface symmetry with the other arms; output is built only from claims.
+    """
+    allowed = set(models)
+    kept: dict[str, list[Any]] = {field: [] for field in BIOLOGY_FIELDS}
+    for claim in claims:
+        if claim["source_model"] not in allowed:
+            continue
+        score = scores_by_claim_id.get(claim["claim_index"])
+        if score is None or score < threshold:
+            continue
+        if claim["field"] in kept:
+            kept[claim["field"]].append(claim["source_value"])
+
+    result: dict[str, Any] = {}
+    for field in BIOLOGY_FIELDS:
+        values = kept[field]
+        if not values:
+            result[field] = None
+        elif field == "functional_category":
+            result[field] = _dedupe(values)
+        elif field in ("essential_in_vitro", "essential_in_vivo"):
+            yes = sum(1 for v in values if bool(v))
+            no = len(values) - yes
+            result[field] = True if yes > no else False if no > yes else None
+        else:
+            result[field] = " ".join(str(v) for v in _dedupe(values))
+    return result
