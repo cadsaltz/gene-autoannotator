@@ -217,6 +217,29 @@ def test_compare_writes_scoreboard_and_vs_a(tmp_path, labels_dir):
     assert "essential_in_vivo" in md  # FP removed vs A
 
 
+def test_compare_unlabeled_needle_is_unresolved_not_lost(tmp_path, labels_dir):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_arm(run_dir, "A", _record({"function": "binds ATP"}))
+    # B: judge-merged rewrite matches no labeled candidate -> UNLABELED non-null on a needle
+    _write_arm(run_dir, "B", _record({"function": "a brand new merged sentence"}))
+    out = tmp_path / "compare"
+    compare.main(["--run-dir", str(run_dir), "--labels", str(labels_dir), "--out", str(out)])
+
+    md = (out / "vs_A.md").read_text()
+    lost = md.split("### Needles lost vs A")[1].split("###")[0]
+    assert "function" not in lost and "_none_" in lost
+    unresolved = md.split("### Unresolved - needs judging")[1].split("###")[0]
+    assert "| function |" in unresolved
+    assert md.index("Caveat") < md.index("## Arm B vs A")
+
+    by_arm = {r["arm"]: r for r in csv.DictReader((out / "scoreboard.csv").open())}
+    assert by_arm["B"]["found"] == "0" and by_arm["B"]["unlabeled_on_needles"] == "1"
+    assert by_arm["B"]["recall_labeled"] == "0.000"
+    assert by_arm["B"]["recall_upper_bound"] == "0.500"
+    assert by_arm["A"]["recall_upper_bound"] == by_arm["A"]["recall_labeled"] == "0.500"
+
+
 def test_compare_requires_arm_a(tmp_path, labels_dir):
     run_dir = tmp_path / "run"
     run_dir.mkdir()

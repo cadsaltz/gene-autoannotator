@@ -6,7 +6,8 @@
       --labels experiments/paper/results/model_spread_15k/labels \
       --out experiments/paper/results/consensus-arms/<run>/compare/
 
-Writes ``scoreboard.csv`` (per-arm needles found / missed / false positives) and
+Writes ``scoreboard.csv`` (per-arm needles found / missed / false positives; ``recall_labeled`` counts only
+labeled finds, ``recall_upper_bound`` also counts UNLABELED values on needle fields) and
 ``vs_A.md`` (needle-by-needle and false-positive diffs of every other arm vs A, on the
 trials both arms completed).  Only labeled trials are scored.
 """
@@ -28,7 +29,8 @@ from experiments.paper.scripts.build_consensus_arms_spreadsheet import arm_name 
 
 SCOREBOARD_COLUMNS = (
     "arm", "n_trials", "n_labeled_trials", "needles_total", "found", "found_clean", "found_padded",
-    "missed", "fp", "unlabeled", "correctly_empty", "extra_supported", "recall", "status",
+    "missed", "fp", "unlabeled", "unlabeled_on_needles", "correctly_empty", "extra_supported",
+    "recall_labeled", "recall_upper_bound", "status",
 )
 
 
@@ -60,7 +62,8 @@ def scoreboard_row(arm: str, arm_dir: Path, scored: dict[str, dict[str, Any]]) -
     manifest = json.loads((arm_dir / "manifest.json").read_text()) if (arm_dir / "manifest.json").is_file() else {}
     n_records = sum(1 for line in (arm_dir / "records.jsonl").open() if line.strip())
     totals = {k: 0 for k in ("found_clean", "found_padded", "missed", "fp", "unlabeled",
-                             "correctly_empty", "extra_supported")}
+                             "correctly_empty", "extra_supported",
+                             "unlabeled_needles")}
     needles = 0
     for item in scored.values():
         b = item["buckets"]
@@ -68,9 +71,12 @@ def scoreboard_row(arm: str, arm_dir: Path, scored: dict[str, dict[str, Any]]) -
         for k in totals:
             totals[k] += len(b[k])
     found = totals["found_clean"] + totals["found_padded"]
+    unl_needles = totals.pop("unlabeled_needles")
     return {
         "arm": arm, "n_trials": n_records, "n_labeled_trials": len(scored), "needles_total": needles,
-        "found": found, **totals, "recall": f"{found / needles:.3f}" if needles else "",
+        "found": found, **totals, "unlabeled_on_needles": unl_needles,
+        "recall_labeled": f"{found / needles:.3f}" if needles else "",
+        "recall_upper_bound": f"{(found + unl_needles) / needles:.3f}" if needles else "",
         "status": manifest.get("status", ""),
     }
 
@@ -80,16 +86,36 @@ def _found_set(item: dict[str, Any]) -> set[str]:
     return set(b["found_clean"]) | set(b["found_padded"])
 
 
+def _needle_state(item: dict[str, Any], fld: str) -> str:
+    """found / unresolved (UNLABELED non-null value, needs judging) / missed."""
+    b = item["buckets"]
+    if fld in set(b["found_clean"]) | set(b["found_padded"]):
+        return "found"
+    if fld in b["unlabeled_needles"]:
+        return "unresolved"
+    return "missed"
+
+
+CAVEAT = (
+    "> **Caveat:** needle values that match no labeled extractor candidate (e.g. judge rewrites) are "
+    "UNLABELED and listed as *unresolved, needs judging* - they are not counted as lost or missed."
+)
+
+
 def diff_vs_a(arm: str, scored: dict[str, dict[str, Any]], a_scored: dict[str, dict[str, Any]]) -> str:
     shared = sorted(set(scored) & set(a_scored))
     gained, lost, same_found, same_missed = [], [], 0, 0
+    unresolved: list[tuple[str, str, str, str]] = []
     fp_new, fp_removed = [], []
     for tid in shared:
         a_item, item = a_scored[tid], scored[tid]
         needles = item["buckets"]["_needle_fields"]
         a_found, found = _found_set(a_item), _found_set(item)
         for fld in needles:
-            if fld in found and fld not in a_found:
+            a_state, state = _needle_state(a_item, fld), _needle_state(item, fld)
+            if "unresolved" in (a_state, state):
+                unresolved.append((tid, fld, a_state, state))
+            elif fld in found and fld not in a_found:
                 gained.append((tid, fld))
             elif fld in a_found and fld not in found:
                 lost.append((tid, fld))
@@ -111,10 +137,17 @@ def diff_vs_a(arm: str, scored: dict[str, dict[str, Any]], a_scored: dict[str, d
     lines = [
         f"## Arm {arm} vs A", "",
         f"Shared labeled trials: {len(shared)}. Needles found by both: {same_found}; "
-        f"missed by both: {same_missed}.", "",
+        f"missed by both: {same_missed}; unresolved (needs judging): {len(unresolved)}.", "",
     ]
     lines += table(f"Needles gained vs A (found by {arm}, missed by A)", gained)
     lines += table(f"Needles lost vs A (found by A, missed by {arm})", lost)
+    lines += [f"### Unresolved - needs judging ({len(unresolved)})", ""]
+    if unresolved:
+        lines += [f"| trial | field | A | {arm} |", "|---|---|---|---|"]
+        lines += [f"| {t} | {f} | {a} | {b} |" for t, f, a, b in unresolved]
+    else:
+        lines.append("_none_")
+    lines.append("")
     lines += table(f"False positives new vs A (FP in {arm}, not in A)", fp_new)
     lines += table(f"False positives removed vs A (FP in A, not in {arm})", fp_removed)
     return "\n".join(lines)
@@ -139,7 +172,7 @@ def compare(run_dir: Path, labels_dir: Path, out_dir: Path) -> tuple[Path, Path]
             w.writerow(scoreboard_row(arm, arms[arm], scored[arm]))
 
     md = out_dir / "vs_A.md"
-    parts = [f"# Consensus arms vs A\n\nRun: `{run_dir}`\n"]
+    parts = [f"# Consensus arms vs A\n\n{CAVEAT}\n\nRun: `{run_dir}`\n"]
     parts += [diff_vs_a(arm, scored[arm], scored["A"]) for arm in order[1:]]
     if len(order) == 1:
         parts.append("_Only arm A present; nothing to compare._\n")
