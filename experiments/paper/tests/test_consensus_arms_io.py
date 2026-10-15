@@ -38,3 +38,18 @@ def test_extractor_outputs_by_model_maps_letters():
     assert by_m["gemma4:12b"]["function"] == "x"
     assert by_m["dolphin3:8b"]["function"] == "y"
     assert "qwen3.5:9b" not in by_m
+
+def test_load_labels_keys_by_stem(tmp_path: Path):
+    (tmp_path / "t010_b0090_PMC6327494_results_2.json").write_text(
+        json.dumps({"trial_id": "t010", "gold": 1})
+    )
+    (tmp_path / "t011_other.json").write_text(json.dumps({"trial_id": "t011", "gold": 2}))
+    (tmp_path / "not_t_prefix.json").write_text(json.dumps({"ignored": True}))
+
+    labels = load_labels(tmp_path)
+    assert set(labels) == {
+        "t010_b0090_PMC6327494_results_2",
+        "t011_other",
+    }
+    assert labels["t010_b0090_PMC6327494_results_2"] == {"trial_id": "t010", "gold": 1}
+    assert labels["t011_other"] == {"trial_id": "t011", "gold": 2}
