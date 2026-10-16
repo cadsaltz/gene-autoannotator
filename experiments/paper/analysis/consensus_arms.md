@@ -91,3 +91,112 @@ Re-running the same arm with the same `--run-id` skips trial_ids already in that
 `bespoke_minicheck_7b`) the arm stops with status `aborted` and exit code 2.
 
 Use `--max-trials N` to cap the number of trials (first N biology trials).
+
+---
+
+## Phase 3 (fresh extraction + Phase 2 gold)
+
+Phase 3 runs **new** extractor calls for the four models used by the arms, then
+reuses the same sequential arm loop as Phase 1. Config:
+`experiments/paper/configs/consensus-arms-phase3.yaml` (extraction +
+`source_records` / arms keys in one file).
+
+**Scope:** experiments branch only. Do not edit `worker/`, `deploy/`, production
+`autoannotation/consensus.py`, or worker.env defaults.
+
+### 1. Extraction
+
+```bash
+PYTHONPATH=. python -m experiments.paper.runners.run_bias_1_vs_3 \
+  --config experiments/paper/configs/consensus-arms-phase3.yaml \
+  --run-id consensus_arms_phase3
+```
+
+The Phase 2 labeled set is 120 sections in
+`experiments/paper/fixtures/gold/consensus_arms_v1/` (`sample_manifest.json`,
+`stubs.jsonl`, `dev_papers.json`, `test_papers.json`). Prefer extracting those
+exact `trial_id`s when possible.
+
+`run_bias_1_vs_3.py` has **no** `--trial-id` filter: it samples from
+`fixtures/paper_snapshots/bias_cluster_v2.json` via `distribution` / `n_trials`
+in the YAML (default 120 biology trials, 40 per organism, seed 42). That pool
+overlaps the Phase 2 fixture but **does not guarantee** the same 120
+`trial_id`s as `sample_manifest.json`. Practical options:
+
+- Run extraction on the full configured pool, then run arms on all biology trials
+  in `records.jsonl`; scoring via compare/spreadsheet only hits trials that have
+  label packets (see step 4).
+- After extraction, restrict attention to trials whose `trial_id` appears in
+  `sample_manifest.json` (manual filter or ad-hoc script — not part of the
+  runner CLI).
+
+Records path (default run id):
+
+`experiments/paper/results/bias-1-vs-3-small/consensus_arms_phase3/records.jsonl`
+
+### 2. Point arms at the extraction run
+
+Set `source_records` in `consensus-arms-phase3.yaml` to that run's
+`records.jsonl` (or edit the path in the YAML before the arm loop if you used a
+different `--run-id`).
+
+### 3. Sequential arms (same list as Phase 1)
+
+```bash
+RUN=consensus_arms_phase3
+for ARM in A B B-ref C D:minicheck_ft5 D:hhem D:bespoke_minicheck_7b; do
+  PYTHONPATH=. python -m experiments.paper.runners.run_consensus_arms \
+    --config experiments/paper/configs/consensus-arms-phase3.yaml \
+    --arm "$ARM" --run-id "$RUN"
+done
+```
+
+Arm behaviour, soft-fail/resume, and output layout match Phase 1 under
+`experiments/paper/results/consensus-arms/<run_id>/arm_<safe_name>/`.
+
+### 4. Spreadsheets and compare (Phase 2 labels)
+
+Label packets for scoring live under Phase 2 gold
+(`labels_dir` in the YAML:
+`experiments/paper/fixtures/gold/consensus_arms_v1`). The spreadsheet and
+compare scripts load **`t*.json` per trial** (same layout as
+`experiments/paper/results/model_spread_15k/labels/`). Phase 2 stubs are in
+`stubs.jsonl` until labeling exports per-trial JSON into a directory you pass
+as `--labels`.
+
+```bash
+LABELS=experiments/paper/fixtures/gold/consensus_arms_v1   # or a t*.json export dir
+RUN=consensus_arms_phase3
+for ARM in A B B-ref C D:minicheck_ft5 D:hhem D:bespoke_minicheck_7b; do
+  PYTHONPATH=. python experiments/paper/scripts/build_consensus_arms_spreadsheet.py \
+    --arm-dir experiments/paper/results/consensus-arms/$RUN/arm_${ARM//:/_} \
+    --labels "$LABELS" \
+    --out ~/Downloads/consensus_arms_${RUN}_arm_${ARM//:/_}_team_review.xlsx
+done
+
+PYTHONPATH=. python experiments/paper/scripts/compare_consensus_arms.py \
+  --run-dir experiments/paper/results/consensus-arms/$RUN \
+  --labels "$LABELS" \
+  --out experiments/paper/results/consensus-arms/$RUN/compare/
+```
+
+### 5. Dev / test protocol (Arm D and paper result)
+
+Use **`dev_papers.json`** only to tune Arm D: pick the classifier
+(`D:minicheck_ft5`, `D:hhem`, or `D:bespoke_minicheck_7b`) and set
+`d_threshold` in the YAML (pilot default `0.5`). Filter compare/spreadsheet
+rows or ad-hoc analysis to trials whose `pmc_id` is in the dev list. **Freeze**
+the chosen classifier and threshold before touching test.
+
+Score **held-out test** using **`test_papers.json`** only (trials on those
+`pmc_id`s). Success bar: beat arm A on test — **more needles found** and
+**fewer false positives** than A, not merely matching A.
+
+Phase 1 pilot metrics are go/no-go only; the paper claim comes from this
+dev-tune / test-score split on Phase 2 gold.
+
+### 6. Production boundary
+
+Phase 3 does not change deployment, worker defaults, or production consensus
+code. Arm B still calls production hybrid consensus via import only; extractors
+run through the existing paper bias runner.

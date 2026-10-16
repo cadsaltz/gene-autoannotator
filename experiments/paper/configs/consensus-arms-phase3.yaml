@@ -1,0 +1,76 @@
+experiment_id: bias-1-vs-3-small
+config_version: 1
+owner: Caden
+n_trials: 120
+max_trials: 120
+selection_seed: 42
+claim: >
+  Phase 3 consensus-arms: fresh extraction with the four extractor models used by
+  arms A / B / B-ref (gemma4:12b, phi4:14b, dolphin3:8b, granite4.2:8b), then
+  sequential consensus-arm post-process against Phase 2 gold. Extraction uses the
+  standard 1-vs-3 bias runner; arms keys below are for run_consensus_arms.py.
+status: runnable
+
+models:
+  extractors:
+    - gemma4:12b
+    - phi4:14b
+    - dolphin3:8b
+    - granite4.2:8b
+  # Required by run_bias_1_vs_3.py; not used by consensus-arms post-process.
+  consensus: gemma4:26b
+
+fixtures:
+  papers: fixtures/paper_snapshots/bias_cluster_v2.json
+  genes: fixtures/gene_sets/bias_cluster_v2.json
+  general: fixtures/general_snapshots/general_cluster_v1.json
+
+# Aligns with Phase 2 sampling (40 sections per organism). Trial IDs will not
+# necessarily match fixtures/gold/consensus_arms_v1/sample_manifest.json unless
+# you add a future trial-id filter to the bias runner.
+distribution:
+  mtb-h37rv: 40
+  ecoli-k12-mg1655: 40
+  tcruzi-clbrener: 40
+
+nli:
+  model_id: roberta-large-mnli
+
+cache_policy: cold_llm_preferred
+
+conditions:
+  - extractor_A
+  - extractor_B
+  - extractor_C
+  - extractor_D
+  - consensus_D
+  - single_A
+  - single_B
+  - single_C
+  - single_D
+
+metrics:
+  - field_supported_rate
+  - field_unsupported_rate
+  - field_null_rate
+  - cross_extractor_disagreement_rate
+
+# --- consensus-arms post-process (run_consensus_arms.py; ignored by bias runner) ---
+
+# After extraction, point at the run directory (edit RUN_ID if you used another --run-id):
+source_records: experiments/paper/results/bias-1-vs-3-small/consensus_arms_phase3/records.jsonl
+labels_dir: experiments/paper/fixtures/gold/consensus_arms_v1
+judge_model: gemma4:26b
+trio_b: [gemma4:12b, phi4:14b, dolphin3:8b]
+trio_bref: [gemma4:12b, phi4:14b, granite4.2:8b]
+classifiers: [minicheck_ft5, hhem, bespoke_minicheck_7b]
+d_threshold: 0.5
+
+notes: |
+  Extraction: PYTHONPATH=. python -m experiments.paper.runners.run_bias_1_vs_3 \
+    --config experiments/paper/configs/consensus-arms-phase3.yaml \
+    --run-id consensus_arms_phase3
+  Outputs land under experiments/paper/results/bias-1-vs-3-small/<run-id>/.
+  Update source_records above (or pass paths via env/docs) before running arms.
+  Phase 2 gold stubs: experiments/paper/fixtures/gold/consensus_arms_v1/ (120 sections).
+  No production worker/deploy/consensus.py changes for this track.
