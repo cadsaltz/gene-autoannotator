@@ -262,6 +262,18 @@ def decide_trial(
             "threshold": ctx.threshold,
             "n_claims": len(claims),
             "n_supported": sum(1 for s in scores.values() if s >= ctx.threshold),
+            # raw per-claim scores so threshold sweeps can be rerun offline
+            "claim_scores": [
+                {
+                    "claim_index": c["claim_index"],
+                    "field": c["field"],
+                    "source_model": c["source_model"],
+                    "source_value": c["source_value"],
+                    "text": c["text"],
+                    "score": scores.get(c["claim_index"]),
+                }
+                for c in claims
+            ],
         }
         if ctx.dry_run:
             metrics["dry_run_stub"] = True

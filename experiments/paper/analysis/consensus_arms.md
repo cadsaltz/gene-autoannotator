@@ -81,7 +81,9 @@ e.g. `arm_D_hhem`):
 
 - `manifest.json` — arm, models, judge/classifier, git sha, source records, duration, status
 - `records.jsonl` — per trial: `trial_id`, `excerpt_text`, `candidates`, `arm_output`,
-  `decision_metrics` (`llm_duration_sec` / `classifier_duration_sec`)
+  `decision_metrics` (`llm_duration_sec` / `classifier_duration_sec`; Arm D also stores
+  `claim_scores`: one `{claim_index, field, source_model, source_value, text, score}` per claim,
+  so threshold sweeps can be recomputed offline without rerunning the classifier)
 - `errors.jsonl` — trials that failed (soft-fail); not in `records.jsonl`, so a re-run retries them
 
 ## Resume
@@ -156,16 +158,29 @@ Arm behaviour, soft-fail/resume, and output layout match Phase 1 under
 
 ### 4. Spreadsheets and compare (Phase 2 labels)
 
-Label packets for scoring live under Phase 2 gold
-(`labels_dir` in the YAML:
-`experiments/paper/fixtures/gold/consensus_arms_v1`). The spreadsheet and
-compare scripts load **`t*.json` per trial** (same layout as
-`experiments/paper/results/model_spread_15k/labels/`). Phase 2 stubs are in
-`stubs.jsonl` until labeling exports per-trial JSON into a directory you pass
-as `--labels`.
+> **Schema mismatch - read before scoring Phase 3.** `build_consensus_arms_spreadsheet.py` and
+> `compare_consensus_arms.py` were built for **Phase 1 model-spread reviewer labels**: `t*.json`
+> files with per-extractor `fields[f].labels[model]` (`correct` / `partial` / ...). Phase 2 gold
+> (`stubs.jsonl`) instead has per-field `gold_status` / `gold_value` / `gold_quote` and **no
+> `labels[model]`**. Exporting stubs to `t*.json` is therefore **not enough**: every arm value
+> would be UNLABELED. Phase 3 scoring needs one of (a) a scorer that compares each arm's values
+> to the gold needles (not implemented), or (b) the frontier judging step that produces
+> per-extractor labels for the Phase 3 outputs. Until then the commands below are only valid
+> with Phase 1-style `t*.json` labels.
+
+Label packets live under `labels_dir` in the YAML
+(`experiments/paper/fixtures/gold/consensus_arms_v1` for Phase 2 gold; Phase 1 labels are in
+`experiments/paper/results/model_spread_15k/labels/`).
+
+**Reading `scoreboard.csv`:** `fp` counts only *labeled* false positives. A non-null value that
+matches no labeled candidate (B judge merges, D reassembled strings) is UNLABELED, so `fp` alone
+undercounts when UNLABELED > 0. Use `unlabeled_non_needle` (unjudged values on no-needle fields)
+and `fp_upper_bound` = `fp` + `unlabeled_non_needle` as the FP-risk bound; `unlabeled_on_needles`
+/ `recall_upper_bound` is the matching recall bound. `vs_A.md` repeats this caveat and lists the
+unjudged no-needle values new vs A.
 
 ```bash
-LABELS=experiments/paper/fixtures/gold/consensus_arms_v1   # or a t*.json export dir
+LABELS=experiments/paper/results/model_spread_15k/labels   # t*.json with labels[model]; see note above
 RUN=consensus_arms_phase3
 for ARM in A B B-ref C D:minicheck_ft5 D:hhem D:bespoke_minicheck_7b; do
   PYTHONPATH=. python experiments/paper/scripts/build_consensus_arms_spreadsheet.py \

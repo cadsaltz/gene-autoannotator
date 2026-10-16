@@ -172,6 +172,24 @@ def test_builder_creates_required_rows_and_preserves_excerpt(tmp_path, labels_di
     assert "◐" in cand_flags
 
 
+def test_builder_sanitizes_sheet_title_for_arm_d(tmp_path, labels_dir):
+    rec = _record({"function": "binds ATP"})
+    rec["decision_metrics"] = {
+        "classifier": "hhem",
+        "claim_scores": [{"claim_index": 0, "field": "function", "score": 0.9}],
+    }
+    arm_dir = _write_arm(tmp_path / "run", "D:hhem", rec)
+    out = tmp_path / "arm_D_hhem.xlsx"
+    builder.build_workbook(arm_dir, labels_dir, out)
+
+    wb = load_workbook(out, rich_text=True)
+    assert wb.sheetnames == ["README", "Arm D_hhem"]
+    ws = wb["Arm D_hhem"]
+    labels = {str(ws.cell(r, 1).value): r for r in range(1, ws.max_row + 1) if ws.cell(r, 1).value}
+    assert "ARM OUTPUT (D:hhem)" in labels
+    assert "1 entries in records.jsonl" in str(ws.cell(labels["decision_metrics"], 2).value)
+
+
 def test_builder_truncates_only_past_excel_cell_limit(tmp_path, labels_dir):
     long_text = "x" * 40000
     rec = _record({"function": None}, trial_id="t999_unlabeled#1")
@@ -238,6 +256,26 @@ def test_compare_unlabeled_needle_is_unresolved_not_lost(tmp_path, labels_dir):
     assert by_arm["B"]["recall_labeled"] == "0.000"
     assert by_arm["B"]["recall_upper_bound"] == "0.500"
     assert by_arm["A"]["recall_upper_bound"] == by_arm["A"]["recall_labeled"] == "0.500"
+
+
+def test_compare_reports_unlabeled_non_needle_as_fp_risk(tmp_path, labels_dir):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_arm(run_dir, "A", _record({"function": "binds ATP"}))
+    # B: merged string on a no-needle field matches no candidate -> UNLABELED, invisible to `fp`
+    _write_arm(run_dir, "B", _record({"function": "binds ATP", "infection_impact": "merged invented claim"}))
+    out = tmp_path / "compare"
+    compare.main(["--run-dir", str(run_dir), "--labels", str(labels_dir), "--out", str(out)])
+
+    by_arm = {r["arm"]: r for r in csv.DictReader((out / "scoreboard.csv").open())}
+    assert by_arm["B"]["fp"] == "0"
+    assert by_arm["B"]["unlabeled_non_needle"] == "1" and by_arm["B"]["fp_upper_bound"] == "1"
+    assert by_arm["A"]["unlabeled_non_needle"] == "0" and by_arm["A"]["fp_upper_bound"] == "0"
+
+    md = (out / "vs_A.md").read_text()
+    assert "`fp` alone is incomplete" in md
+    risk = md.split("### Unjudged no-needle values new vs A")[1].split("###")[0]
+    assert "| infection_impact |" in risk
 
 
 def test_compare_requires_arm_a(tmp_path, labels_dir):

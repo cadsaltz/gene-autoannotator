@@ -129,6 +129,18 @@ def test_dry_run_other_arms_use_stubs_and_safe_dir_name(setup):
     }
 
 
+def test_dry_run_arm_d_persists_per_claim_scores(setup):
+    tmp_path, config = setup
+    out_root = _run(tmp_path, config, "--arm", "D:hhem")
+    rec = _read_records(out_root / "r1" / "arm_D_hhem" / "records.jsonl")[0]
+    metrics = rec["decision_metrics"]
+    scores = metrics["claim_scores"]
+    assert len(scores) == metrics["n_claims"] > 0
+    assert {"claim_index", "field", "source_model", "source_value", "text", "score"} <= set(scores[0])
+    assert [c["claim_index"] for c in scores] == list(range(len(scores)))
+    assert all(c["score"] == 1.0 for c in scores)  # dry-run stub score
+
+
 def test_rejects_unknown_arm(setup):
     tmp_path, config = setup
     with pytest.raises(SystemExit):

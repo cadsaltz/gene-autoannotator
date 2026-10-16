@@ -7,7 +7,10 @@
       --out experiments/paper/results/consensus-arms/<run>/compare/
 
 Writes ``scoreboard.csv`` (per-arm needles found / missed / false positives; ``recall_labeled`` counts only
-labeled finds, ``recall_upper_bound`` also counts UNLABELED values on needle fields) and
+labeled finds, ``recall_upper_bound`` also counts UNLABELED values on needle fields; ``fp`` counts only
+labeled false positives, so ``unlabeled_non_needle`` - unjudged non-null values on no-needle fields, e.g. B
+merges or D reassembled strings - is reported beside it and ``fp_upper_bound`` = ``fp`` +
+``unlabeled_non_needle``) and
 ``vs_A.md`` (needle-by-needle and false-positive diffs of every other arm vs A, on the
 trials both arms completed).  Only labeled trials are scored.
 """
@@ -29,8 +32,8 @@ from experiments.paper.scripts.build_consensus_arms_spreadsheet import arm_name 
 
 SCOREBOARD_COLUMNS = (
     "arm", "n_trials", "n_labeled_trials", "needles_total", "found", "found_clean", "found_padded",
-    "missed", "fp", "unlabeled", "unlabeled_on_needles", "correctly_empty", "extra_supported",
-    "recall_labeled", "recall_upper_bound", "status",
+    "missed", "fp", "unlabeled", "unlabeled_on_needles", "unlabeled_non_needle", "correctly_empty",
+    "extra_supported", "recall_labeled", "recall_upper_bound", "fp_upper_bound", "status",
 )
 
 
@@ -63,7 +66,7 @@ def scoreboard_row(arm: str, arm_dir: Path, scored: dict[str, dict[str, Any]]) -
     n_records = sum(1 for line in (arm_dir / "records.jsonl").open() if line.strip())
     totals = {k: 0 for k in ("found_clean", "found_padded", "missed", "fp", "unlabeled",
                              "correctly_empty", "extra_supported",
-                             "unlabeled_needles")}
+                             "unlabeled_needles", "unlabeled_non_needle")}
     needles = 0
     for item in scored.values():
         b = item["buckets"]
@@ -77,6 +80,7 @@ def scoreboard_row(arm: str, arm_dir: Path, scored: dict[str, dict[str, Any]]) -
         "found": found, **totals, "unlabeled_on_needles": unl_needles,
         "recall_labeled": f"{found / needles:.3f}" if needles else "",
         "recall_upper_bound": f"{(found + unl_needles) / needles:.3f}" if needles else "",
+        "fp_upper_bound": totals["fp"] + totals["unlabeled_non_needle"],
         "status": manifest.get("status", ""),
     }
 
@@ -98,7 +102,11 @@ def _needle_state(item: dict[str, Any], fld: str) -> str:
 
 CAVEAT = (
     "> **Caveat:** needle values that match no labeled extractor candidate (e.g. judge rewrites) are "
-    "UNLABELED and listed as *unresolved, needs judging* - they are not counted as lost or missed."
+    "UNLABELED and listed as *unresolved, needs judging* - they are not counted as lost or missed.\n>\n"
+    "> **`fp` alone is incomplete when UNLABELED > 0:** a non-null value on a no-needle field that no "
+    "labeled candidate proposed (judge merges, reassembled Arm D strings) is UNLABELED, not `fp`. It is "
+    "reported as `unlabeled_non_needle` (FP risk) and `fp_upper_bound` = `fp` + `unlabeled_non_needle` "
+    "in `scoreboard.csv`; treat `fp` as a lower bound until those values are judged."
 )
 
 
@@ -107,6 +115,8 @@ def diff_vs_a(arm: str, scored: dict[str, dict[str, Any]], a_scored: dict[str, d
     gained, lost, same_found, same_missed = [], [], 0, 0
     unresolved: list[tuple[str, str, str, str]] = []
     fp_new, fp_removed = [], []
+    risk_new: list[tuple[str, str]] = []
+    risk_total = 0
     for tid in shared:
         a_item, item = a_scored[tid], scored[tid]
         needles = item["buckets"]["_needle_fields"]
@@ -126,6 +136,9 @@ def diff_vs_a(arm: str, scored: dict[str, dict[str, Any]], a_scored: dict[str, d
         a_fp, fp = set(a_item["buckets"]["fp"]), set(item["buckets"]["fp"])
         fp_new += [(tid, f) for f in sorted(fp - a_fp)]
         fp_removed += [(tid, f) for f in sorted(a_fp - fp)]
+        a_risk, risk = set(a_item["buckets"]["unlabeled_non_needle"]), set(item["buckets"]["unlabeled_non_needle"])
+        risk_total += len(risk)
+        risk_new += [(tid, f) for f in sorted(risk - a_risk)]
 
     def table(title: str, rows: list[tuple[str, str]]) -> list[str]:
         lines = [f"### {title} ({len(rows)})", ""]
@@ -150,6 +163,9 @@ def diff_vs_a(arm: str, scored: dict[str, dict[str, Any]], a_scored: dict[str, d
     lines.append("")
     lines += table(f"False positives new vs A (FP in {arm}, not in A)", fp_new)
     lines += table(f"False positives removed vs A (FP in A, not in {arm})", fp_removed)
+    lines += [f"_`fp` is incomplete: {arm} has {risk_total} unjudged non-null value(s) on no-needle fields "
+              "(`unlabeled_non_needle`, FP risk)._", ""]
+    lines += table(f"Unjudged no-needle values new vs A (FP risk in {arm}, not in A)", risk_new)
     return "\n".join(lines)
 
 

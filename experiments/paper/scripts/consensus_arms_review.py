@@ -221,7 +221,7 @@ def tally(res: dict[str, Any], label_doc: dict[str, Any]) -> dict[str, list[str]
     buckets: dict[str, list[str]] = {
         "found_clean": [], "found_padded": [], "missed": list(res["missed"]),
         "fp": [], "unlabeled": [], "correctly_empty": list(res["quiet"]),
-        "extra_supported": [], "unlabeled_needles": [],
+        "extra_supported": [], "unlabeled_needles": [], "unlabeled_non_needle": [],
     }
     for fld, cls in res["classes"].items():
         if cls in ("REAL", "PADDED") and fld not in needle_fields:
@@ -236,5 +236,7 @@ def tally(res: dict[str, Any], label_doc: dict[str, Any]) -> dict[str, list[str]
             buckets["unlabeled"].append(fld)
             if fld in needle_fields:  # non-null value on a needle that needs judging
                 buckets["unlabeled_needles"].append(fld)
+            else:  # unjudged non-null value on a no-needle field: possible FP, not counted in "fp"
+                buckets["unlabeled_non_needle"].append(fld)
     buckets["_needle_fields"] = sorted(needle_fields)
     return buckets

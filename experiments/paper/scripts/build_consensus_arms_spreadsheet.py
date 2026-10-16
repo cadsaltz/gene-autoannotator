@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -195,7 +196,11 @@ def write_trial(ws, row: int, index: int, total: int, rec: dict[str, Any], arm: 
     row = write_block(ws, row, f"ARM OUTPUT ({arm})", rt_out, flags=flags, flag_fill_=fill)
     metrics = rec.get("decision_metrics")
     if metrics:
-        row = write_block(ws, row, "decision_metrics", exact_json(metrics))
+        # claim_scores is bulky (can pass Excel's cell limit); it stays in records.jsonl
+        shown = {k: v for k, v in metrics.items() if k != "claim_scores"}
+        if "claim_scores" in metrics:
+            shown["claim_scores"] = f"<{len(metrics['claim_scores'])} entries in records.jsonl>"
+        row = write_block(ws, row, "decision_metrics", exact_json(shown))
     return row + 1
 
 
@@ -229,7 +234,7 @@ def build_workbook(arm_dir: Path, labels_dir: Path, out_path: Path) -> Path:
     readme.column_dimensions["A"].width = 18
     readme.column_dimensions["B"].width = 110
 
-    ws = wb.create_sheet(f"Arm {arm}"[:31])
+    ws = wb.create_sheet(re.sub(r"[:\\/?*\[\]]", "_", f"Arm {arm}")[:31])  # Excel forbids : \ / ? * [ ]
     ws.column_dimensions["A"].width = 28
     ws.column_dimensions["B"].width = 140
     for col in "CDEF":
