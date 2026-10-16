@@ -35,6 +35,45 @@ PYTHONPATH=. python -m experiments.paper.runners.run_consensus_arms \
   --arm D:hhem --run-id smoke --dry-run --max-trials 5
 ```
 
+## Live smoke (one trial, before the full pilot)
+
+Run B and C on **one** trial each against the real Ollama host before launching the pilot.
+Without `--dry-run` the runner calls `load_worker_env_into_process()` at start (same as
+`run_bias_1_vs_3.py`; `worker.env` values only fill variables not already set), so only the
+Ollama host and model tags matter here — chunking env is irrelevant for this post-process.
+
+```bash
+# Arm C: excerpt-aware verbatim judge (gemma4:26b)
+PYTHONPATH=. python -m experiments.paper.runners.run_consensus_arms \
+  --config experiments/paper/configs/consensus-arms-pilot.yaml \
+  --arm C --run-id smoke_c --max-trials 1
+
+# Arm B: production hybrid consensus, LlmHandler batch merge (gemma4:26b)
+PYTHONPATH=. python -m experiments.paper.runners.run_consensus_arms \
+  --config experiments/paper/configs/consensus-arms-pilot.yaml \
+  --arm B --run-id smoke_b --max-trials 1
+```
+
+Requirements: the Ollama host from `worker.env` must be reachable and have the judge model
+`gemma4:26b` pulled (`ollama pull gemma4:26b`). The candidate trio outputs are reused from
+`source_records`, so extractor models are not called. Expect `arm=C status=complete trials=1
+new=1 errors=0` and exit code 0; inspect `arm_<ARM>/records.jsonl` and
+`decision_metrics.llm_duration_sec`. Use a fresh `--run-id` for the real pilot (smoke run-ids
+are separate directories, and a live run can't resume a `--dry-run` manifest).
+
+CI/unit tests never call Ollama; they mock `LlmHandler` and organism resolution.
+
+## Soft-fail behaviour
+
+Judge errors (Ollama down, model missing, malformed output) are caught **per trial**: the
+trial is appended to `errors.jsonl` (`trial_id`, `error` as `ExceptionType: message`,
+`traceback`), nothing is written to `records.jsonl` for it, and the arm continues with the
+next trial. At the end the manifest status is `complete_with_errors` (`n_errors > 0`) and the
+process exits 1. Re-running with the same `--run-id` retries only the failed trials. Only
+classifier backend skips (`ClassifierSkipped`, arm D) abort the whole arm (status `aborted`,
+exit 2). A failed trial is therefore *absent* from the arm's records rather than recorded as
+an all-null output.
+
 ## Outputs
 
 `experiments/paper/results/consensus-arms/<run_id>/arm_<safe_name>/` (`:` becomes `_`,

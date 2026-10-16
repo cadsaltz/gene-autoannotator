@@ -385,6 +385,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if not args.dry_run:
+        # Same as run_bias_1_vs_3: pick up OLLAMA host / model tags from worker.env
+        # (setdefault, so explicit environment variables still win).
+        from autoannotation.worker_env import load_worker_env_into_process
+
+        load_worker_env_into_process()
     config = load_yaml_config(resolve_path(args.config))
     try:
         manifest = run_arm(

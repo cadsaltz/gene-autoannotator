@@ -151,3 +151,103 @@ def test_rejects_dry_run_flag_mismatch_on_resume(setup):
     assert runner.main([*base, "--dry-run"]) == 0
     rc = runner.main(base)
     assert rc == 1
+
+
+def _live_args(tmp_path: Path, config: Path, arm: str) -> list[str]:
+    return [
+        "--config",
+        str(config),
+        "--run-id",
+        "live1",
+        "--arm",
+        arm,
+        "--out-root",
+        str(tmp_path / "out"),
+        "--max-trials",
+        "1",
+    ]
+
+
+def test_live_b_uses_production_batch_merger_with_judge_model(setup, monkeypatch):
+    """Non-dry-run B wires make_production_batch_merger(model=JUDGE_MODEL); no network."""
+    from unittest.mock import MagicMock
+
+    from autoannotation import llms, organisms
+    from experiments.paper.runners import consensus_arms_decide as decide
+
+    tmp_path, config = setup
+    handler = MagicMock(name="LlmHandler-instance")
+    handler._ollama_batch_consensus_merge.return_value = ({"function": "merged"}, 0.1)
+    handler_cls = MagicMock(name="LlmHandler", return_value=handler)
+    profile = MagicMock(name="profile", canonical_name="Escherichia coli")
+    monkeypatch.setattr(llms, "LlmHandler", handler_cls)
+    monkeypatch.setattr(organisms, "resolve_profile", lambda _pid: profile)
+    monkeypatch.setattr("autoannotation.worker_env.load_worker_env_into_process", lambda **kw: None)
+
+    seen: dict = {}
+    real_factory = decide.make_production_batch_merger
+
+    def spy_factory(llm_handler, **kwargs):
+        seen["handler"] = llm_handler
+        seen["kwargs"] = kwargs
+        return real_factory(llm_handler, **kwargs)
+
+    def fake_hybrid(candidates, **kwargs):
+        seen["n_candidates"] = len(candidates)
+        merged = kwargs["batch_merger"](candidates, ["function"])
+        return merged, {"function": "judge"}, 1
+
+    monkeypatch.setattr(runner, "make_production_batch_merger", spy_factory)
+    monkeypatch.setattr(decide, "hybrid_section_consensus", fake_hybrid)
+
+    assert runner.main(_live_args(tmp_path, config, "B")) == 0
+
+    assert seen["handler"] is handler
+    assert seen["kwargs"]["model"] == decide.JUDGE_MODEL == "gemma4:26b"
+    assert seen["kwargs"]["organism_profile"] is profile
+    assert seen["n_candidates"] == 3
+    handler._ollama_batch_consensus_merge.assert_called_once()
+    assert handler._ollama_batch_consensus_merge.call_args.kwargs["model"] == decide.JUDGE_MODEL
+
+    recs = _read_records(tmp_path / "out" / "live1" / "arm_B" / "records.jsonl")
+    assert len(recs) == 1 and recs[0]["arm_output"] == {"function": "merged"}
+    manifest = json.loads((tmp_path / "out" / "live1" / "arm_B" / "manifest.json").read_text())
+    assert manifest["dry_run"] is False and manifest["judge_model"] == "gemma4:26b"
+
+
+def test_live_b_soft_fails_trial_without_crashing_arm(setup, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from autoannotation import llms, organisms
+
+    tmp_path, config = setup
+    handler = MagicMock()
+    handler._ollama_batch_consensus_merge.side_effect = RuntimeError("ollama down")
+    monkeypatch.setattr(llms, "LlmHandler", MagicMock(return_value=handler))
+    monkeypatch.setattr(organisms, "resolve_profile", lambda _pid: None)
+    monkeypatch.setattr("autoannotation.worker_env.load_worker_env_into_process", lambda **kw: None)
+    # candidates disagree on "function" so the merger is genuinely needed
+    rc = runner.main(_live_args(tmp_path, config, "B"))
+    arm_dir = tmp_path / "out" / "live1" / "arm_B"
+    manifest = json.loads((arm_dir / "manifest.json").read_text())
+    assert rc == 1
+    assert manifest["status"] == "complete_with_errors"
+    assert manifest["n_errors"] == 1
+    errors = _read_records(arm_dir / "errors.jsonl")
+    assert "ollama down" in errors[0]["error"]
+    assert not (arm_dir / "records.jsonl").exists()
+
+
+def test_main_loads_worker_env_only_when_live(setup, monkeypatch):
+    tmp_path, config = setup
+    calls: list[int] = []
+    monkeypatch.setattr(
+        "autoannotation.worker_env.load_worker_env_into_process",
+        lambda **kw: calls.append(1),
+    )
+    assert runner.main(["--config", str(config), "--run-id", "d", "--arm", "A", "--dry-run",
+                        "--out-root", str(tmp_path / "out")]) == 0
+    assert calls == []
+    assert runner.main(["--config", str(config), "--run-id", "l", "--arm", "A",
+                        "--out-root", str(tmp_path / "out")]) == 0
+    assert calls == [1]
