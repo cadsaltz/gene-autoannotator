@@ -7,7 +7,9 @@ log = logging.getLogger(__name__)
 
 def required_models():
     # Derived from the same config the annotator reads, so the set never drifts.
-    names = set(models.MODEL_SUMMARY) | {models.MODEL_CONSENSUS, models.MODEL_AGGREGATION}
+    names = set(models.MODEL_SUMMARY) | {models.MODEL_AGGREGATION, models.MODEL_REGEX}
+    if models.uses_section_consensus():
+        names.add(models.MODEL_CONSENSUS)
     return {name for name in names if name}
 
 
