@@ -21,7 +21,13 @@ from . import pmc
 from . import targets
 from . import utils
 
-from .models import MODEL_SUMMARY, MODEL_AGGREGATION, MODEL_CONSENSUS
+from .models import (
+    MODEL_SUMMARY,
+    MODEL_AGGREGATION,
+    MODEL_CONSENSUS,
+    section_distillation_model_name,
+    uses_section_consensus,
+)
 from .section_excerpt_config import section_excerpt_config_from_env
 from .section_excerpt_router import prepare_section_excerpts
 from shared.job_progress import JobProgressEvent
@@ -238,19 +244,24 @@ def run_paper_annotation_pass(
                     f'PMC{pmc_id}', label, model, llm_gene, llm_name,
                     section_distillation_candidate, duration_sec,
                 ))
-            section_distillation, duration_sec = llm_handler.get_llm_consensus_json(
-                section_distillation_candidates_cur,
-                excerpt=section,
-                expected_gene_id=gene,
-                expected_name=llm_name,
-                model=MODEL_CONSENSUS,
-                section_type=label,
-                organism_profile=organism_profile,
-                allow_missing_locus=gene is None,
-                field_defs_profile=field_defs_profile,
-            )
+            if uses_section_consensus(MODEL_SUMMARY):
+                section_distillation, duration_sec = llm_handler.get_llm_consensus_json(
+                    section_distillation_candidates_cur,
+                    excerpt=section,
+                    expected_gene_id=gene,
+                    expected_name=llm_name,
+                    model=MODEL_CONSENSUS,
+                    section_type=label,
+                    organism_profile=organism_profile,
+                    allow_missing_locus=gene is None,
+                    field_defs_profile=field_defs_profile,
+                )
+            else:
+                section_distillation = section_distillation_candidates_cur[0]
             section_distillations.append((
-                f'PMC{pmc_id}', label, MODEL_CONSENSUS, llm_gene, llm_name,
+                f'PMC{pmc_id}', label,
+                section_distillation_model_name(),
+                llm_gene, llm_name,
                 section_distillation, duration_sec,
             ))
             sections_done += 1

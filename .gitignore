@@ -39,10 +39,11 @@ trust_json/
 bench_outputs/
 bench_out/
 reports/
-tests/
+tests/*
 # Paper experiment unit tests live under experiments/ (root tests/ stays ignored).
 !experiments/paper/tests/
 !experiments/paper/tests/**
+!tests/test_model_config.py
 experiments/paper/tests/__pycache__/
 
 # Live/dry-run experiment outputs stay local.

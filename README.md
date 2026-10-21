@@ -88,14 +88,11 @@ npm install
 cp .env.example .env.local
 ```
 
-Ollama defaults:
+Ollama defaults (production extraction is gemma4:12b alone; consensus is skipped):
 
 ```bash
-ollama pull mistral-nemo:12b
-ollama pull llama3:8b
-ollama pull gemma3:12b
-ollama pull phi4:14b
-ollama pull qwen2.5:7b-instruct
+ollama pull gemma4:12b
+ollama pull gemma3:27b
 ```
 
 For smaller annotation models:
@@ -113,7 +110,7 @@ ollama pull phi3:3.8b
 Useful environment variables:
 
 - `AUTOANNOTATION_MODEL_MODE=performance|lite`
-- `AUTOANNOTATION_SUMMARY_MODELS=model1,model2,model3`
+- `AUTOANNOTATION_SUMMARY_MODELS=gemma4:12b` (comma-separated; one model skips section consensus)
 - `AUTOANNOTATION_CONSENSUS_MODEL=model`
 - `AUTOANNOTATION_AGGREGATION_MODEL=model`
 - `AUTOANNOTATION_OLLAMA_KEEP_ALIVE=-1` (or `forever`) keeps models loaded indefinitely; `0` (default outside bench) unloads after each call; `5m` keeps warm for five minutes.
