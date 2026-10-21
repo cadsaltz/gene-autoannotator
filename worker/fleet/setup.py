@@ -35,7 +35,7 @@ def _default_env_path() -> Path:
 
 DEFAULT_OLLAMA_BASE_PORT = 11434
 OLLAMA_PORT_SCAN_COUNT = 16
-OLLAMA_SERVER_READY_TIMEOUT_SEC = 15.0
+OLLAMA_SERVER_READY_TIMEOUT_SEC = 60.0
 OLLAMA_SERVER_POLL_INTERVAL_SEC = 0.1
 
 _ENV_PASSTHROUGH_KEYS = (
@@ -46,6 +46,8 @@ _ENV_PASSTHROUGH_KEYS = (
     "LC_ALL",
     "LD_LIBRARY_PATH",
     "NVIDIA_VISIBLE_DEVICES",
+    "NVIDIA_DRIVER_CAPABILITIES",
+    "NVIDIA_REQUIRE_CUDA",
     "CUDA_VISIBLE_DEVICES",
     "OLLAMA_MODELS",
     "OLLAMA_KEEP_ALIVE",
@@ -192,9 +194,23 @@ def _wait_for_ollama_server(
             detail = _startup_failure_detail(proc, port=port)
             raise RuntimeError(f"ollama serve failed on port {port}: {detail}")
         if _port_is_open(port):
-            return
+            from worker.ollama_version import fetch_ollama_server_version
+
+            try:
+                fetch_ollama_server_version(
+                    f"http://127.0.0.1:{port}", timeout_sec=1.0
+                )
+                return
+            except Exception:
+                pass
         time.sleep(OLLAMA_SERVER_POLL_INTERVAL_SEC)
     shutdown_fleet([proc])
+    if _port_is_open(port):
+        raise RuntimeError(
+            f"Ollama accepted TCP on 127.0.0.1:{port} but /api/version "
+            f"did not respond within {timeout_sec:.0f}s. "
+            f"See {_startup_failure_detail(proc, port=port) or 'ollama-server-%s.log' % port}"
+        )
     raise RuntimeError(
         f"Ollama server did not start listening on 127.0.0.1:{port} within {timeout_sec:.0f}s"
     )
