@@ -6,7 +6,7 @@ FROM ollama/ollama:${OLLAMA_VERSION}
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       python3 python3-pip python-is-python3 \
+       python3 python3-pip python-is-python3 curl \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -23,16 +23,24 @@ COPY data/profiles/ data/profiles/
 COPY --chmod=0755 deploy/docker/worker-bench-entrypoint.sh /usr/local/bin/worker-bench-entrypoint.sh
 COPY --chmod=0755 deploy/docker/worker-run-entrypoint.sh /usr/local/bin/worker-run-entrypoint.sh
 
+# go-basic.obo is gitignored; bake a copy so GO resolve works on HPC without
+# an extra mount. Override with GO_BASIC_OBO_PATH if you bind a newer file.
+RUN mkdir -p data \
+  && curl -fsSL -o data/go-basic.obo http://purl.obolibrary.org/obo/go/go-basic.obo
+
 ENV AUTOANNOTATION_MODEL_MODE=performance \
+    AUTOANNOTATION_SUMMARY_MODELS=gemma4:12b \
+    AUTOANNOTATION_AGGREGATION_MODEL=gemma3:27b \
+    GO_BASIC_OBO_PATH=/app/data/go-basic.obo \
     OLLAMA_MODELS=/models \
     WORKER_CACHE_DIR=/out/cache \
     WORKER_OUTPUT_DIR=/out/annotations \
     PROFILES_DIR=/app/data/profiles \
     BACKEND_URL=http://127.0.0.1:9 \
     WORKER_API_TOKEN=unused \
-    WORKER_MODEL_MEMORY_BUDGET_GB=64 \
+    WORKER_MODEL_MEMORY_BUDGET_GB=80 \
     OLLAMA_FLEET_SERVERS=1 \
-    OLLAMA_FLEET_PARALLEL=1 \
+    OLLAMA_FLEET_PARALLEL=2 \
     WORKER_MAX_SLOTS=2 \
     OLLAMA_REQUIRE_VERSION=0.33.1 \
     PYTHONUNBUFFERED=1

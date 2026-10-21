@@ -26,6 +26,16 @@ Optional:
 Environment:
   IMAGE                 Default image if --image not set
   GPUS                  Default GPU spec if --gpus not set
+
+T. brucei gemma4-solo example (one GPU, two slots):
+  $0 \\
+    --image gene-autoannotator-worker:gemma4-solo \\
+    --jobs deploy/batches/tbrucei-treu927-ge10-papers.jsonl \\
+    --env-file deploy/docker/worker.bench.tbrucei-gemma4.env \\
+    --output-dir "\$SCRATCH/gen_json" \\
+    --report "\$SCRATCH/report.json" \\
+    --models-dir "\$SCRATCH/ollama-models" \\
+    --slots 2
 EOF
 }
 
