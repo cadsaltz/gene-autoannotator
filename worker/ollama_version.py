@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -19,6 +20,12 @@ log = logging.getLogger(__name__)
 # Stable pin (Dockerfile FROM ollama/ollama:0.33.1). Explicit OLLAMA_CONTEXT_LENGTH
 # from the fleet supervisor avoids auto/tiered context VRAM blowups on small GPUs.
 PINNED_OLLAMA_SERVER_VERSION = "0.33.1"
+
+# HPC GPU nodes often bind the port before /api/version answers (CUDA init).
+# One 5s GET right after listen is why 10212026 died at fleet reset.
+VERSION_READY_TIMEOUT_SEC = 60.0
+VERSION_POLL_INTERVAL_SEC = 0.25
+VERSION_ATTEMPT_TIMEOUT_SEC = 2.0
 
 
 def required_ollama_server_version() -> str | None:
@@ -50,6 +57,38 @@ def fetch_ollama_server_version(host: str, *, timeout_sec: float = 5.0) -> str:
     return str(version).strip()
 
 
+def wait_for_ollama_server_version(
+    host: str,
+    *,
+    timeout_sec: float | None = None,
+) -> str:
+    """Poll ``/api/version`` until Ollama answers or ``timeout_sec`` elapses."""
+    deadline = time.monotonic() + (
+        VERSION_READY_TIMEOUT_SEC if timeout_sec is None else timeout_sec
+    )
+    last_exc: BaseException | None = None
+    while time.monotonic() < deadline:
+        try:
+            return fetch_ollama_server_version(
+                host, timeout_sec=VERSION_ATTEMPT_TIMEOUT_SEC
+            )
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            json.JSONDecodeError,
+            RuntimeError,
+            ConnectionError,
+            OSError,
+        ) as exc:
+            last_exc = exc
+            time.sleep(VERSION_POLL_INTERVAL_SEC)
+    required = required_ollama_server_version() or PINNED_OLLAMA_SERVER_VERSION
+    raise RuntimeError(
+        f"Could not read Ollama version from {host}: {last_exc}. "
+        f"This project pins Ollama server {required}."
+    )
+
+
 def _version_matches(actual: str, required: str) -> bool:
     """True if actual equals required, or actual is required with a suffix (0.33.1-rc1)."""
     actual_n = actual.strip().lstrip("v")
@@ -71,13 +110,7 @@ def assert_ollama_server_version(host: str) -> str | None:
     required = required_ollama_server_version()
     if required is None:
         return None
-    try:
-        actual = fetch_ollama_server_version(host)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as exc:
-        raise RuntimeError(
-            f"Could not read Ollama version from {host}: {exc}. "
-            f"This project pins Ollama server {required}."
-        ) from exc
+    actual = wait_for_ollama_server_version(host)
     if not _version_matches(actual, required):
         raise RuntimeError(
             f"Ollama server version is {actual!r}, but this project requires "

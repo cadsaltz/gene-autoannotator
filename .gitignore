@@ -44,6 +44,7 @@ tests/*
 !experiments/paper/tests/
 !experiments/paper/tests/**
 !tests/test_model_config.py
+!tests/test_ollama_version.py
 experiments/paper/tests/__pycache__/
 
 # Live/dry-run experiment outputs stay local.
