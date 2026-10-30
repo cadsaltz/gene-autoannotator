@@ -49,6 +49,7 @@ nvidia-nvtx==13.0.85
 # Ollama *server* version is pinned to 0.33.1 (see deploy/docker/Dockerfile.worker
 # and worker/ollama_version.py). Do not confuse that with this Python client pin.
 ollama==0.6.2
+openpyxl==3.1.5
 packaging==26.2
 pandas==3.0.3
 pluggy==1.6.0
