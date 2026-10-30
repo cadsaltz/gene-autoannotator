@@ -7,7 +7,9 @@ from pathlib import Path
 from annotationxlsx.errors import AnnotationXlsxError
 from annotationxlsx.json_source import load_annotations
 from annotationxlsx.schema import annotation_to_row
-from annotationxlsx.workbook import require_xlsx, write_sheet
+from annotationxlsx.tritrypdb import fetch_rows
+from annotationxlsx.workbook import gene_ids_from_sheet, require_xlsx, write_sheet
+from annotationxlsx.zip_select import select_tbrucei_zip
 
 DEFAULT_WORKBOOK = 'annotation_comparison.xlsx'
 
@@ -47,7 +49,22 @@ def cmd_json(args: argparse.Namespace) -> int:
 
 
 def cmd_veupath(args: argparse.Namespace) -> int:
-    raise AnnotationXlsxError('veupath is not implemented yet')
+    workbook = Path(args.workbook)
+    require_xlsx(workbook)
+    gene_ids = gene_ids_from_sheet(workbook, args.order_from_sheet) if workbook.exists() else None
+    warnings: list[str] = []
+    if not gene_ids:
+        zip_path = Path(args.zip_path) if args.zip_path else select_tbrucei_zip(Path.home() / 'Downloads')
+        loaded = load_annotations(zip_path)
+        warnings.extend(loaded.warnings)
+        gene_ids = sorted(loaded.annotations)
+    if not gene_ids:
+        raise AnnotationXlsxError('no gene ids for veupath (no generated sheet and no tbrucei zip)')
+    rows = fetch_rows(gene_ids)
+    write_warnings: list[str] = []
+    write_sheet(workbook, args.sheet, rows, warnings=write_warnings)
+    _emit_warnings(warnings + write_warnings)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
