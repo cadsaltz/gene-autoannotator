@@ -21,21 +21,29 @@ def load_annotations(path: Path) -> LoadResult:
     result = LoadResult()
     if path.is_dir():
         for json_path in sorted(path.rglob('*.json')):
-            _load_text(result, json_path.read_text(encoding='utf8'), source=str(json_path))
+            _load_text(result, json_path.read_bytes(), source=str(json_path))
     elif path.suffix.lower() == '.zip':
-        with zipfile.ZipFile(path) as handle:
-            for name in handle.namelist():
-                if name.endswith('/') or not name.lower().endswith('.json'):
-                    continue
-                _load_text(result, handle.read(name).decode('utf8'), source=f'{path}:{name}')
+        try:
+            with zipfile.ZipFile(path) as handle:
+                for name in handle.namelist():
+                    if name.endswith('/') or not name.lower().endswith('.json'):
+                        continue
+                    _load_text(result, handle.read(name), source=f'{path}:{name}')
+        except zipfile.BadZipFile as exc:
+            raise AnnotationXlsxError(f'invalid zip {path}: {exc}') from exc
     else:
-        _load_text(result, path.read_text(encoding='utf8'), source=str(path))
+        _load_text(result, path.read_bytes(), source=str(path))
     if not result.annotations:
         raise AnnotationXlsxError(f'no annotation JSON with gene_id found in {path}')
     return result
 
 
-def _load_text(result: LoadResult, text: str, *, source: str) -> None:
+def _load_text(result: LoadResult, raw: bytes, *, source: str) -> None:
+    try:
+        text = raw.decode('utf8')
+    except UnicodeDecodeError as exc:
+        result.warnings.append(f'skip undecodable JSON {source}: {exc}')
+        return
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:

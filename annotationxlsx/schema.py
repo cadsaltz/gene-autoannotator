@@ -12,7 +12,7 @@ COLUMNS = (
 EXCEL_CELL_LIMIT = 32767
 LIST_SEP = '; '
 
-_FALSEY_NOT = {None, '', '0', 'false', 'False', 'no', 'No', False, 0}
+_TRUE_NOT_STRINGS = {'1', 'true', 'yes', 'y', 'not'}
 
 
 def format_string(value: object) -> str:
@@ -34,7 +34,9 @@ def format_string_list(value: object) -> str:
 
 
 def _is_not_true(value: object) -> bool:
-    return value not in _FALSEY_NOT
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUE_NOT_STRINGS
+    return value is True or (type(value) is int and value == 1)
 
 
 def _go_id_and_name(item: object) -> tuple[str, str] | None:

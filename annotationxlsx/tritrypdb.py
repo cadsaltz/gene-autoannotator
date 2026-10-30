@@ -98,12 +98,13 @@ def fetch_rows(
     getter: Getter | None = None,
     max_workers: int = MAX_IN_FLIGHT,
     sleep=None,
+    warnings: list[str] | None = None,
 ) -> list[dict[str, str]]:
     getter = getter or _default_getter
     if sleep is None:
         import time
         sleep = time.sleep
-    transport_failures = 0
+    transport_failed_ids: set[str] = set()
     found: dict[str, dict | None] = {}
     workers = max(1, min(max_workers, MAX_IN_FLIGHT, len(gene_ids) or 1))
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -115,8 +116,14 @@ def fetch_rows(
             gene_id, record, transport = future.result()
             found[gene_id] = record
             if transport and record is None:
-                transport_failures += 1
+                transport_failed_ids.add(gene_id)
     usable = any(found.get(gene_id) is not None for gene_id in gene_ids)
-    if gene_ids and not usable and transport_failures:
+    if gene_ids and not usable and transport_failed_ids:
         raise AnnotationXlsxError('TriTrypDB request failed for every gene after retry')
+    if warnings is not None:
+        for gene_id in gene_ids:
+            if gene_id in transport_failed_ids:
+                warnings.append(f'TriTrypDB request failed after retry for gene {gene_id}')
+            elif found.get(gene_id) is None:
+                warnings.append(f'TriTrypDB record missing for gene {gene_id}')
     return [record_to_row(gene_id, found.get(gene_id)) for gene_id in gene_ids]

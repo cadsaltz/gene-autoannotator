@@ -46,6 +46,26 @@ def test_load_zip_nested(tmp_path: Path):
     assert any('manifest' in warning.lower() or 'gene_id' in warning.lower() for warning in result.warnings) or result.warnings
 
 
+def test_load_zip_skips_undecodable_member_with_warning(tmp_path: Path):
+    zip_path = tmp_path / 'tbrucei.zip'
+    with zipfile.ZipFile(zip_path, 'w') as handle:
+        handle.writestr('__MACOSX/._gen_bad.json', b'\xff\xfe')
+        handle.writestr('gen_good.json', json.dumps({'gene_id': 'GOOD', 'name': 'valid'}))
+
+    result = load_annotations(zip_path)
+
+    assert list(result.annotations) == ['GOOD']
+    assert any('decode' in warning.lower() and '._gen_bad.json' in warning for warning in result.warnings)
+
+
+def test_load_corrupt_zip_raises_annotation_error(tmp_path: Path):
+    zip_path = tmp_path / 'corrupt.zip'
+    zip_path.write_bytes(b'not a zip archive')
+
+    with pytest.raises(AnnotationXlsxError, match='invalid zip'):
+        load_annotations(zip_path)
+
+
 def test_skip_invalid_and_duplicate_last_wins(tmp_path: Path, capsys):
     _write_json(tmp_path / 'bad.json', {'name': 'no id'})
     (tmp_path / 'broken.json').write_text('{not json')

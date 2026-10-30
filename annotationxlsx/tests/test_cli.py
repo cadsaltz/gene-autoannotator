@@ -61,6 +61,19 @@ def test_json_rejects_xls(tmp_path: Path):
     assert main(['json', '--input', str(src), '--workbook', str(tmp_path / 'out.xls')]) == 1
 
 
+def test_json_directory_writes_rows_sorted_by_gene_id(tmp_path: Path):
+    source = tmp_path / 'annotations'
+    source.mkdir()
+    (source / 'first.json').write_text(json.dumps(_ann('B')))
+    (source / 'second.json').write_text(json.dumps(_ann('A')))
+    workbook = tmp_path / 'out.xlsx'
+
+    assert main(['json', '--input', str(source), '--workbook', str(workbook)]) == 0
+
+    sheet = load_workbook(workbook)['generated']
+    assert [sheet['A2'].value, sheet['A3'].value] == ['A', 'B']
+
+
 def test_json_missing_input_is_hard_fail(tmp_path: Path):
     assert main(['json', '--input', str(tmp_path / 'missing.json'), '--workbook', str(tmp_path / 'out.xlsx')]) == 1
 
@@ -128,6 +141,23 @@ def test_veupath_http_failure_does_not_write(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(cli, 'fetch_rows', boom)
     assert main(['veupath', '--workbook', str(workbook)]) == 1
     assert workbook.read_bytes() == before
+
+
+def test_veupath_warns_for_missing_gene(tmp_path: Path, monkeypatch, capsys):
+    from annotationxlsx import __main__ as cli
+    from annotationxlsx.workbook import write_sheet
+
+    workbook = tmp_path / 'cmp.xlsx'
+    write_sheet(workbook, 'generated', [empty_row('missing')])
+
+    def fake_fetch(gene_ids, *, warnings, **kwargs):
+        warnings.append('TriTrypDB record missing for gene missing')
+        return [empty_row('missing')]
+
+    monkeypatch.setattr(cli, 'fetch_rows', fake_fetch)
+
+    assert main(['veupath', '--workbook', str(workbook)]) == 0
+    assert 'TriTrypDB record missing for gene missing' in capsys.readouterr().err
 
 
 def test_veupath_no_genes_hard_fail(tmp_path: Path):

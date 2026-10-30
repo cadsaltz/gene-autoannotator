@@ -60,7 +60,7 @@ def cmd_veupath(args: argparse.Namespace) -> int:
         gene_ids = sorted(loaded.annotations)
     if not gene_ids:
         raise AnnotationXlsxError('no gene ids for veupath (no generated sheet and no tbrucei zip)')
-    rows = fetch_rows(gene_ids)
+    rows = fetch_rows(gene_ids, warnings=warnings)
     write_warnings: list[str] = []
     write_sheet(workbook, args.sheet, rows, warnings=write_warnings)
     _emit_warnings(warnings + write_warnings)

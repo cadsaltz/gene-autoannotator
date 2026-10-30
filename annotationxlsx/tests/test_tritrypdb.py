@@ -41,6 +41,29 @@ def test_record_to_row_maps_product_name_and_go():
     assert row['go_terms'] == 'GO:0005739 mitochondrion'
 
 
+@pytest.mark.parametrize(
+    ('is_not', 'expected'),
+    [
+        ('N', 'GO:0005739 mitochondrion'),
+        ('', 'GO:0005739 mitochondrion'),
+        ('1', ''),
+        (True, ''),
+    ],
+)
+def test_record_to_row_only_filters_known_is_not_values(is_not, expected):
+    record = {
+        'tables': {
+            'GOTerms': [{
+                'go_id': 'GO:0005739',
+                'go_term_name': 'mitochondrion',
+                'is_not': is_not,
+            }],
+        },
+    }
+
+    assert record_to_row('Tb927.1.100', record)['go_terms'] == expected
+
+
 def test_missing_record_is_empty_row():
     row = record_to_row('Tb927.1.100', None)
     assert row['gene_id'] == 'Tb927.1.100'
@@ -60,11 +83,45 @@ def test_fetch_rows_uses_injected_getter_and_preserves_order():
             }],
         })
 
-    rows = fetch_rows(['b', 'missing', 'a'], getter=getter, max_workers=1, sleep=lambda _: None)
+    warnings = []
+    rows = fetch_rows(
+        ['b', 'missing', 'a'],
+        getter=getter,
+        max_workers=1,
+        sleep=lambda _: None,
+        warnings=warnings,
+    )
     assert [row['gene_id'] for row in rows] == ['b', 'missing', 'a']
     assert rows[0]['function'] == 'prod-b'
     assert rows[1]['function'] == ''
     assert rows[2]['name'] == 'a'
+    assert warnings == ['TriTrypDB record missing for gene missing']
+
+
+def test_fetch_rows_warns_for_transport_failure_when_another_gene_succeeds():
+    def getter(url, *, params, headers, timeout):
+        gene_id = params['primaryKeys'].split(',')[0]
+        if gene_id == 'failed':
+            raise requests.exceptions.ConnectionError('down')
+        return FakeResponse(200, {
+            'records': [{
+                'attributes': {'product': 'available'},
+                'tables': {'GOTerms': []},
+            }],
+        })
+
+    warnings = []
+    rows = fetch_rows(
+        ['ok', 'failed'],
+        getter=getter,
+        max_workers=1,
+        sleep=lambda _: None,
+        warnings=warnings,
+    )
+
+    assert [row['gene_id'] for row in rows] == ['ok', 'failed']
+    assert rows[1]['function'] == ''
+    assert warnings == ['TriTrypDB request failed after retry for gene failed']
 
 
 def test_fetch_rows_hard_fails_when_all_transport_errors():
