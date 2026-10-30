@@ -51,6 +51,11 @@ def test_gene_ids_from_sheet_preserves_order(tmp_path: Path):
     assert gene_ids_from_sheet(path, 'missing') is None
 
 
+def test_gene_ids_from_sheet_rejects_nonexistent_xls(tmp_path: Path):
+    with pytest.raises(AnnotationXlsxError):
+        gene_ids_from_sheet(tmp_path / 'out.xls', 'generated')
+
+
 def test_null_string_not_written(tmp_path: Path):
     path = tmp_path / 'out.xlsx'
     row = empty_row('Tb927.1.100')

@@ -24,9 +24,9 @@ def require_xlsx(path: Path) -> None:
 
 def gene_ids_from_sheet(path: Path, sheet_name: str) -> list[str] | None:
     path = Path(path)
+    require_xlsx(path)
     if not path.is_file():
         return None
-    require_xlsx(path)
     try:
         wb = load_workbook(path, read_only=True, data_only=True)
     except (InvalidFileException, BadZipFile, KeyError, OSError) as exc:
