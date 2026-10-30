@@ -28,6 +28,7 @@ Main generated fields are `gene_id`, `name`, `function`, `functional_category`, 
 - `dispatcher/`: SCRI/scrontab entry point that peeks at backend queue depth and submits at most one Slurm worker-run at a time.
 - `worker/`: Pull-based annotation compute in persistent `serve`, one-shot `run`, and local `bench` modes.
 - `compareannotations/`: trusted-vs-generated scoring tools using exact matching, GO/category graph logic, embeddings/NLI, and an Ollama judge.
+- `annotationxlsx/`: CLI that writes generated-annotation and TriTrypDB sheets into one `.xlsx` for row-by-row comparison.
 - `tests/`: mostly deterministic unit/API tests; some model-style tests require local model dependencies.
 - `gen_json/`, `trust_json/`, `test_json/`: generated examples, trusted annotation fixtures, and small comparison fixtures.
 - `run_pipeline.py`: manual benchmark script for a fixed MTB gene list; appends scores to `pipeline_scores.jsonl`.
@@ -193,6 +194,11 @@ Compare generated output to trusted JSON:
 
 ```bash
 python -m compareannotations trust_json/trust_Rv0001.json gen_json/gen_Rv0001.json
+```
+
+```bash
+python -m annotationxlsx json --input path/to/gen_json_or.zip --workbook comparison.xlsx
+python -m annotationxlsx veupath --workbook comparison.xlsx
 ```
 
 Run tests:

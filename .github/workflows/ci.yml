@@ -29,7 +29,7 @@ jobs:
             deploy/docker/constraints-backend.txt
       # The backend image's pinned deps, plus rich for the two worker bench test
       # modules; the torch/CUDA pipeline stack (requirements.txt) is not installed.
-      - run: python -m pip install -r requirements-backend.txt -c deploy/docker/constraints-backend.txt pytest==9.0.3 rich==15.0.0
+      - run: python -m pip install -r requirements-backend.txt -c deploy/docker/constraints-backend.txt pytest==9.0.3 rich==15.0.0 openpyxl==3.1.5
       # Deselected: annotation-table lookups that already fail on master.
       - run: |
           python -m pytest tests -q \
@@ -38,6 +38,7 @@ jobs:
             --deselect tests/test_gene_names.py::test_annotation_table_lookup_locus_case_insensitive_unique \
             --deselect tests/test_gene_names.py::test_annotation_table_lookup_locus_ambiguous \
             --deselect tests/test_gene_names.py::test_annotation_table_lookup_locus_by_locus_column_case_insensitive
+      - run: python -m pytest annotationxlsx/tests -q
 
   frontend:
     runs-on: ubuntu-latest

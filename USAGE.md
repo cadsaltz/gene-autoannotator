@@ -11,14 +11,15 @@ Operator-facing how-to for tools in this repo. Package READMEs cover design deta
 5. [validate](#validate)
 6. [ortholog_lookup](#ortholog_lookup)
 7. [compareannotations](#compareannotations)
-8. [goresolve](#goresolve-go-term-resolution)
-9. [Backend (public job queue)](#backend-public-job-queue)
-10. [Passwordless accounts](#passwordless-accounts)
-11. [Worker (`serve` / `run` / `bench`)](#worker-serve--run--bench)
-12. [Dispatcher + Slurm (HPC)](#dispatcher--slurm-hpc)
-13. [Frontend](#frontend)
-14. [End-to-end setup recipes](#end-to-end-setup-recipes)
-15. [Advanced / scripts](#advanced--scripts)
+8. [annotationxlsx](#annotationxlsx-comparison-spreadsheets)
+9. [goresolve (GO term resolution)](#goresolve-go-term-resolution)
+10. [Backend (public job queue)](#backend-public-job-queue)
+11. [Passwordless accounts](#passwordless-accounts)
+12. [Worker (`serve` / `run` / `bench`)](#worker-serve--run--bench)
+13. [Dispatcher + Slurm (HPC)](#dispatcher--slurm-hpc)
+14. [Frontend](#frontend)
+15. [End-to-end setup recipes](#end-to-end-setup-recipes)
+16. [Advanced / scripts](#advanced--scripts)
 
 ---
 
@@ -261,6 +262,35 @@ python -m compareannotations -v path/to/trusted.json path/to/generated.json
 | `-v` / `--verbose` | Per-step debug logging |
 
 Needs local ML / optional Ollama for some scorers; set `GO_BASIC_OBO_PATH` for richer functional-category comparison.
+
+---
+
+## annotationxlsx (comparison spreadsheets)
+
+Write generated annotations and TriTrypDB records into one `.xlsx` with identical columns so a curator can compare row by row.
+
+```bash
+python -m annotationxlsx json --input ~/Downloads/tbrucei-treu927-ge10-results_20261022.zip \
+  --workbook ~/Downloads/tbrucei_annotation_comparison.xlsx
+
+python -m annotationxlsx veupath --workbook ~/Downloads/tbrucei_annotation_comparison.xlsx
+```
+
+`--workbook` is optional (default `annotation_comparison.xlsx` in the current directory). If the file exists, the named sheet is replaced and other sheets are left alone.
+
+### Useful flags
+
+| Flag | Subcommand | Purpose | Default |
+|------|------------|---------|---------|
+| `--input` | `json` | JSON file, directory, or zip | required |
+| `--workbook` | both | `.xlsx` to create or append | `annotation_comparison.xlsx` |
+| `--sheet` | both | Sheet name to write | `generated` / `veupathdb` |
+| `--zip` | `veupath` | Results zip if no generated sheet | newest `~/Downloads/tbrucei*.zip` |
+| `--order-from-sheet` | `veupath` | Sheet whose `gene_id` column sets row order | `generated` |
+
+Columns: `gene_id`, `name`, `function`, `functional_category`, `drug_susc_impact`, `infection_impact`, `go_terms`. VEuPathDB fills `name` (gene symbol), `function` (product description), and `go_terms`; other biology fields stay empty.
+
+Needs network access to `https://tritrypdb.org` for `veupath`. `.xls` paths are rejected.
 
 ---
 
