@@ -80,12 +80,14 @@ def _get_record(gene_id: str, getter: Getter, sleep) -> tuple[str, dict | None, 
             if sleep is not None and attempt < RETRY_ATTEMPTS - 1:
                 sleep(0.5 * (attempt + 1))
             continue
-        if status >= 400:
-            last_transport = True
-            if sleep is not None and attempt < RETRY_ATTEMPTS - 1:
-                sleep(0.5 * (attempt + 1))
-            continue
-        payload = response.json() if hasattr(response, 'json') else None
+        if 400 <= status < 500:
+            return gene_id, None, False
+        if status >= 500:
+            return gene_id, None, True
+        try:
+            payload = response.json() if hasattr(response, 'json') else None
+        except ValueError:
+            payload = None
         return gene_id, _extract_record(payload), False
     return gene_id, None, last_transport
 
@@ -103,7 +105,7 @@ def fetch_rows(
         sleep = time.sleep
     transport_failures = 0
     found: dict[str, dict | None] = {}
-    workers = max(1, min(max_workers, len(gene_ids) or 1))
+    workers = max(1, min(max_workers, MAX_IN_FLIGHT, len(gene_ids) or 1))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [
             pool.submit(_get_record, gene_id, getter, sleep)

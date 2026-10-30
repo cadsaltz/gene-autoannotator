@@ -2,15 +2,18 @@ import pytest
 import requests
 
 from annotationxlsx.errors import AnnotationXlsxError
-from annotationxlsx.tritrypdb import BASE_URL, fetch_rows, record_to_row
+from annotationxlsx.tritrypdb import BASE_URL, MAX_IN_FLIGHT, fetch_rows, record_to_row
 
 
 class FakeResponse:
-    def __init__(self, status_code, payload=None):
+    def __init__(self, status_code, payload=None, json_error=None):
         self.status_code = status_code
-        self._payload = payload or {}
+        self._payload = payload
+        self._json_error = json_error
 
     def json(self):
+        if self._json_error is not None:
+            raise self._json_error
         return self._payload
 
 
@@ -81,3 +84,88 @@ def test_fetch_rows_hard_fails_when_no_usable_record_and_any_transport_error():
 
     with pytest.raises(AnnotationXlsxError):
         fetch_rows(['gone', 'down'], getter=getter, max_workers=1, sleep=lambda _: None)
+
+
+def test_fetch_rows_caps_requested_workers(monkeypatch):
+    observed = {}
+
+    class ImmediateFuture:
+        def __init__(self, result):
+            self._result = result
+
+        def result(self):
+            return self._result
+
+    class CapturingExecutor:
+        def __init__(self, *, max_workers):
+            observed['max_workers'] = max_workers
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def submit(self, function, *args):
+            return ImmediateFuture(function(*args))
+
+    monkeypatch.setattr('annotationxlsx.tritrypdb.ThreadPoolExecutor', CapturingExecutor)
+    monkeypatch.setattr('annotationxlsx.tritrypdb.as_completed', lambda futures: futures)
+
+    rows = fetch_rows(
+        [f'gene-{index}' for index in range(8)],
+        getter=lambda *args, **kwargs: FakeResponse(404),
+        max_workers=20,
+        sleep=lambda _: None,
+    )
+
+    assert observed['max_workers'] == MAX_IN_FLIGHT
+    assert len(rows) == 8
+
+
+@pytest.mark.parametrize(
+    'response',
+    [
+        FakeResponse(200, json_error=ValueError('invalid JSON')),
+        FakeResponse(200, payload=[]),
+        FakeResponse(200, payload={'records': []}),
+    ],
+)
+def test_fetch_rows_treats_invalid_or_empty_body_as_missing(response):
+    rows = fetch_rows(
+        ['missing'],
+        getter=lambda *args, **kwargs: response,
+        max_workers=1,
+        sleep=lambda _: None,
+    )
+
+    assert rows == [record_to_row('missing', None)]
+
+
+@pytest.mark.parametrize('status_code', [400, 404])
+def test_fetch_rows_treats_nonretryable_4xx_as_missing_without_retry(status_code):
+    attempts = 0
+
+    def getter(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        return FakeResponse(status_code)
+
+    rows = fetch_rows(['missing'], getter=getter, max_workers=1, sleep=lambda _: None)
+
+    assert attempts == 1
+    assert rows == [record_to_row('missing', None)]
+
+
+def test_fetch_rows_treats_nonretryable_5xx_as_transport_failure_without_retry():
+    attempts = 0
+
+    def getter(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        return FakeResponse(500)
+
+    with pytest.raises(AnnotationXlsxError):
+        fetch_rows(['failed'], getter=getter, max_workers=1, sleep=lambda _: None)
+
+    assert attempts == 1
