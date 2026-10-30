@@ -56,3 +56,7 @@ experiments/paper/results/*/
 /sif/
 /.hpc-update.lock
 /run_log.txt
+
+!annotationxlsx/tests/
+!annotationxlsx/tests/**
+annotationxlsx/tests/__pycache__/
